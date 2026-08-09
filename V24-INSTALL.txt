@@ -1,36 +1,54 @@
-JAYVI FOODS — V24
+JAYVI FOODS — V24 FINAL CONSOLIDATED BUILD
 
-Replace ONLY the current repository index.html with this file.
+This package is the consolidated V24 pre-production build from the latest
+jayvifoods-test Git project.
 
-KEEP the existing:
-app.js
-style.css
-admin.html
-admin.js
-admin.css
-admin-login.html
-admin-login.css
-config.json
-help.html
-images/
+UPLOAD THIS ENTIRE SET:
+- index.html
+- app.js
+- style.css
+- admin.html
+- admin.js
+- admin.css
+- admin-login.html
+- help.html
+- images/
+- VERSION.txt
+- DEPLOY.md
+- V24-INSTALL.txt
 
-V24 is deliberately a UI/mobile stability pass over the current V23 implementation.
+V24 FIXES INCLUDED
+- Mobile header logo centered.
+- Mobile scroll/stuck-page hardening.
+- Announcement/hero has a fixed media stage and left/right swipe.
+- Product cards use fixed media frames with horizontal image/video scrolling.
+- Product image areas use contain/fixed sizing to avoid inconsistent image heights.
+- Mobile product popup is neutralized; product cards show their media directly.
+- Bestsellers use a one-product-at-a-time mobile rail.
+- Find your favourite controls fit on mobile.
+- Made for every meal retains the redesigned pairing approach and product links.
+- Cart drawer and Continue to checkout sizing are stabilized.
+- PIN + Verify alignment is fixed.
+- UTR/reference field is larger and easier to use.
+- Order-success presentation is modernized.
+- My Jayvi/account layout is hardened for mobile.
+- Mobile WhatsApp uses a direct wa.me action.
+- Checkout/delivery copy is simplified for non-technical users.
+- Price savings are shown on product cards/details.
+- Product media includes front/back/serving assets for the catalogue.
 
-Fixes covered:
-- centered mobile logo
-- intermittent mobile scroll/stuck-page hardening
-- fixed announcement image stage + left/right swipe
-- product-card image/video horizontal swipe
-- fixed media frame sizing
-- cart checkout button sizing
-- larger UTR field
-- PIN + Verify alignment
-- modern order-success presentation
-- My Jayvi alignment
-- Find your favourite search/sort fit
-- mobile WhatsApp direct action
-- existing Made for every meal design retained
+INTENTIONALLY NOT CHANGED IN V24
+- No database/backend migration.
+- No Google Maps API key is embedded.
+- No payment gateway migration.
+- Existing browser/localStorage data model remains the current prototype model.
+- Existing admin functionality remains included.
 
-NO database/API/Google Maps/payment architecture changes are included yet.
+IMPORTANT
+This is one consolidated upload set. Do not mix individual files from older
+V15/V17/V18/V19/V20/V21/V22/V23 packages with this build.
 
-After V24 is tested and approved, consolidate the V15–V23 layers in app.js/style.css into a clean production codebase.
+After extraction, upload the CONTENTS of this folder to the GitHub repository
+root and replace the matching files. Keep the images/ folder.
+
+Website version: V24.0

@@ -874,10 +874,10 @@ init();
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init);
   else init();
 })();
-/* Jayvi Foods V22.0 — final mobile UX, gallery, announcement and checkout patch */
+/* Jayvi Foods V24.0 — consolidated mobile UX, gallery, announcement and checkout patch */
 (function(){
 'use strict';
-const VERSION='23.0';
+const VERSION='24.0';
 const demo={
  peanut:['images/products/peanut/hero.webp','images/gallery/peanut-front.svg','images/gallery/peanut-back.svg','images/gallery/peanut-serving.svg'],
  flaxseed:['images/products/flaxseed/hero.webp','images/gallery/flaxseed-front.svg','images/gallery/flaxseed-back.svg','images/gallery/flaxseed-serving.svg'],
@@ -965,7 +965,7 @@ function init(){version();fixProductImages();syncOverlay();heroTouch();fixAbout(
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
 
-/* Jayvi Foods V23.0 — final mobile interaction pass
+/* Jayvi Foods V24.0 — final mobile interaction pass
    - Fixed-size announcement stage + reliable horizontal swipe
    - No product popup on mobile; product cards contain a swipeable media gallery
    - Checkout uses a non-submit action button to avoid intermittent form click failures
@@ -974,7 +974,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 */
 (function(){
  'use strict';
- const VERSION='23.0';
+ const VERSION='24.0';
  const mobile=()=>window.matchMedia('(max-width:760px)').matches;
  function setVersion(){const e=document.getElementById('siteVersion');if(e)e.textContent='Website v'+VERSION;document.documentElement.dataset.jayviVersion=VERSION}
  function overlayIsOpen(){return !!document.querySelector('.overlay.open')}
