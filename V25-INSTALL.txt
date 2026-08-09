@@ -1,41 +1,4 @@
-JAYVI FOODS — V25.0 PRODUCTION CANDIDATE
+Jayvi Foods V25.1
+Consolidated mobile/desktop product gallery and scrolling fix release.
 
-This is a complete replacement package based on V24.1.
-
-V25.0 focuses on consolidating the mobile stability layer and preserving the
-approved V24 functionality without changing the data-storage architecture.
-
-Included:
-- Mobile loading/scroll stability with one event-driven stabilization layer
-- Centered mobile Jayvi Foods logo and aligned search/account/cart controls
-- Visible mobile hamburger menu
-- Product-card multi-image horizontal swipe gallery
-- Product video remains in the same product media gallery when configured
-- Fixed product/hero image frames
-- Find Your Favourite search/sort alignment
-- Checkout scrolling and PIN/UTR field sizing
-- Reliable checkout action button
-- WhatsApp mobile click handling
-- Modern order confirmation
-- Legal/footer links retained
-- About Jayvi / Our story link retained
-- Existing catalogue, admin and images retained
-
-Not included:
-- No database migration
-- No change from the current localStorage data model
-- No Google Maps API key
-- No payment gateway integration
-- No production backend/security architecture change
-
-UPLOAD RULE:
-Replace the complete contents of the repository root with this package.
-Do not mix files from V15–V24.1 with V25.
-
-GitHub Pages:
-- Branch: main
-- Folder: / (root)
-
-After upload, wait for the GitHub Pages deployment to show successful.
-The HTML references style.css?v=25.0 and app.js?v=25.0 to reduce stale asset
-caching during testing.
+Deploy the complete package to the main branch root.

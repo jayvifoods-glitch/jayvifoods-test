@@ -91,11 +91,16 @@ function saveWishlist(){localStorage.setItem('jayviWishlistV9',JSON.stringify(wi
 function toggleWishlist(pid){if(wishlist.includes(pid))wishlist=wishlist.filter(x=>x!==pid);else wishlist.push(pid);saveWishlist();renderBest();renderProducts();showToast(wishlist.includes(pid)?'Added to favourites':'Removed from favourites')}
 function cardMediaMarkup(p){
  const media=(p.media?.length?p.media:DEFAULT_PRODUCT_MEDIA[p.id]||[{type:'image',path:p.image}]).filter(Boolean);
- return `<div class="cardMediaScroller" aria-label="${escapeHtml(p.name)} product images">
-  ${media.map((m,i)=>m.type==='video'&&m.path
-    ? `<div class="cardMediaSlide cardVideo"><video controls playsinline preload="metadata" poster="${escapeHtml(m.poster||'')}"><source src="${escapeHtml(m.path)}" type="video/mp4"></video><span class="mediaLabel">Video</span></div>`
-    : `<div class="cardMediaSlide"><img src="${escapeHtml(m.path||m)}" alt="${escapeHtml(p.name)} image ${i+1}" loading="${i?'lazy':'eager'}" onerror="this.closest('.cardMediaSlide')?.remove()"></div>`
-  ).join('')}
+ return `<div class="cardMediaGallery" data-media-count="${media.length}">
+  <button type="button" class="mediaNav mediaPrev" aria-label="Previous image" onclick="event.stopPropagation();scrollCardMedia(this,-1)">‹</button>
+  <div class="cardMediaScroller" aria-label="${escapeHtml(p.name)} product images">
+   ${media.map((m,i)=>m.type==='video'&&m.path
+     ? `<div class="cardMediaSlide cardVideo"><video controls playsinline preload="metadata" poster="${escapeHtml(m.poster||'')}"><source src="${escapeHtml(m.path)}" type="video/mp4"></video><span class="mediaLabel">Video</span></div>`
+     : `<div class="cardMediaSlide"><img src="${escapeHtml(m.path||m)}" alt="${escapeHtml(p.name)} image ${i+1}" loading="${i?'lazy':'eager'}" onerror="this.closest('.cardMediaSlide')?.remove()"></div>`
+   ).join('')}
+  </div>
+  <button type="button" class="mediaNav mediaNext" aria-label="Next image" onclick="event.stopPropagation();scrollCardMedia(this,1)">›</button>
+  <div class="mediaDots" aria-hidden="true">${media.map((_,i)=>`<i class="${i===0?'active':''}"></i>`).join('')}</div>
  </div>`;
 }
 function productCard(p){
@@ -768,6 +773,23 @@ init();
     });
   }
 
+  window.scrollCardMedia=function(btn,dir){
+    const wrap=btn?.closest('.cardMediaGallery');
+    const sc=wrap?.querySelector('.cardMediaScroller');
+    if(!sc)return;
+    sc.scrollBy({left:dir*Math.max(sc.clientWidth,1),behavior:'smooth'});
+  };
+
+  function syncGalleryDots(){
+    document.querySelectorAll('.cardMediaGallery').forEach(w=>{
+      const sc=w.querySelector('.cardMediaScroller');
+      const dots=[...w.querySelectorAll('.mediaDots i')];
+      if(!sc||!dots.length)return;
+      const idx=Math.max(0,Math.min(dots.length-1,Math.round(sc.scrollLeft/Math.max(sc.clientWidth,1))));
+      dots.forEach((d,i)=>d.classList.toggle('active',i===idx));
+    });
+  }
+
   function repairGalleries(){
     document.querySelectorAll('.productCard .visualWrap').forEach(w=>{
       w.style.height='285px';
@@ -786,7 +808,7 @@ init();
       s.style.scrollSnapType='x mandatory';
       s.style.scrollBehavior='smooth';
       s.style.webkitOverflowScrolling='touch';
-      s.style.touchAction='pan-x';
+      s.style.touchAction='pan-x pan-y';
       s.style.pointerEvents='auto';
       s.style.scrollbarWidth='none';
     });
@@ -866,8 +888,9 @@ init();
       if(s.dataset.v25Touch)return;
       s.dataset.v25Touch='1';
       s.addEventListener('click',e=>e.stopPropagation(),{passive:true});
-      s.addEventListener('pointerdown',e=>e.stopPropagation(),{passive:true});
+      s.addEventListener('scroll',syncGalleryDots,{passive:true});
     });
+    syncGalleryDots();
   }
 
   function setupOverlayObservers(){
@@ -1009,6 +1032,7 @@ init();
     repairPinRow();
     setupHeroSwipe();
     setupGalleryTouch();
+    syncGalleryDots();
     setupWhatsApp();
     setupOverlayObservers();
     syncScroll();
@@ -1031,7 +1055,7 @@ init();
       syncScroll();
     });
     observer.observe(document.body,{childList:true,subtree:true});
-    window.addEventListener('resize',()=>{repairHeader();repairGalleries();repairShopControls();repairPinRow();syncScroll()},{passive:true});
+    window.addEventListener('resize',()=>{repairHeader();repairGalleries();repairShopControls();repairPinRow();syncGalleryDots();syncScroll()},{passive:true});
     window.addEventListener('pageshow',syncScroll,{passive:true});
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncScroll()});
   }
