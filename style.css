@@ -1022,7 +1022,7 @@ body.checkoutOpen [class*="cartBar"]{display:none!important;}
     overscroll-behavior-x:contain!important;
     -webkit-overflow-scrolling:touch!important;
     scrollbar-width:none!important;
-    touch-action:pan-x!important;
+    touch-action:auto!important;
   }
   .cardMediaScroller::-webkit-scrollbar{display:none!important}
   .cardMediaSlide{
@@ -1100,9 +1100,9 @@ body.checkoutOpen [class*="cartBar"]{display:none!important;}
   .copyright{margin-top:4px!important}
 }
 @media(min-width:761px){
-  .cardMediaScroller{display:flex;overflow-x:auto;overflow-y:hidden;width:100%;height:100%;scroll-snap-type:x mandatory;scroll-behavior:smooth;scrollbar-width:thin;overscroll-behavior-x:contain;touch-action:pan-x pan-y}
-  .cardMediaSlide{flex:0 0 100%;display:grid;place-items:center;background:#eadcc7;scroll-snap-align:start;min-width:100%;overflow:hidden}
-  .cardMediaSlide img,.cardMediaSlide video{width:100%;height:100%;object-fit:contain}
+  .cardMediaScroller{display:flex;overflow:hidden;width:100%;height:100%}
+  .cardMediaSlide{flex:0 0 100%;display:grid;place-items:center;background:#eadcc7}
+  .cardMediaSlide img{width:100%;height:100%;object-fit:cover}
 }
 
 
@@ -1125,17 +1125,10 @@ html,body{overflow-x:hidden}
 
   /* Every product image area has one fixed frame. Swipe horizontally. */
   .productCard .visualWrap{height:285px!important;min-height:285px!important;overflow:hidden!important;position:relative!important}
-  .productCard .cardMediaScroller{height:285px!important;min-height:285px!important;width:100%!important;display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;scroll-snap-type:x mandatory!important;scroll-behavior:smooth!important;-webkit-overflow-scrolling:touch!important;touch-action:pan-x pan-y!important;scrollbar-width:none!important}
+  .productCard .cardMediaScroller{height:285px!important;min-height:285px!important;width:100%!important;display:flex!important;flex-wrap:nowrap!important;overflow-x:auto!important;overflow-y:hidden!important;scroll-snap-type:x mandatory!important;scroll-behavior:smooth!important;-webkit-overflow-scrolling:touch!important;touch-action:auto!important;scrollbar-width:none!important}
   .productCard .cardMediaScroller::-webkit-scrollbar{display:none}
   .productCard .cardMediaSlide{flex:0 0 100%!important;width:100%!important;min-width:100%!important;height:285px!important;min-height:285px!important;display:grid!important;place-items:center!important;scroll-snap-align:start!important;overflow:hidden!important}
   .productCard .cardMediaSlide img,.productCard .cardMediaSlide video{width:100%!important;height:100%!important;object-fit:contain!important;display:block!important}
-  .cardMediaGallery{position:relative;width:100%;height:100%;overflow:hidden}
-  .cardMediaGallery .cardMediaScroller{width:100%;height:100%}
-  .mediaNav{position:absolute;top:50%;transform:translateY(-50%);z-index:8;width:34px;height:34px;border:0;border-radius:50%;background:rgba(23,16,13,.78);color:#fff;font-size:24px;line-height:1;display:grid;place-items:center;cursor:pointer;box-shadow:0 3px 12px rgba(0,0,0,.18)}
-  .mediaPrev{left:10px}.mediaNext{right:10px}
-  .mediaDots{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:7;display:flex;gap:5px;pointer-events:none}
-  .mediaDots i{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.7);display:block}
-  .mediaDots i.active{width:16px;border-radius:999px;background:#c99a2e}
   .productCard .pcBody{padding-top:13px!important}
   .productCard .pcBody h3{margin-top:2px!important;margin-bottom:5px!important}
 
@@ -1169,4 +1162,31 @@ html,body{overflow-x:hidden}
   body.v25-overlay-open .whatsappFloat{display:none!important}
   footer{overflow:visible!important}
   .footerGrid{align-items:start!important}
+}
+
+/* =========================================================
+   JAYVI FOODS V27.0 — gallery + footer polish
+   ========================================================= */
+.cardMediaFrame{position:relative;width:100%;height:100%;overflow:hidden;background:#eadcc7}
+.cardMediaScroller{width:100%;height:100%;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-behavior:smooth;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;touch-action:auto}
+.cardMediaScroller::-webkit-scrollbar{display:none}
+.cardMediaSlide{flex:0 0 100%;width:100%;height:100%;scroll-snap-align:start;display:grid;place-items:center;overflow:hidden;background:#eadcc7}
+.cardMediaSlide img,.cardMediaSlide video{width:100%;height:100%;object-fit:contain;display:block}
+.galleryArrow{position:absolute;top:50%;transform:translateY(-50%);z-index:8;width:36px;height:36px;border:0;border-radius:50%;background:rgba(255,250,243,.94);color:#3a2418;font-size:28px;line-height:1;box-shadow:0 4px 14px rgba(0,0,0,.16);cursor:pointer;display:grid;place-items:center}
+.galleryPrev{left:10px}.galleryNext{right:10px}
+.galleryCount{position:absolute;top:10px;right:10px;z-index:8;background:rgba(23,17,13,.82);color:#fff8ef;border-radius:999px;padding:5px 9px;font:700 11px/1 'DM Sans',sans-serif;letter-spacing:.03em}
+.galleryDots{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:8;display:flex;gap:5px;padding:5px 8px;border-radius:999px;background:rgba(23,17,13,.62)}
+.galleryDots button{width:7px;height:7px;border:0;border-radius:50%;padding:0;background:#cdbfae;cursor:pointer}.galleryDots button.active{width:20px;border-radius:999px;background:#d4a017}
+.footerCompliance{padding:38px 0;min-width:190px}.footerCompliance>b{display:block;font-size:10px;color:#f1e9df;margin-bottom:10px}.footerCompliance p{margin:4px 0!important;color:#b0a59b!important;font-size:9px!important}.fssaiBadge{display:inline-grid;place-items:center;min-width:58px;height:28px;padding:0 10px;margin:0 0 6px;border:1px solid #d4a017;border-radius:6px;color:#d4a017;font:800 11px/1 'DM Sans',sans-serif;letter-spacing:.08em;background:#17100d}
+@media(max-width:760px){
+  .productCard .visualWrap{height:285px!important;min-height:285px!important}
+  .productCard .cardMediaFrame{height:285px!important;min-height:285px!important}
+  .productCard .cardMediaScroller{height:285px!important;min-height:285px!important;touch-action:auto!important;overflow-x:auto!important;overflow-y:hidden!important}
+  .galleryArrow{width:34px;height:34px;font-size:25px}.galleryPrev{left:8px}.galleryNext{right:8px}.galleryCount{top:9px;right:9px;font-size:10px}.galleryDots{bottom:9px}
+  .footerCompliance{grid-column:1/-1!important;padding:14px 0 8px!important;border-top:1px solid #2a211b;margin-top:4px}.footerCompliance p{font-size:10px!important}.footerCompliance>b{font-size:12px!important}.fssaiBadge{height:30px}
+}
+@media(min-width:761px){
+  .productCard .cardMediaFrame{height:100%;min-height:285px}
+  .productCard .cardMediaScroller{height:100%}
+  .galleryArrow{opacity:.92}
 }

@@ -1,0 +1,23 @@
+JAYVI FOODS — V27.0 WEBSITE RELEASE
+
+Based on V25.0 production candidate. This release keeps the existing catalogue, cart, checkout, admin and localStorage architecture.
+
+V27.0 changes:
+- Keeps the current clean footer layout and adds business/contact details.
+- Adds FSSAI licence number: 21226177001087.
+- Adds UDYAM Registered MSME: UDYAM-KR-03-0681597.
+- Adds clickable email, phone and existing WhatsApp/Instagram contacts.
+- Centers the mobile Jayvi Foods logo without overlap.
+- Product galleries now show visible arrows, image count and dots on desktop and mobile.
+- Product gallery horizontal scrolling remains available while allowing normal vertical page scrolling from the image area.
+- Keeps product images/videos in the same card grid; no product-card popup is introduced on mobile.
+- Cache-busts style.css and app.js to v27.0.
+
+Upload rule:
+Replace the complete repository contents with this release. Do not mix older V15–V25 files. Keep the entire images/ folder.
+
+GitHub Pages:
+Branch main; folder / (root). Wait for the Pages deployment to complete before testing.
+
+Not included:
+No database/backend migration, Google Maps key, payment gateway integration, or change to the current localStorage data model.
