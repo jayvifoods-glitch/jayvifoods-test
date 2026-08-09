@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jayvi Foods — Admin Portal</title><link rel="stylesheet" href="admin.css"></head>
+<body>
+<aside>
+  <div class="adminBrand"><img src="images/brand/jayvi-foods-logo.webp" alt="Jayvi Foods"><small>ADMIN PORTAL</small></div>
+  <button class="nav active" data-tab="dashboard">Dashboard</button>
+  <button class="nav" data-tab="orders">Orders</button>
+  <button class="nav" data-tab="customers">Customers</button>
+  <button class="nav" data-tab="products">Products</button>
+  <button class="nav" data-tab="variants">Variants & sizes</button>
+  <button class="nav" data-tab="combos">Combos</button>
+  <button class="nav" data-tab="categories">Categories</button>
+  <button class="nav" data-tab="mealtags">Meal tags</button>
+  <button class="nav" data-tab="homepage">Homepage</button>
+  <button class="nav" data-tab="reviews">Reviews</button>
+  <button class="nav" data-tab="settings">Store settings</button>
+  <a class="storeLink" href="index.html">← Storefront</a>
+  <button class="logout" onclick="logout()">Sign out</button>
+</aside>
+<main>
+  <header><div><div class="eyebrow">JAYVI FOODS</div><h1 id="title">Dashboard</h1></div><div id="headerContext" class="headerContext"></div></header>
+  <div id="app"></div>
+</main>
+<div id="modal" class="modalWrap"><div class="modal"><button class="x" onclick="closeModal()">×</button><div id="modalBody"></div></div></div><div id="toast" class="toast"></div>
+
+<script src="admin.js"></script></body></html>
