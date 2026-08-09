@@ -680,11 +680,11 @@ init();
 
 
 
-/* Jayvi Foods V25 — consolidated mobile stability + gallery + checkout layer
+/* Jayvi Foods V27 — consolidated mobile stability + gallery + checkout layer
    One event-driven layer. No polling loops or full-body mutation polling. */
 (function(){
   'use strict';
-  const VERSION='25.0';
+  const VERSION='27.0';
   const isMobile=()=>window.matchMedia('(max-width:760px)').matches;
   const $v=id=>document.getElementById(id);
 
