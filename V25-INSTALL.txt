@@ -1,4 +1,0 @@
-Jayvi Foods V25.1
-Consolidated mobile/desktop product gallery and scrolling fix release.
-
-Deploy the complete package to the main branch root.
