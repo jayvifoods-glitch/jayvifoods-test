@@ -13,10 +13,62 @@ const EMBEDDED_CONFIG = {
   "mealTags":[{"id":"idli","name":"Idli","enabled":true,"order":1},{"id":"dosa","name":"Dosa","enabled":true,"order":2},{"id":"chapati","name":"Chapati","enabled":true,"order":3},{"id":"rice","name":"Rice + Ghee","enabled":true,"order":4},{"id":"roti","name":"Roti","enabled":true,"order":5},{"id":"paratha","name":"Paratha","enabled":true,"order":6},{"id":"poori","name":"Poori","enabled":true,"order":7},{"id":"upma","name":"Upma","enabled":true,"order":8},{"id":"vada","name":"Vada","enabled":true,"order":9},{"id":"curd-rice","name":"Curd Rice","enabled":true,"order":10}],"mealLabels":{"idli":"Idli","dosa":"Dosa","chapati":"Chapati","rice":"Rice + Ghee","roti":"Roti","paratha":"Paratha","poori":"Poori","upma":"Upma","vada":"Vada","curd-rice":"Curd Rice"},
   "reviews":[{"source":"customer","name":"Prateeksha","rating":5,"text":"It was nice, perfect & tasty.","active":true},{"source":"customer","name":"Praveen Yandigeri","rating":5,"text":"Best Authentic Taste! The Peanut chutney is rich and nutty, while the Flaxseed is savory and spicy. These powders go perfectly with idli, dosa, rotis and sandwiches.","active":true},{"source":"customer","name":"Bhoomika","rating":5,"text":"The peanut chutney pudi was genuinely very good. We had it with chapati, curd, hot rice and ghee, and everyone at home loved it.","active":true},{"source":"customer","name":"Varada Rajesh","rating":5,"text":"Absolutely loved the taste! Feels very homemade and authentic. The peanut chutney is very tasty and the flaxseed one is unique.","active":true}]
 };
+const DEFAULT_PRODUCT_MEDIA={
+ peanut:[
+  {type:'image',path:'images/products/peanut/hero.webp'},
+  {type:'image',path:'images/gallery/peanut-front.svg'},
+  {type:'image',path:'images/gallery/peanut-back.svg'},
+  {type:'image',path:'images/gallery/peanut-serving.svg'}
+ ],
+ flaxseed:[
+  {type:'image',path:'images/products/flaxseed/hero.webp'},
+  {type:'image',path:'images/gallery/flaxseed-front.svg'},
+  {type:'image',path:'images/gallery/flaxseed-back.svg'},
+  {type:'image',path:'images/gallery/flaxseed-serving.svg'}
+ ],
+ pudi:[
+  {type:'image',path:'images/products/pudi/hero.webp'},
+  {type:'image',path:'images/gallery/pudi-front.svg'},
+  {type:'image',path:'images/gallery/pudi-back.svg'},
+  {type:'image',path:'images/gallery/pudi-serving.svg'}
+ ],
+ puffora:[
+  {type:'image',path:'images/products/puffora/hero.webp'},
+  {type:'image',path:'images/gallery/puffora-front.svg'},
+  {type:'image',path:'images/gallery/puffora-back.svg'},
+  {type:'image',path:'images/gallery/puffora-serving.svg'}
+ ]
+};
 let CONFIG=loadConfig(), products=[], categories=[], cat='all', heroIndex=0, heroTimer=null, meal='idli', selectedVariants={}, cart=loadCart(), wishlist=loadWishlist(), mapsReady=false;
 const $=id=>document.getElementById(id), money=n=>'₹'+Number(n||0).toLocaleString('en-IN');
-function loadConfig(){try{const x=localStorage.getItem('jayviStoreV14');if(!x)return structuredClone(EMBEDDED_CONFIG);const d=structuredClone(EMBEDDED_CONFIG),u=JSON.parse(x);d.store={...d.store,...(u.store||{})};d.products=u.products||d.products;d.categories=u.categories||d.categories;d.combos=u.combos||d.combos;d.announcements=u.announcements||d.announcements;d.mealTags=u.mealTags||d.mealTags;d.mealLabels=Object.fromEntries((d.mealTags||[]).map(t=>[t.id,t.name]));d.reviews=u.reviews||d.reviews;d.pendingReviews=u.pendingReviews||[];return d}catch{return structuredClone(EMBEDDED_CONFIG)}}
-function sync(){products=(CONFIG.products||[]).filter(p=>p.active);categories=(CONFIG.categories||[]).filter(c=>c.enabled).sort((a,b)=>a.order-b.order);if($('topShipping'))$('topShipping').textContent=`FREE SHIPPING ABOVE ${money(CONFIG.store.freeShippingThreshold)}`}
+function loadConfig(){
+ try{
+  const x=localStorage.getItem('jayviStoreV14');
+  const d=structuredClone(EMBEDDED_CONFIG);
+  const u=x?JSON.parse(x):{};
+  d.store={...d.store,...(u.store||{})};
+  const baseById=Object.fromEntries((d.products||[]).map(p=>[p.id,p]));
+  d.products=(u.products||d.products).map(p=>{
+    const base=baseById[p.id]||{};
+    const fallbackImage=base.image;
+    const badImage=!p.image||String(p.image).includes('jayvi-products.webp')||String(p.image).includes('v22-demo');
+    return {...base,...p,image:badImage?fallbackImage:p.image,media:p.media?.length?p.media:(base.media||[])};
+  });
+  d.categories=u.categories||d.categories;
+  d.combos=u.combos||d.combos;
+  d.announcements=u.announcements||d.announcements;
+  d.mealTags=u.mealTags||d.mealTags;
+  d.mealLabels=Object.fromEntries((d.mealTags||[]).map(t=>[t.id,t.name]));
+  d.reviews=u.reviews||d.reviews;
+  d.pendingReviews=u.pendingReviews||[];
+  return d;
+ }catch{return structuredClone(EMBEDDED_CONFIG)}
+}
+function sync(){
+ products=(CONFIG.products||[]).filter(p=>p.active).map(p=>({...p,media:p.media?.length?p.media:(DEFAULT_PRODUCT_MEDIA[p.id]||[{type:'image',path:p.image}])}));
+ categories=(CONFIG.categories||[]).filter(c=>c.enabled).sort((a,b)=>a.order-b.order);
+ if($('topShipping'))$('topShipping').textContent=`FREE SHIPPING ABOVE ${money(CONFIG.store.freeShippingThreshold)}`
+}
 function saveConfig(){localStorage.setItem('jayviStoreV14',JSON.stringify(CONFIG))}
 function getProduct(id){return products.find(p=>p.id===id)}
 function getCombo(id){return (CONFIG.combos||[]).find(c=>c.id===id&&c.active)}
@@ -36,7 +88,25 @@ function cartQtyFor(pid,vid){const x=cart.find(i=>i.type==='product'&&i.productI
 function loadWishlist(){try{return JSON.parse(localStorage.getItem('jayviWishlistV9')||'[]')}catch{return []}}
 function saveWishlist(){localStorage.setItem('jayviWishlistV9',JSON.stringify(wishlist))}
 function toggleWishlist(pid){if(wishlist.includes(pid))wishlist=wishlist.filter(x=>x!==pid);else wishlist.push(pid);saveWishlist();renderBest();renderProducts();showToast(wishlist.includes(pid)?'Added to favourites':'Removed from favourites')}
-function productCard(p){const v=getVariant(p,variantKey(p.id));const off=v.mrp-v.price;const q=cartQtyFor(p.id,v.id);const actions=q?`<div class="pcActions"><div class="inlineQty"><button onclick="changeProductQty('${p.id}','${v.id}',-1)">−</button><b>${q}</b><button onclick="changeProductQty('${p.id}','${v.id}',1)">+</button></div><button onclick="openCart()">View cart</button></div>`:`<div class="pcActions"><button onclick="addToCart('${p.id}','${v.id}')">Add to cart</button><button onclick="buyNow('${p.id}','${v.id}')">Buy now</button></div>`;return `<article class="productCard"><div class="visualWrap" onclick="openProduct('${p.id}')">${imageMarkup(p)}${p.best?'<span class="badge">BESTSELLER</span>':''}<button class="heart ${wishlist.includes(p.id)?'isWish':''}" onclick="event.stopPropagation();toggleWishlist('${p.id}')" aria-label="Favourite ${escapeHtml(p.name)}"><i class="${wishlist.includes(p.id)?'fa-solid':'fa-regular'} fa-heart"></i></button></div><div class="pcBody"><small>${catName(p.category)}</small><h3 onclick="openProduct('${p.id}')">${escapeHtml(p.name)}</h3><div class="stars">★★★★★ <span>${p.rating} · ${p.reviewCount} reviews</span></div><p>${escapeHtml(p.short)}</p><div class="sizes">${p.variants.filter(x=>x.active).map(x=>`<button class="${x.id===v.id?'active':''}" onclick="setVariant('${p.id}','${x.id}')">${escapeHtml(x.label)}</button>`).join('')}</div><div class="price"><b>${money(v.price)}</b><del>${money(v.mrp)}</del><em>Save ${money(off)}</em></div>${actions}</div></article>`}
+function cardMediaMarkup(p){
+ const media=(p.media?.length?p.media:DEFAULT_PRODUCT_MEDIA[p.id]||[{type:'image',path:p.image}]).filter(Boolean);
+ return `<div class="cardMediaScroller" aria-label="${escapeHtml(p.name)} product images">
+  ${media.map((m,i)=>m.type==='video'&&m.path
+    ? `<div class="cardMediaSlide cardVideo"><video controls playsinline preload="metadata" poster="${escapeHtml(m.poster||'')}"><source src="${escapeHtml(m.path)}" type="video/mp4"></video><span class="mediaLabel">Video</span></div>`
+    : `<div class="cardMediaSlide"><img src="${escapeHtml(m.path||m)}" alt="${escapeHtml(p.name)} image ${i+1}" loading="${i?'lazy':'eager'}" onerror="this.closest('.cardMediaSlide')?.remove()"></div>`
+  ).join('')}
+ </div>`;
+}
+function productCard(p){
+ const v=getVariant(p,variantKey(p.id)),off=v.mrp-v.price,q=cartQtyFor(p.id,v.id);
+ const actions=q?`<div class="pcActions"><div class="inlineQty"><button onclick="changeProductQty('${p.id}','${v.id}',-1)">−</button><b>${q}</b><button onclick="changeProductQty('${p.id}','${v.id}',1)">+</button></div><button onclick="openCart()">View cart</button></div>`:`<div class="pcActions"><button onclick="addToCart('${p.id}','${v.id}')">Add to cart</button><button onclick="buyNow('${p.id}','${v.id}')">Buy now</button></div>`;
+ return `<article class="productCard" data-product-id="${p.id}">
+   <div class="visualWrap">${cardMediaMarkup(p)}${p.best?'<span class="badge">BESTSELLER</span>':''}<button class="heart ${wishlist.includes(p.id)?'isWish':''}" onclick="event.stopPropagation();toggleWishlist('${p.id}')" aria-label="Favourite ${escapeHtml(p.name)}"><i class="${wishlist.includes(p.id)?'fa-solid':'fa-regular'} fa-heart"></i></button></div>
+   <div class="pcBody"><small>${catName(p.category)}</small><h3>${escapeHtml(p.name)}</h3><div class="stars">★★★★★ <span>${p.rating} · ${p.reviewCount} reviews</span></div><p>${escapeHtml(p.short)}</p>
+   <div class="sizes">${p.variants.filter(x=>x.active).map(x=>`<button class="${x.id===v.id?'active':''}" onclick="setVariant('${p.id}','${x.id}')">${escapeHtml(x.label)}</button>`).join('')}</div>
+   <div class="price"><b>${money(v.price)}</b><del>${money(v.mrp)}</del><em>Save ${money(off)}</em></div>${actions}</div>
+ </article>`;
+}
 function renderBest(){$('bestGrid').innerHTML=products.filter(p=>p.best).slice(0,4).map(productCard).join('')}
 function renderCategories(){$('categoryTabs').innerHTML=`<button class="active" onclick="setCat('all',this)">All</button>`+categories.map(c=>`<button onclick="setCat('${c.id}',this)">${escapeHtml(c.name)}</button>`).join('')}
 function setCat(c,b){cat=c;document.querySelectorAll('.categoryTabs button').forEach(x=>x.classList.remove('active'));b.classList.add('active');renderProducts()}
@@ -60,7 +130,7 @@ function cartTotals(){let sub=cart.reduce((s,x)=>{const d=cartItemDetails(x);ret
 function renderCart(){const count=cart.reduce((s,x)=>s+x.qty,0);$('cartCount').textContent=count;const t=cartTotals();$('cartSubtotal').textContent=money(t.sub);$('cartTotal').textContent=money(t.total);$('cartShipping').innerHTML=t.sub===0?'':t.ship===0?'<span class="free">FREE DELIVERY</span>':`Delivery ${money(t.ship)}`;$('cartHint').textContent=t.sub&&t.ship?`Add ${money(t.remaining)} more for free delivery.`:'';$('cartItems').innerHTML=cart.length?cart.map(x=>{const d=cartItemDetails(x);return `<div class="cartItem"><img src="${d.image}" alt=""><div><b>${escapeHtml(d.name)}</b><small>${escapeHtml(d.label)} · ${money(d.price)}</small><div class="qty"><button onclick="changeQty('${x.key}',-1)">−</button><span>${x.qty}</span><button onclick="changeQty('${x.key}',1)">+</button><button onclick="removeCart('${x.key}')">Remove</button></div></div></div>`}).join(''):`<div class="emptyCart"><i class="fa-solid fa-bag-shopping"></i><h3>Your bag is empty</h3><p>Add a Jayvi favourite to get started.</p></div>`}
 function removeCart(key){cart=cart.filter(x=>x.key!==key);saveCart();renderCart();refreshProductViews();showToast('Removed from cart')}
 function openCart(){$('cartOverlay').classList.add('open');renderCart()}function closeCart(){$('cartOverlay').classList.remove('open')}
-function openProduct(id){const p=getProduct(id),v=getVariant(p,variantKey(id));const paused=!!CONFIG.store.vacationMode;const addAction=paused?"showToast('Ordering is paused while Jayvi Foods is on vacation.')":"addToCart('"+p.id+"','"+v.id+"')";const buyAction=paused?"showToast('Ordering is paused while Jayvi Foods is on vacation.')":"buyNow('"+p.id+"','"+v.id+"')";$('productContent').innerHTML=`<div class="detailGrid"><div class="detailImage">${productGalleryMarkup(p)}</div><div class="detailCopy"><div class="eyebrow">${escapeHtml(catName(p.category))}</div><h2>${escapeHtml(p.name)}</h2><div class="stars">★★★★★ <span>${p.rating} · ${p.reviewCount} reviews</span></div><p>${escapeHtml(p.short)}</p><div class="detailVariants">${p.variants.filter(x=>x.active).map(x=>`<button class="${x.id===v.id?'active':''}" onclick="selectedVariants['${p.id}']='${x.id}';openProduct('${p.id}')">${escapeHtml(x.label)}<small>${money(x.price)}</small></button>`).join('')}</div><div class="detailPrice"><b>${money(v.price)}</b><del>${money(v.mrp)}</del><em>Save ${money(v.mrp-v.price)}</em></div><div class="detailUse"><b>Works well with</b><span>${(p.mealTags||[]).map(m=>escapeHtml((CONFIG.mealTags||[]).find(t=>t.id===m)?.name||CONFIG.mealLabels?.[m]||m)).join(' · ')}</span></div><div class="detailBtns"><button class="btn light" ${paused?'disabled':''} onclick="${addAction}">${paused?'Orders paused':'Add to cart'}</button><button class="btn gold" ${paused?'disabled':''} onclick="${buyAction}">${paused?'Unavailable':'Buy now →'}</button></div></div></div>`;$('productOverlay').classList.add('open')}
+function openProduct(id){if(window.matchMedia&&window.matchMedia('(max-width:760px)').matches){const card=document.querySelector(`[data-product-id="${id}"]`);if(card){card.scrollIntoView({behavior:'smooth',block:'start'});}return;}const p=getProduct(id),v=getVariant(p,variantKey(id));const paused=!!CONFIG.store.vacationMode;const addAction=paused?"showToast('Ordering is paused while Jayvi Foods is on vacation.')":"addToCart('"+p.id+"','"+v.id+"')";const buyAction=paused?"showToast('Ordering is paused while Jayvi Foods is on vacation.')":"buyNow('"+p.id+"','"+v.id+"')";$('productContent').innerHTML=`<div class="detailGrid"><div class="detailImage">${productGalleryMarkup(p)}</div><div class="detailCopy"><div class="eyebrow">${escapeHtml(catName(p.category))}</div><h2>${escapeHtml(p.name)}</h2><div class="stars">★★★★★ <span>${p.rating} · ${p.reviewCount} reviews</span></div><p>${escapeHtml(p.short)}</p><div class="detailVariants">${p.variants.filter(x=>x.active).map(x=>`<button class="${x.id===v.id?'active':''}" onclick="selectedVariants['${p.id}']='${x.id}';openProduct('${p.id}')">${escapeHtml(x.label)}<small>${money(x.price)}</small></button>`).join('')}</div><div class="detailPrice"><b>${money(v.price)}</b><del>${money(v.mrp)}</del><em>Save ${money(v.mrp-v.price)}</em></div><div class="detailUse"><b>Works well with</b><span>${(p.mealTags||[]).map(m=>escapeHtml((CONFIG.mealTags||[]).find(t=>t.id===m)?.name||CONFIG.mealLabels?.[m]||m)).join(' · ')}</span></div><div class="detailBtns"><button class="btn light" ${paused?'disabled':''} onclick="${addAction}">${paused?'Orders paused':'Add to cart'}</button><button class="btn gold" ${paused?'disabled':''} onclick="${buyAction}">${paused?'Unavailable':'Buy now →'}</button></div></div></div>`;$('productOverlay').classList.add('open')}
 function closeProduct(){$('productOverlay').classList.remove('open')}
 function openSearch(){$('searchOverlay').classList.add('open');setTimeout(()=>$('searchBox').focus(),50)}function closeSearch(){$('searchOverlay').classList.remove('open')}function renderSearch(){const q=$('searchBox').value.toLowerCase();$('searchResults').innerHTML=products.filter(p=>(p.name+' '+catName(p.category)).toLowerCase().includes(q)).map(p=>`<button onclick="closeSearch();openProduct('${p.id}')"><b>${escapeHtml(p.name)}</b><span>${money(getVariant(p,variantKey(p.id)).price)}</span></button>`).join('')}
 function getCustomers(){try{return JSON.parse(localStorage.getItem('jayviCustomersV14')||'[]')}catch{return []}}function saveCustomers(x){localStorage.setItem('jayviCustomersV14',JSON.stringify(x))}function getSession(){try{return JSON.parse(localStorage.getItem('jayviSessionV14')||'null')}catch{return null}}function setSession(x){if(x)localStorage.setItem('jayviSessionV14',JSON.stringify(x));else localStorage.removeItem('jayviSessionV14')}
@@ -807,12 +877,12 @@ init();
 /* Jayvi Foods V22.0 — final mobile UX, gallery, announcement and checkout patch */
 (function(){
 'use strict';
-const VERSION='22.0';
+const VERSION='23.0';
 const demo={
- peanut:['images/products/peanut/hero.webp','images/v22-demo/peanut-front.svg','images/v22-demo/peanut-back.svg','images/v22-demo/peanut-serving.svg'],
- flaxseed:['images/products/flaxseed/hero.webp','images/v22-demo/flaxseed-front.svg','images/v22-demo/flaxseed-back.svg','images/v22-demo/flaxseed-serving.svg'],
- pudi:['images/products/pudi/hero.webp','images/v22-demo/pudi-front.svg','images/v22-demo/pudi-back.svg','images/v22-demo/pudi-serving.svg'],
- puffora:['images/products/puffora/hero.webp','images/v22-demo/puffora-front.svg','images/v22-demo/puffora-back.svg','images/v22-demo/puffora-serving.svg']
+ peanut:['images/products/peanut/hero.webp','images/gallery/peanut-front.svg','images/gallery/peanut-back.svg','images/gallery/peanut-serving.svg'],
+ flaxseed:['images/products/flaxseed/hero.webp','images/gallery/flaxseed-front.svg','images/gallery/flaxseed-back.svg','images/gallery/flaxseed-serving.svg'],
+ pudi:['images/products/pudi/hero.webp','images/gallery/pudi-front.svg','images/gallery/pudi-back.svg','images/gallery/pudi-serving.svg'],
+ puffora:['images/products/puffora/hero.webp','images/gallery/puffora-front.svg','images/gallery/puffora-back.svg','images/gallery/puffora-serving.svg']
 };
 function $v(id){return document.getElementById(id)}
 function mobile(){return matchMedia('(max-width:760px)').matches}
@@ -856,7 +926,7 @@ window.openCheckout=function(){
  if(CONFIG.store.vacationMode){showToast(CONFIG.store.vacationMessage||'Ordering is temporarily paused.');return}
  if(!cart.length){showToast('Your cart is empty');return}
  closeCart();const t=cartTotals(),s=getSession(),u=s?getCustomers().find(c=>c.id===s.id):null;const upi=CONFIG.store.upiEnabled!==false,cod=CONFIG.store.codEnabled===true;
- $v('checkoutContent').innerHTML=`<div class="checkoutPage"><div class="eyebrow">CHECKOUT</div><h2>Delivery details.</h2><p class="muted">Enter your delivery details. No account is required.</p><div class="deliveryEstimate"><b>Estimated delivery: ${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days</b><span>Delivery time varies by location and PIN code.</span></div><div class="guestChoice"><b>${u?'Signed-in customer':'Guest checkout'}</b>${u?`<button type="button" onclick="setSession(null);openCheckout()">Use guest</button>`:'<button type="button" onclick="closeCheckout();openAccount()">Sign in / register</button>'}</div><form id="checkoutForm" onsubmit="placeOrder(event)"><label>Full name *<input id="coName" value="${escapeHtml(u?.name||'')}" required></label><label>Mobile *<input id="coPhone" value="${escapeHtml(u?.phone||'')}" required pattern="[0-9]{10}" maxlength="10" inputmode="numeric"></label><label>Search delivery location<div id="placeBox"></div></label><label>Address *<textarea id="coAddress" required rows="3" placeholder="House / flat, street, landmark"></textarea></label><div class="two"><label>City *<input id="coCity" required></label><label>State *<input id="coState" required></label></div><div class="pinRow"><label>PIN code *<input id="coPin" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6"></label><button type="button" class="btn outline" onclick="verifyPincode()">Verify PIN</button></div><div id="pinStatus" class="pinStatus"></div><label>Country<select id="coCountry" disabled><option value="IN">India</option></select></label><div class="paymentChooser checkoutPayment"><h3>Payment method</h3>${upi?`<label class="paymentOption active"><input type="radio" name="paymentMethod" value="upi" checked onchange="togglePaymentNote()"><span><b>Pay by UPI QR</b><small>Scan and pay the exact order amount</small></span></label>`:''}${cod?`<label class="paymentOption"><input type="radio" name="paymentMethod" value="cod" onchange="togglePaymentNote()"><span><b>Cash on Delivery</b><small>Pay when delivered</small></span></label>`:''}<div id="paymentNote" class="paymentNote">${escapeHtml(CONFIG.store.paymentNote||'')}</div></div><button id="placeOrderBtn" class="btn gold full" type="submit">Place order & continue →</button></form><aside class="summary"><h3>Your order</h3>${cart.map(x=>{const d=cartItemDetails(x);return `<div class="line"><span>${escapeHtml(d.name)} · ${escapeHtml(d.label)} × ${x.qty}</span><b>${money(d.price*x.qty)}</b></div>`}).join('')}<div class="line"><span>Subtotal</span><b>${money(t.sub)}</b></div><div class="line"><span>Delivery</span><b>${t.ship?money(t.ship):'FREE'}</b></div><div class="line total"><span>Total</span><b>${money(t.total)}</b></div></aside></div>`;
+ $v('checkoutContent').innerHTML=`<div class="checkoutPage"><div class="eyebrow">CHECKOUT</div><h2>Delivery details.</h2><p class="muted">Enter your delivery details. No account is required.</p><div class="deliveryEstimate"><b>Estimated delivery: ${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days</b><span>Delivery time varies by location and PIN code.</span></div><div class="guestChoice"><b>${u?'Signed-in customer':'Guest checkout'}</b>${u?`<button type="button" onclick="setSession(null);openCheckout()">Use guest</button>`:'<button type="button" onclick="closeCheckout();openAccount()">Sign in / register</button>'}</div><form id="checkoutForm" onsubmit="placeOrder(event)"><label>Full name *<input id="coName" value="${escapeHtml(u?.name||'')}" required></label><label>Mobile *<input id="coPhone" value="${escapeHtml(u?.phone||'')}" required pattern="[0-9]{10}" maxlength="10" inputmode="numeric"></label><label>Search delivery location<div id="placeBox"></div></label><label>Address *<textarea id="coAddress" required rows="3" placeholder="House / flat, street, landmark"></textarea></label><div class="two"><label>City *<input id="coCity" required></label><label>State *<input id="coState" required></label></div><div class="pinRow"><label>PIN code *<input id="coPin" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6"></label><button type="button" class="btn outline" onclick="verifyPincode()">Verify PIN</button></div><div id="pinStatus" class="pinStatus"></div><label>Country<select id="coCountry" disabled><option value="IN">India</option></select></label><div class="paymentChooser checkoutPayment"><h3>Payment method</h3>${upi?`<label class="paymentOption active"><input type="radio" name="paymentMethod" value="upi" checked onchange="togglePaymentNote()"><span><b>Pay by UPI QR</b><small>Scan and pay the exact order amount</small></span></label>`:''}${cod?`<label class="paymentOption"><input type="radio" name="paymentMethod" value="cod" onchange="togglePaymentNote()"><span><b>Cash on Delivery</b><small>Pay when delivered</small></span></label>`:''}<div id="paymentNote" class="paymentNote">${escapeHtml(CONFIG.store.paymentNote||'')}</div></div><button id="placeOrderBtn" class="btn gold full" type="button" onclick="placeOrder(event)">Place order & continue →</button></form><aside class="summary"><h3>Your order</h3>${cart.map(x=>{const d=cartItemDetails(x);return `<div class="line"><span>${escapeHtml(d.name)} · ${escapeHtml(d.label)} × ${x.qty}</span><b>${money(d.price*x.qty)}</b></div>`}).join('')}<div class="line"><span>Subtotal</span><b>${money(t.sub)}</b></div><div class="line"><span>Delivery</span><b>${t.ship?money(t.ship):'FREE'}</b></div><div class="line total"><span>Total</span><b>${money(t.total)}</b></div></aside></div>`;
  $v('checkoutOverlay').classList.add('open');lock();initPlaces();
 };
 window.placeOrder=function(e){
@@ -893,4 +963,73 @@ function fixAbout(){document.querySelector('.smallAbout')?.setAttribute('id','ab
 
 function init(){version();fixProductImages();syncOverlay();heroTouch();fixAbout();setTimeout(()=>{version();fixProductImages();try{renderBest();renderProducts();renderMeal();renderCombos();heroShow()}catch(_){}},80);setInterval(version,3000)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
+
+/* Jayvi Foods V23.0 — final mobile interaction pass
+   - Fixed-size announcement stage + reliable horizontal swipe
+   - No product popup on mobile; product cards contain a swipeable media gallery
+   - Checkout uses a non-submit action button to avoid intermittent form click failures
+   - Mobile WhatsApp uses direct navigation
+   - Simplified checkout/delivery copy
+*/
+(function(){
+ 'use strict';
+ const VERSION='23.0';
+ const mobile=()=>window.matchMedia('(max-width:760px)').matches;
+ function setVersion(){const e=document.getElementById('siteVersion');if(e)e.textContent='Website v'+VERSION;document.documentElement.dataset.jayviVersion=VERSION}
+ function overlayIsOpen(){return !!document.querySelector('.overlay.open')}
+ function syncPageLock(){
+   if(mobile()&&overlayIsOpen()){document.documentElement.style.overflow='hidden';document.body.style.overflow='hidden'}
+   else{document.documentElement.style.overflow='';document.body.style.overflow=''}
+   document.body.classList.toggle('v23-overlay-open',mobile()&&overlayIsOpen());
+ }
+ function hideWhatsAppWhenSheetOpen(){
+   const w=document.querySelector('.whatsappFloat');
+   if(w)w.style.setProperty('display',overlayIsOpen()?'none':'grid','important');
+ }
+ function setupOverlayWatch(){
+   document.querySelectorAll('.overlay').forEach(o=>new MutationObserver(()=>{syncPageLock();hideWhatsAppWhenSheetOpen()}).observe(o,{attributes:true,attributeFilter:['class']}));
+   syncPageLock();hideWhatsAppWhenSheetOpen();
+ }
+ function setupHeroSwipe(){
+   const hero=document.querySelector('.hero'); if(!hero||hero.dataset.v23Swipe)return;
+   hero.dataset.v23Swipe='1'; hero.style.touchAction='pan-y';
+   let sx=0,sy=0,active=false;
+   const count=()=>document.querySelectorAll('#heroDots button').length;
+   const go=dir=>{const n=count();if(n<2)return;const dots=[...document.querySelectorAll('#heroDots button')];let i=dots.findIndex(x=>x.classList.contains('active'));if(i<0)i=0;const next=(i+dir+n)%n;heroIndex=next;heroShow();if(typeof restartHero==='function')restartHero()};
+   hero.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const t=e.touches[0];sx=t.clientX;sy=t.clientY;active=true},{passive:true});
+   hero.addEventListener('touchend',e=>{if(!active)return;active=false;const t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.15)go(dx<0?1:-1)},{passive:true});
+ }
+ function setupWhatsApp(){
+   const w=document.querySelector('.whatsappFloat');if(!w||w.dataset.v23)return;w.dataset.v23='1';
+   w.style.zIndex='70000';
+   w.addEventListener('click',function(e){
+     if(!mobile())return;
+     e.preventDefault();e.stopPropagation();
+     window.location.href='https://wa.me/918861981003?text='+encodeURIComponent("Hi Jayvi Foods, I need help with my order.");
+   },{capture:true});
+ }
+ function patchCheckoutButton(){
+   const oldOpen=window.openCheckout;
+   if(typeof oldOpen==='function'&&!oldOpen.__v23){
+     const wrapped=function(){
+       if(!cart||!cart.length){showToast('Your cart is empty');return}
+       oldOpen.apply(this,arguments);
+       requestAnimationFrame(()=>{const o=document.getElementById('checkoutOverlay'),m=o?.querySelector('.checkoutModal');if(m)m.scrollTop=0;syncPageLock();hideWhatsAppWhenSheetOpen()});
+     };
+     wrapped.__v23=true;window.openCheckout=wrapped;
+   }
+ }
+ function simplifyCheckoutCopy(){
+   const o=document.getElementById('checkoutOverlay');if(!o)return;
+   const root=o.querySelector('#checkoutContent');if(!root)return;
+   const muted=root.querySelector('.deliveryEstimate span');if(muted)muted.textContent='Delivery across India · usually 4–8 days.';
+   root.querySelectorAll('.tiny').forEach(x=>{if(/Google Maps ready/i.test(x.textContent))x.textContent=''});
+ }
+ function run(){
+   setVersion();setupOverlayWatch();setupHeroSwipe();setupWhatsApp();patchCheckoutButton();
+   setTimeout(()=>{setVersion();setupHeroSwipe();setupWhatsApp();simplifyCheckoutCopy()},200);
+   setInterval(()=>{setVersion();setupWhatsApp();hideWhatsAppWhenSheetOpen()},2000);
+ }
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run,{once:true});else run();
 })();

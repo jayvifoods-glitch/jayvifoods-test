@@ -968,3 +968,139 @@ body.checkoutOpen [class*="cartBar"]{display:none!important;}
   .v22-favItem img{width:72px!important;height:72px!important;object-fit:cover!important;border-radius:8px!important}
   .v22-favItem b,.v22-favItem small{display:block!important}.v22-favItem b{font-size:16px!important}.v22-favItem small{font-size:13px!important;color:#6f655d!important;margin-top:4px!important}.v22-favItem i{font-style:normal!important;font-size:20px!important;color:#c99a2e!important}
 }
+
+/* V23.0 final mobile polish */
+@media(max-width:760px){
+  /* Announcement: one stable stage regardless of source-image dimensions. */
+  .hero{overflow:hidden!important}
+  .heroGrid{
+    display:grid!important;
+    grid-template-columns:1fr!important;
+    grid-template-rows:auto 330px!important;
+    height:650px!important;
+    min-height:650px!important;
+    align-items:start!important;
+    touch-action:pan-y!important;
+    overflow:hidden!important;
+  }
+  .heroCopy{min-height:300px!important;padding:30px 0 8px!important;display:flex!important;flex-direction:column!important;justify-content:flex-start!important}
+  .heroCopy h1{margin:10px 0 12px!important;font-size:45px!important}
+  .heroCopy p{margin:8px 0 16px!important}
+  .heroBtns{gap:16px!important}
+  .heroImage{
+    height:330px!important;
+    min-height:330px!important;
+    padding:0 0 12px!important;
+    display:grid!important;
+    place-items:center!important;
+    position:relative!important;
+  }
+  .heroImage img{
+    width:100%!important;
+    height:100%!important;
+    max-height:330px!important;
+    object-fit:contain!important;
+    object-position:center!important;
+  }
+  .heroPrice{right:8px!important;bottom:18px!important}
+  .dots{justify-content:center!important;margin:5px 0 0!important;position:relative!important;z-index:4}
+
+  /* Product cards: images are the gallery. No product-detail popup on mobile. */
+  .visualWrap{
+    position:relative!important;
+    height:auto!important;
+    aspect-ratio:auto!important;
+    overflow:hidden!important;
+    background:#eadcc7!important;
+  }
+  .cardMediaScroller{
+    display:flex!important;
+    width:100%!important;
+    overflow-x:auto!important;
+    overflow-y:hidden!important;
+    scroll-snap-type:x mandatory!important;
+    overscroll-behavior-x:contain!important;
+    -webkit-overflow-scrolling:touch!important;
+    scrollbar-width:none!important;
+    touch-action:pan-x!important;
+  }
+  .cardMediaScroller::-webkit-scrollbar{display:none!important}
+  .cardMediaSlide{
+    flex:0 0 100%!important;
+    width:100%!important;
+    aspect-ratio:1.18/1!important;
+    scroll-snap-align:start!important;
+    display:grid!important;
+    place-items:center!important;
+    background:#eadcc7!important;
+    overflow:hidden!important;
+  }
+  .cardMediaSlide img{
+    width:100%!important;
+    height:100%!important;
+    object-fit:contain!important;
+    display:block!important;
+  }
+  .cardVideo video{width:100%!important;height:100%!important;object-fit:contain!important;background:#17110d!important}
+  .mediaLabel{position:absolute;bottom:12px;left:12px;background:#17110d;color:#fff;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:800}
+  .productCard .pcBody h3{font-size:32px!important}
+
+  /* Find your favourite controls: search + sort on one clean row. */
+  .shopBar{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) 132px!important;
+    gap:8px!important;
+    align-items:center!important;
+  }
+  .shopBar .search,.shopBar select{width:100%!important;min-width:0!important;height:52px!important}
+  .shopBar select{padding:0 10px!important;font-size:13px!important}
+  .categoryTabs{display:flex!important;overflow-x:auto!important;white-space:nowrap!important;scrollbar-width:none!important;padding-bottom:4px!important}
+  .categoryTabs::-webkit-scrollbar{display:none!important}
+
+  /* Checkout must own the viewport and always scroll. */
+  #checkoutOverlay .checkoutModal{
+    display:block!important;
+    height:100dvh!important;
+    min-height:100dvh!important;
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    -webkit-overflow-scrolling:touch!important;
+    overscroll-behavior:contain!important;
+  }
+  #checkoutOverlay #checkoutContent{
+    min-height:100%!important;
+    height:auto!important;
+    overflow:visible!important;
+    padding-bottom:40px!important;
+  }
+  #checkoutOverlay .checkoutGrid{height:auto!important;min-height:100%!important;overflow:visible!important}
+  #checkoutOverlay .checkoutGrid form{padding-bottom:30px!important}
+  #checkoutOverlay #placeOrderBtn{position:relative!important;z-index:10!important;pointer-events:auto!important}
+
+  /* No floating WhatsApp over forms/cart/checkout. */
+  .whatsappFloat{z-index:70000!important;pointer-events:auto!important}
+  body.v23-overlay-open .whatsappFloat{display:none!important}
+
+  /* Product overlay is no longer used from product cards on phones. */
+  #productOverlay{display:none!important}
+
+  /* Help/support: normal page scrolling, simple readable content. */
+  .helpPage{overflow-x:hidden!important;overflow-y:auto!important}
+  .helpPage main{min-height:auto!important}
+  .helpPage .helpGrid{display:flex!important;flex-direction:column!important;gap:0!important}
+  .helpPage .helpGrid article{padding:28px 0!important}
+  .helpPage .helpGrid h2{font-size:30px!important;margin:0 0 14px!important}
+  .helpPage .helpGrid p{font-size:17px!important;line-height:1.55!important;margin:0 0 20px!important}
+  .helpPage .helpHomeBtn{display:inline-block!important;margin:14px 0 0!important;font-size:15px!important}
+
+  /* Footer: tighter and readable. */
+  footer{padding-top:12px!important;padding-bottom:8px!important}
+  .footerGrid>div{padding:12px 0!important}
+  .footerBrand{margin-bottom:0!important}
+  .copyright{margin-top:4px!important}
+}
+@media(min-width:761px){
+  .cardMediaScroller{display:flex;overflow:hidden;width:100%;height:100%}
+  .cardMediaSlide{flex:0 0 100%;display:grid;place-items:center;background:#eadcc7}
+  .cardMediaSlide img{width:100%;height:100%;object-fit:cover}
+}

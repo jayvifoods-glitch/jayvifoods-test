@@ -1,4 +1,1 @@
-Jayvi Foods Website
-Version: v22.0
-Build: consolidated-mobile-final
-Date: 2026-08-09
+23.0
