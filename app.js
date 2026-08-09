@@ -877,7 +877,7 @@ init();
 /* Jayvi Foods V24.0 — consolidated mobile UX, gallery, announcement and checkout patch */
 (function(){
 'use strict';
-const VERSION='24.0';
+const VERSION='24.1';
 const demo={
  peanut:['images/products/peanut/hero.webp','images/gallery/peanut-front.svg','images/gallery/peanut-back.svg','images/gallery/peanut-serving.svg'],
  flaxseed:['images/products/flaxseed/hero.webp','images/gallery/flaxseed-front.svg','images/gallery/flaxseed-back.svg','images/gallery/flaxseed-serving.svg'],
@@ -904,6 +904,11 @@ window.renderMeal=function(){
 
 /* Product details: full-screen + swipeable image carousel. */
 window.openProduct=function(id){
+ if(mobile()){
+   const card=document.querySelector(`[data-product-id="${id}"]`);
+   if(card){card.scrollIntoView({behavior:'smooth',block:'center'});}
+   return;
+ }
  const p=getProduct(id);if(!p)return;const v=getVariant(p,variantKey(id));const paused=!!CONFIG.store.vacationMode;const imgs=demo[p.id]||[p.image];
  const slides=imgs.map((src,i)=>`<div class="v22-slide"><img src="${src}" alt="${escapeHtml(p.name)} ${i+1}" onerror="this.src='${p.image}'"></div>`).join('');
  const dots=imgs.map((_,i)=>`<i class="${i===0?'active':''}"></i>`).join('');
@@ -974,7 +979,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 */
 (function(){
  'use strict';
- const VERSION='24.0';
+ const VERSION='24.1';
  const mobile=()=>window.matchMedia('(max-width:760px)').matches;
  function setVersion(){const e=document.getElementById('siteVersion');if(e)e.textContent='Website v'+VERSION;document.documentElement.dataset.jayviVersion=VERSION}
  function overlayIsOpen(){return !!document.querySelector('.overlay.open')}
@@ -1032,4 +1037,119 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
    setInterval(()=>{setVersion();setupWhatsApp();hideWhatsAppWhenSheetOpen()},2000);
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run,{once:true});else run();
+})();
+
+
+/* Jayvi Foods V24.1 — mobile loading / navigation / gallery stabilization */
+(function(){
+ 'use strict';
+ const isMobile=()=>window.matchMedia('(max-width:760px)').matches;
+
+ function unlockPage(){
+   if(!isMobile()) return;
+   /* A hidden product overlay must never lock the storefront. */
+   const realOpen=[...document.querySelectorAll('.overlay.open')].some(o=>{
+     if(o.id==='productOverlay') return false;
+     return getComputedStyle(o).display!=='none';
+   });
+   document.documentElement.style.overflowY=realOpen?'hidden':'auto';
+   document.body.style.overflowY=realOpen?'hidden':'auto';
+   document.documentElement.style.overflowX='hidden';
+   document.body.style.overflowX='hidden';
+   document.body.classList.toggle('v24-overlay-open',realOpen);
+ }
+
+ function fixHeader(){
+   const header=document.querySelector('header');
+   const nav=document.querySelector('header .nav');
+   const logo=document.querySelector('header .logo');
+   const menu=document.querySelector('header .mobileOnly');
+   if(!header||!nav||!logo||!menu) return;
+   header.style.zIndex='9000';
+   nav.style.position='relative';
+   nav.style.minWidth='0';
+   menu.style.position='relative';
+   menu.style.zIndex='20';
+   logo.style.position='absolute';
+   logo.style.left='50%';
+   logo.style.top='50%';
+   logo.style.transform='translate(-50%,-50%)';
+   logo.style.width='72px';
+   logo.style.height='56px';
+   logo.style.margin='0';
+   logo.style.zIndex='10';
+   const img=logo.querySelector('img');
+   if(img){img.style.width='68px';img.style.height='52px';img.style.objectFit='contain';}
+   const actions=nav.querySelector('.navActions');
+   if(actions){actions.style.position='relative';actions.style.zIndex='20';actions.style.display='flex';actions.style.gap='0';}
+   nav.querySelectorAll('.navActions .icon').forEach(b=>{
+     b.style.width='38px';b.style.height='38px';b.style.flex='0 0 38px';
+   });
+ }
+
+ function fixProductGalleries(){
+   document.querySelectorAll('.productCard .visualWrap').forEach(w=>{
+     w.style.height='285px';
+     w.style.aspectRatio='auto';
+     w.style.overflow='hidden';
+   });
+   document.querySelectorAll('.productCard .cardMediaScroller').forEach(s=>{
+     s.style.height='285px';
+     s.style.minHeight='285px';
+     s.style.width='100%';
+     s.style.overflowX='auto';
+     s.style.overflowY='hidden';
+     s.style.touchAction='pan-x';
+     s.style.scrollSnapType='x mandatory';
+   });
+   document.querySelectorAll('.productCard .cardMediaSlide').forEach(sl=>{
+     sl.style.height='285px';
+     sl.style.minHeight='285px';
+     sl.style.flex='0 0 100%';
+     sl.style.width='100%';
+     sl.style.scrollSnapAlign='start';
+   });
+ }
+
+ function preventHiddenProductLock(){
+   const p=document.getElementById('productOverlay');
+   if(p){
+     p.classList.remove('open');
+     p.style.display='none';
+     p.style.pointerEvents='none';
+     p.style.visibility='hidden';
+   }
+ }
+
+ function init(){
+   fixHeader();
+   preventHiddenProductLock();
+   fixProductGalleries();
+   unlockPage();
+
+   document.querySelectorAll('.overlay').forEach(o=>{
+     new MutationObserver(()=>{
+       if(o.id==='productOverlay' && isMobile()) preventHiddenProductLock();
+       unlockPage();
+     }).observe(o,{attributes:true,attributeFilter:['class','style']});
+   });
+
+   new MutationObserver(()=>{
+     fixHeader();
+     preventHiddenProductLock();
+     fixProductGalleries();
+     unlockPage();
+   }).observe(document.body,{childList:true,subtree:true});
+
+   window.addEventListener('resize',()=>{fixHeader();fixProductGalleries();unlockPage()},{passive:true});
+   window.addEventListener('pageshow',unlockPage,{passive:true});
+   setInterval(()=>{
+     fixHeader();
+     preventHiddenProductLock();
+     fixProductGalleries();
+     unlockPage();
+   },1000);
+ }
+ if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true});
+ else init();
 })();
