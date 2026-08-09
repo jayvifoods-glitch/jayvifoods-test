@@ -1,0 +1,36 @@
+JAYVI FOODS — V24
+
+Replace ONLY the current repository index.html with this file.
+
+KEEP the existing:
+app.js
+style.css
+admin.html
+admin.js
+admin.css
+admin-login.html
+admin-login.css
+config.json
+help.html
+images/
+
+V24 is deliberately a UI/mobile stability pass over the current V23 implementation.
+
+Fixes covered:
+- centered mobile logo
+- intermittent mobile scroll/stuck-page hardening
+- fixed announcement image stage + left/right swipe
+- product-card image/video horizontal swipe
+- fixed media frame sizing
+- cart checkout button sizing
+- larger UTR field
+- PIN + Verify alignment
+- modern order-success presentation
+- My Jayvi alignment
+- Find your favourite search/sort fit
+- mobile WhatsApp direct action
+- existing Made for every meal design retained
+
+NO database/API/Google Maps/payment architecture changes are included yet.
+
+After V24 is tested and approved, consolidate the V15–V23 layers in app.js/style.css into a clean production codebase.

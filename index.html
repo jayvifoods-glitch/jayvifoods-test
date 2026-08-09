@@ -1,7 +1,74 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jayvi Foods — Shop</title><meta name="description" content="Shop Jayvi Foods online."><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,600&display=swap" rel="stylesheet"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"><link rel="stylesheet" href="style.css"></head><body>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jayvi Foods — Shop</title>
+<meta name="description" content="Shop Jayvi Foods online.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<link rel="stylesheet" href="style.css">
+
+<style>
+/* JAYVI FOODS V24 — final UI/mobile stability layer */
+html,body{overflow-x:hidden!important;-webkit-overflow-scrolling:touch}
+@media(max-width:760px){
+#productOverlay{display:none!important;visibility:hidden!important;pointer-events:none!important}
+.overlay:not(.open){pointer-events:none!important}.overlay.open{pointer-events:auto!important}
+.overlay.open .modal,.overlay.open .drawer,.overlay.open .searchPanel{overflow-y:auto!important;overflow-x:hidden!important;-webkit-overflow-scrolling:touch!important;overscroll-behavior:contain!important}
+
+header .nav{position:relative!important;display:grid!important;grid-template-columns:48px 1fr 120px!important;align-items:center!important}
+header .logo{position:absolute!important;left:50%!important;top:50%!important;transform:translate(-50%,-50%)!important;width:86px!important;height:62px!important;margin:0!important;display:flex!important;align-items:center!important;justify-content:center!important;z-index:2!important}
+header .logo img{width:76px!important;height:58px!important;object-fit:contain!important;object-position:center!important}
+
+.hero{overflow:hidden!important}.heroGrid{height:650px!important;min-height:650px!important;grid-template-rows:300px 330px!important;overflow:hidden!important;touch-action:pan-y!important}
+.heroCopy{min-height:300px!important;height:300px!important;overflow:hidden!important}
+.heroImage{height:330px!important;min-height:330px!important;max-height:330px!important;overflow:hidden!important;display:grid!important;place-items:center!important}
+.heroImage img{width:100%!important;height:100%!important;max-height:330px!important;object-fit:contain!important;object-position:center!important}
+
+.visualWrap{overflow:hidden!important;position:relative!important;background:#eadcc7!important}
+.cardMediaScroller{display:flex!important;width:100%!important;height:100%!important;overflow-x:auto!important;overflow-y:hidden!important;scroll-snap-type:x mandatory!important;scroll-behavior:smooth!important;overscroll-behavior-x:contain!important;-webkit-overflow-scrolling:touch!important;scrollbar-width:none!important;touch-action:pan-x pan-y!important;pointer-events:auto!important}
+.cardMediaScroller::-webkit-scrollbar{display:none!important}
+.cardMediaSlide{flex:0 0 100%!important;width:100%!important;height:100%!important;min-width:100%!important;scroll-snap-align:start!important;display:grid!important;place-items:center!important;overflow:hidden!important;background:#eadcc7!important}
+.cardMediaSlide img,.cardMediaSlide video{width:100%!important;height:100%!important;object-fit:contain!important;display:block!important}
+.visualWrap .heart,.visualWrap .badge{z-index:4!important}
+
+.shopBar{display:grid!important;grid-template-columns:minmax(0,1fr) 128px!important;gap:8px!important;align-items:center!important}
+.shopBar .search,.shopBar select{width:100%!important;min-width:0!important;height:50px!important;box-sizing:border-box!important}
+
+.trustGrid i{font-size:21px!important}.trustGrid>div{min-height:90px!important}
+
+#cartOverlay .cartFoot{flex:0 0 auto!important}
+#cartOverlay .cartFoot .btn.full{width:100%!important;min-height:52px!important;box-sizing:border-box!important}
+
+#checkoutOverlay .pinRow{display:grid!important;grid-template-columns:minmax(0,1fr) 120px!important;align-items:end!important;gap:8px!important}
+#checkoutOverlay .pinRow label{min-width:0!important}
+#checkoutOverlay .pinRow .btn{width:120px!important;min-width:120px!important;min-height:52px!important;box-sizing:border-box!important}
+#checkoutOverlay #utrInput{min-height:56px!important;font-size:17px!important;padding:14px 15px!important}
+.v22-payment label{font-size:15px!important}
+
+.v22-success{text-align:center!important}
+.v22-success .successIcon{width:78px!important;height:78px!important;margin:8px auto 18px!important;display:grid!important;place-items:center!important;border-radius:50%!important;background:#6fa86f!important;color:#fff!important;font-size:38px!important;font-weight:800!important;box-shadow:0 12px 30px rgba(55,90,45,.18)!important}
+
+#accountOverlay .modal{text-align:left!important}
+#accountOverlay .accountTabs{width:100%!important}
+#accountOverlay .orders .order{width:100%!important;box-sizing:border-box!important;display:grid!important;grid-template-columns:1fr auto!important;gap:5px 12px!important;text-align:left!important}
+footer{overflow:visible!important}.footerGrid{align-items:start!important}
+}
+</style>
+</head>
+<body>
 <div class="topbar"><div class="wrap"><span id="topShipping">FREE SHIPPING ABOVE ₹599</span><span>FRESHLY PACKED · DELIVERED ACROSS INDIA</span></div></div>
 <div id="vacationBanner" class="vacationBanner" style="display:none"></div>
-<header><div class="wrap nav"><button class="mobileOnly icon" onclick="toggleMenu()"><i class="fa-solid fa-bars"></i></button><a class="logo" href="#home" aria-label="Jayvi Foods"><img src="images/brand/jayvi-foods-logo.webp" alt="Jayvi Foods"></a><nav><a href="#shop">Shop</a><a href="#bestsellers">Bestsellers</a><a href="#combos">Combos</a><a href="#reviews">Reviews</a></nav><div class="navActions"><button class="icon" onclick="openSearch()"><i class="fa-solid fa-magnifying-glass"></i></button><button class="icon" onclick="openAccount()"><i class="fa-regular fa-user"></i></button><button class="icon" onclick="openCart()"><i class="fa-solid fa-bag-shopping"></i><b id="cartCount">0</b></button></div></div><div id="mobileMenu"><a href="#shop" onclick="toggleMenu()">Shop</a><a href="#bestsellers" onclick="toggleMenu()">Bestsellers</a><a href="#combos" onclick="toggleMenu()">Combos</a><a href="#reviews" onclick="toggleMenu()">Reviews</a></div></header>
+<header><div class="wrap nav">
+<button class="mobileOnly icon" onclick="toggleMenu()"><i class="fa-solid fa-bars"></i></button>
+<a class="logo" href="#home" aria-label="Jayvi Foods"><img src="images/brand/jayvi-foods-logo.webp" alt="Jayvi Foods"></a>
+<nav><a href="#shop">Shop</a><a href="#bestsellers">Bestsellers</a><a href="#combos">Combos</a><a href="#reviews">Reviews</a></nav>
+<div class="navActions"><button class="icon" onclick="openSearch()"><i class="fa-solid fa-magnifying-glass"></i></button><button class="icon" onclick="openAccount()"><i class="fa-regular fa-user"></i></button><button class="icon" onclick="openCart()"><i class="fa-solid fa-bag-shopping"></i><b id="cartCount">0</b></button></div>
+</div><div id="mobileMenu"><a href="#shop" onclick="toggleMenu()">Shop</a><a href="#bestsellers" onclick="toggleMenu()">Bestsellers</a><a href="#combos" onclick="toggleMenu()">Combos</a><a href="#reviews" onclick="toggleMenu()">Reviews</a></div></header>
+
 <main id="home">
 <section class="hero"><div class="wrap heroGrid"><div class="heroCopy"><div class="eyebrow" id="heroLabel">BESTSELLER</div><h1 id="heroTitle">Peanut Chutney<br><em>for every meal.</em></h1><p id="heroDesc">Rich, nutty and comforting — the everyday favourite.</p><div class="heroBtns"><button id="heroShop" class="btn gold">Shop now <i class="fa-solid fa-arrow-right"></i></button><a href="#shop">Browse all</a></div><div id="heroDots" class="dots"></div></div><div class="heroImage"><img id="heroImg" src="images/hero/jayvi-products.webp" alt="Jayvi Foods products"><div class="heroPrice"><b id="heroPrice">₹155</b><span>starting from</span></div></div></div></section>
 <section class="trust"><div class="wrap trustGrid"><div><i class="fa-solid fa-truck-fast"></i><b>Free delivery</b><small>Above ₹599</small></div><div><i class="fa-solid fa-box-open"></i><b>Freshly packed</b><small>Made for everyday meals</small></div><div><i class="fa-solid fa-leaf"></i><b>Traditional flavours</b><small>From Jayvi's kitchen</small></div><div><i class="fa-brands fa-whatsapp"></i><b>Need help?</b><small>Chat with Jayvi's team</small></div></div></section>
@@ -10,15 +77,76 @@
 <section class="comboSection" id="combos"><div class="wrap"><div class="sectionHead darkHead"><div><div class="eyebrow">JAYVI'S COMBOS</div><h2>More to love.</h2></div><span id="comboCount"></span></div><div id="comboGrid" class="comboGrid"></div></div></section>
 <section class="mealSection"><div class="wrap"><div class="eyebrow">FIND YOUR MATCH</div><h2>Made for every meal.</h2><p class="muted intro">Choose a meal and see the Jayvi's flavours that go with it.</p><div id="mealTabs" class="mealTabs"></div><div id="mealRecommendations" class="mealRecommendations"></div></div></section>
 <section class="reviewSection" id="reviews"><div class="wrap"><div class="sectionHead"><div><div class="eyebrow">CUSTOMER LOVE</div><h2>4.8 <span class="starsBig">★★★★★</span></h2><p class="muted">Real feedback from Jayvi customers.</p></div><a class="googleLink" id="googleReviewsTop" target="_blank">View Google reviews →</a></div><div id="reviewGrid" class="reviewGrid"></div></div></section>
-<section class="smallAbout"><div class="wrap"><div><div class="eyebrow">ABOUT JAYVI</div><h2>Traditional flavour.<br><em>Made for today.</em></h2></div><div><p>Authentic Karnataka-inspired flavours made for everyday meals.</p><a href="help.html">Our story →</a></div></div></section>
+<section class="smallAbout" id="about"><div class="wrap"><div><div class="eyebrow">ABOUT JAYVI</div><h2>Traditional flavour.<br><em>Made for today.</em></h2></div><div><p>Authentic Karnataka-inspired flavours made for everyday meals.</p><a href="#about">Our story →</a></div></div></section>
 <section class="finalCta"><div class="wrap"><h2>Pick your favourites.</h2><a href="#bestsellers" class="btn gold">Shop now →</a></div></section>
 </main>
-<footer><div class="wrap footerGrid"><div class="footerBrand"><a class="footerLogo" href="#home" aria-label="Jayvi Foods"><img src="images/brand/jayvi-foods-logo.webp" alt="Jayvi Foods"></a><p>Purely Traditional.<br>Simply Delicious.</p></div><div><b>Shop</b><a href="#bestsellers">Bestsellers</a><a href="#shop">All products</a><a href="#combos">Combos</a></div><div><b>Help</b><a href="help.html">Shipping</a><a href="help.html#returns">Returns</a><a href="#" onclick="openAccount();return false">My account</a></div><div><b>Connect</b><a href="https://wa.me/918861981003" target="_blank">WhatsApp</a><a href="https://instagram.com/jayvifoods" target="_blank">Instagram</a><a href="admin-login.html">Admin login</a></div></div><div class="wrap copyright">© 2026 Jayvi Foods <span>Delivered across India · Jayvi Foods</span><span class="siteVersion" id="siteVersion">Website v23.0</span></div></footer>
-<a class="whatsappFloat" href="https://wa.me/918861981003" target="_blank" aria-label="Chat with Jayvi's team"><i class="fa-brands fa-whatsapp"></i><span>Chat with us</span></a>
+
+<footer><div class="wrap footerGrid"><div class="footerBrand"><a class="footerLogo" href="#home"><img src="images/brand/jayvi-foods-logo.webp" alt="Jayvi Foods"></a><p>Purely Traditional.<br>Simply Delicious.</p></div><div><b>Shop</b><a href="#bestsellers">Bestsellers</a><a href="#shop">All products</a><a href="#combos">Combos</a></div><div><b>Help</b><a href="help.html">Shipping</a><a href="help.html#returns">Returns</a><a href="#" onclick="openAccount();return false">My account</a></div><div><b>Connect</b><a href="https://wa.me/918861981003" target="_blank">WhatsApp</a><a href="https://instagram.com/jayvifoods" target="_blank">Instagram</a><a href="admin-login.html">Admin login</a></div></div><div class="wrap copyright">© 2026 Jayvi Foods <span>Delivered across India · Jayvi Foods</span><span class="siteVersion" id="siteVersion">Website v24.0</span></div></footer>
+
+<a class="whatsappFloat" href="https://wa.me/918861981003?text=Hi%20Jayvi%20Foods%2C%20I%20need%20help%20with%20my%20order." target="_blank" aria-label="Chat with Jayvi's team"><i class="fa-brands fa-whatsapp"></i><span>Chat with us</span></a>
 <div class="overlay" id="searchOverlay"><div class="searchPanel"><button class="close" onclick="closeSearch()">×</button><div class="eyebrow">SEARCH</div><h2>Find your favourite.</h2><input id="searchBox" placeholder="Peanut, flaxseed, pudi..." oninput="renderSearch()"><div id="searchResults"></div></div></div>
 <div class="overlay drawerOverlay" id="cartOverlay"><aside class="drawer"><div class="drawerHead"><div><div class="eyebrow">YOUR BAG</div><h2>Cart</h2></div><button class="close" onclick="closeCart()">×</button></div><div id="cartItems" class="cartItems"></div><div class="cartFoot"><div class="line"><span>Subtotal</span><b id="cartSubtotal">₹0</b></div><div class="line muted" id="cartShipping"></div><div class="line total"><span>Total</span><b id="cartTotal">₹0</b></div><small id="cartHint"></small><button class="btn gold full" onclick="openCheckout()">Continue to checkout <i class="fa-solid fa-arrow-right"></i></button></div></aside></div>
 <div class="overlay" id="accountOverlay"><div class="modal"><button class="close" onclick="closeAccount()">×</button><div id="accountContent"></div></div></div>
 <div class="overlay" id="productOverlay"><div class="modal productModal"><button class="close" onclick="closeProduct()">×</button><div id="productContent"></div></div></div>
 <div class="overlay" id="checkoutOverlay"><div class="modal checkoutModal"><button class="close" onclick="closeCheckout()">×</button><div id="checkoutContent"></div></div></div>
 <div class="toast" id="toast"></div>
-<script src="app.js"></script></body></html>
+
+<script src="app.js"></script>
+<script>
+/* JAYVI FOODS V24 — interaction stability */
+(function(){
+'use strict';
+const mobile=()=>matchMedia('(max-width:760px)').matches, $=id=>document.getElementById(id);
+
+function neutralize(){
+ if(!mobile())return;
+ const p=$('productOverlay'); if(!p)return;
+ p.classList.remove('open');p.style.display='none';p.style.visibility='hidden';p.style.pointerEvents='none';
+}
+function realOverlayOpen(){
+ return [...document.querySelectorAll('.overlay.open')].some(el=>{
+  if(mobile()&&el.id==='productOverlay')return false;
+  const s=getComputedStyle(el);return s.display!=='none'&&s.visibility!=='hidden';
+ });
+}
+function repairScroll(){
+ document.documentElement.style.overflowX='hidden';
+ document.body.style.overflowX='hidden';
+ if(!mobile())return;
+ const open=realOverlayOpen();
+ document.documentElement.style.overflowY=open?'hidden':'auto';
+ document.body.style.overflowY=open?'hidden':'auto';
+ document.body.classList.toggle('v24-overlay-open',open);
+}
+function heroSwipe(){
+ const h=document.querySelector('.hero');if(!h||h.dataset.v24)return;h.dataset.v24='1';
+ let sx=0,sy=0,active=false;
+ h.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;sx=e.touches[0].clientX;sy=e.touches[0].clientY;active=true},{passive:true});
+ h.addEventListener('touchend',e=>{
+  if(!active)return;active=false;
+  const dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;
+  if(Math.abs(dx)<45||Math.abs(dx)<Math.abs(dy)*1.15)return;
+  const dots=[...document.querySelectorAll('#heroDots button')];if(dots.length<2)return;
+  let i=dots.findIndex(x=>x.classList.contains('active'));if(i<0)i=0;
+  dots[(i+(dx<0?1:-1)+dots.length)%dots.length].click();
+  if(typeof restartHero==='function')restartHero();
+ },{passive:true});
+}
+function galleryGuards(){
+ document.querySelectorAll('.cardMediaScroller').forEach(s=>{
+  if(s.dataset.v24)return;s.dataset.v24='1';
+  ['pointerdown','touchstart','touchmove'].forEach(t=>s.addEventListener(t,e=>e.stopPropagation(),{passive:true}));
+ });
+}
+function init(){
+ neutralize();heroSwipe();galleryGuards();repairScroll();
+ document.querySelectorAll('.overlay').forEach(el=>new MutationObserver(()=>{neutralize();repairScroll()}).observe(el,{attributes:true,attributeFilter:['class','style']}));
+ new MutationObserver(()=>{neutralize();galleryGuards();repairScroll()}).observe(document.body,{childList:true,subtree:true});
+ addEventListener('resize',repairScroll,{passive:true});addEventListener('pageshow',repairScroll,{passive:true});
+ setInterval(()=>{neutralize();galleryGuards();repairScroll()},700);
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();
+})();
+</script>
+</body>
+</html>
