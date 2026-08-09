@@ -1,3 +1,4 @@
+/* Jayvi Foods V25.0 production candidate */
 const EMBEDDED_CONFIG = {
   "store":{"name":"Jayvi Foods","tagline":"Purely Traditional. Simply Delicious.","country":"IN","freeShippingThreshold":599,"shippingFlat":49,"deliveryMode":"india","googleMapsApiKey":"","googleReviewsUrl":"https://www.google.com/search?q=Jayvi+Foods+reviews","whatsapp":"918861981003","instagram":"https://instagram.com/jayvifoods","razorpayKeyId":"","paymentMode":"upi_manual","upiEnabled":true,"codEnabled":false,"upiId":"","upiName":"Jayvi Foods","upiQrImage":"","paymentNote":"Pay by UPI QR. Order moves to processing after payment verification.","vacationMode":false,"vacationMessage":"We are taking a short break. Orders will resume soon.","deliveryMinDays":4,"deliveryMaxDays":8,"otpEnabled":false,"otpProvider":"","razorpayEnabled":false},
   "homepage":{"heroAutoplay":true,"heroSeconds":5},
@@ -671,485 +672,370 @@ init();
   else {setVersion();installObserver();}
 })();
 
-/* Jayvi Foods V21.0 — mobile UX/state patch
-   Deliberately defensive: works as a final layer over the existing V15–V20 scripts. */
+
+
+/* Jayvi Foods V25 — consolidated mobile stability + gallery + checkout layer
+   One event-driven layer. No polling loops or full-body mutation polling. */
 (function(){
   'use strict';
-  const VERSION='21.0';
-  const DUMMY=[
-    ['Hero','images/products/peanut/hero.webp'],
-    ['Front','images/gallery/peanut-front.svg'],
-    ['Back','images/gallery/peanut-back.svg'],
-    ['Serving','images/gallery/peanut-serving.svg']
-  ];
+  const VERSION='25.0';
+  const isMobile=()=>window.matchMedia('(max-width:760px)').matches;
+  const $v=id=>document.getElementById(id);
 
-  function version(){
-    const el=document.getElementById('siteVersion');
+  function setVersion(){
+    const el=$v('siteVersion');
     if(el) el.textContent='Website v'+VERSION;
     document.documentElement.dataset.jayviVersion=VERSION;
     document.body.dataset.jayviVersion=VERSION;
   }
 
-  function isMobile(){return window.matchMedia && window.matchMedia('(max-width:760px)').matches;}
-
-  function overlayIsOpen(){
-    return [...document.querySelectorAll('.overlay')].some(x=>x.classList.contains('open'));
-  }
-
-  let locked=false;
-  function syncScrollLock(){
-    if(!isMobile()) return;
-    const open=overlayIsOpen();
-    document.body.classList.toggle('v21-overlay-open',open);
-    if(open && !locked){
-      document.documentElement.dataset.v21ScrollY=String(window.scrollY||0);
-      document.body.style.overflow='hidden';
-      locked=true;
-    }else if(!open && locked){
-      document.body.style.overflow='';
-      locked=false;
-    }
-  }
-
-  function makeMobileBackButtons(){
-    if(!isMobile()) return;
-    document.querySelectorAll('.overlay.open .close').forEach(btn=>{
-      if(btn.dataset.v21Ready) return;
-      btn.dataset.v21Ready='1';
-      btn.setAttribute('aria-label','Back');
-      btn.title='Back';
+  function realOpenOverlay(){
+    return [...document.querySelectorAll('.overlay.open')].some(el=>{
+      if(isMobile() && el.id==='productOverlay') return false;
+      const s=getComputedStyle(el);
+      return s.display!=='none' && s.visibility!=='hidden';
     });
   }
 
-  /* A browser Back press closes the active mobile surface instead of navigating
-     the page underneath it. */
-  let historyArmed=false;
-  function observeOverlays(){
-    document.querySelectorAll('.overlay').forEach(el=>{
-      new MutationObserver(()=>{
-        syncScrollLock();
-        makeMobileBackButtons();
-        if(isMobile() && el.classList.contains('open') && !historyArmed){
-          historyArmed=true;
-          try{history.pushState({jayviOverlay:true},'','#'+(el.id||'overlay'));}catch(_){}
-        }
-        if(!el.classList.contains('open')) historyArmed=false;
-      }).observe(el,{attributes:true,attributeFilter:['class']});
-    });
-    syncScrollLock();
-  }
-  window.addEventListener('popstate',function(){
-    if(!isMobile()) return;
-    const open=[...document.querySelectorAll('.overlay.open')].pop();
-    if(!open) return;
-    const fn={
-      cartOverlay:window.closeCart,
-      productOverlay:window.closeProduct,
-      checkoutOverlay:window.closeCheckout,
-      accountOverlay:window.closeAccount,
-      searchOverlay:window.closeSearch
-    }[open.id];
-    if(typeof fn==='function') fn();
-    else open.classList.remove('open');
-    historyArmed=false;
-    syncScrollLock();
-  });
-
-  /* Keep the product-card quantity controls in sync after checkout/order
-     completion. The existing application remains the source of truth. */
-  function refreshProductViews(){
-    try{
-      if(typeof window.renderProducts==='function') window.renderProducts();
-    }catch(_){}
-    try{
-      if(typeof window.renderBestSellers==='function') window.renderBestSellers();
-    }catch(_){}
-    try{
-      if(typeof window.renderBestsellers==='function') window.renderBestsellers();
-    }catch(_){}
-  }
-
-  let lastCartText='';
-  function watchCart(){
-    const cart=document.getElementById('cartItems');
-    if(!cart) return;
-    const mo=new MutationObserver(()=>{
-      const text=(cart.innerText||'').trim();
-      if(text!==lastCartText){
-        lastCartText=text;
-        /* If cart has become empty, refresh product cards so stale "+ 1 -" state disappears. */
-        if(!text || /your cart is empty|cart is empty/i.test(text)) {
-          setTimeout(refreshProductViews,80);
-        }
-      }
-    });
-    mo.observe(cart,{childList:true,subtree:true,characterData:true});
-  }
-
-  /* Product gallery test data.
-     We only add the gallery if the existing product modal currently has a
-     single image. Existing multi-image galleries are left untouched. */
-  function installGallery(){
-    if(!isMobile()) return;
-    const host=document.getElementById('productContent');
-    if(!host || host.querySelector('.v21-gallery')) return;
-    const imgs=[...host.querySelectorAll('img')].filter(i=>i.offsetWidth>0);
-    if(!imgs.length) return;
-    const main=imgs[0];
-    const src=main.currentSrc||main.src;
-    const gallery=document.createElement('div');
-    gallery.className='v21-gallery';
-    const mainBox=document.createElement('div');
-    mainBox.className='v21-gallery-main';
-    const mainImg=document.createElement('img');
-    mainImg.src=src;
-    mainImg.alt=main.alt||'Jayvi Foods product';
-    mainBox.appendChild(mainImg);
-    const thumbs=document.createElement('div');
-    thumbs.className='v21-gallery-thumbs';
-    DUMMY.forEach(([label,path],idx)=>{
-      const b=document.createElement('button');
-      b.type='button'; b.className='v21-gallery-thumb'+(idx===0?' active':'');
-      b.setAttribute('aria-label',label);
-      const im=document.createElement('img');
-      im.src=idx===0?src:path;
-      im.alt=label;
-      b.appendChild(im);
-      b.addEventListener('click',()=>{
-        mainImg.src=idx===0?src:path;
-        thumbs.querySelectorAll('.v21-gallery-thumb').forEach(x=>x.classList.remove('active'));
-        b.classList.add('active');
-      });
-      thumbs.appendChild(b);
-    });
-    gallery.append(mainBox,thumbs);
-    host.insertBefore(gallery,host.firstChild);
-  }
-
-  function observeProduct(){
-    const host=document.getElementById('productContent');
-    if(!host) return;
-    new MutationObserver(()=>{
-      if(document.getElementById('productOverlay')?.classList.contains('open')){
-        setTimeout(installGallery,30);
-      }
-    }).observe(host,{childList:true,subtree:true});
-  }
-
-  /* Make cart/product/account/search surfaces consistent on mobile and stop
-     click-through to the page behind them. */
-  document.addEventListener('click',function(e){
-    if(!isMobile()) return;
-    const overlay=e.target.closest('.overlay.open');
-    if(overlay){
-      const surface=e.target.closest('.modal,.drawer');
-      if(!surface && e.target===overlay) e.preventDefault();
+  function syncScroll(){
+    document.documentElement.style.overflowX='hidden';
+    document.body.style.overflowX='hidden';
+    if(!isMobile()){
+      document.documentElement.style.overflowY='';
+      document.body.style.overflowY='';
+      document.body.classList.remove('v25-overlay-open');
       return;
     }
-    const product=e.target.closest('.productCard');
-    if(product){
-      setTimeout(()=>{syncScrollLock();installGallery();},50);
-    }
-  },true);
+    const open=realOpenOverlay();
+    document.documentElement.style.overflowY=open?'hidden':'auto';
+    document.body.style.overflowY=open?'hidden':'auto';
+    document.body.classList.toggle('v25-overlay-open',open);
+  }
 
-  /* If the order form closes successfully, re-render cards after the cart state
-     has settled. This fixes the stale quantity shown on product cards. */
-  const checkout=document.getElementById('checkoutOverlay');
-  if(checkout){
-    new MutationObserver(()=>{
-      if(!checkout.classList.contains('open')){
-        setTimeout(refreshProductViews,150);
+  function closeHiddenProductOverlay(){
+    if(!isMobile()) return;
+    const p=$v('productOverlay');
+    if(p){
+      p.classList.remove('open');
+      p.style.display='none';
+      p.style.visibility='hidden';
+      p.style.pointerEvents='none';
+    }
+  }
+
+  function repairHeader(){
+    if(!isMobile()) return;
+    const nav=document.querySelector('header .nav');
+    const logo=document.querySelector('header .logo');
+    const menu=document.querySelector('header .mobileOnly');
+    const actions=document.querySelector('header .navActions');
+    if(!nav||!logo||!menu||!actions) return;
+    nav.style.position='relative';
+    nav.style.display='grid';
+    nav.style.gridTemplateColumns='48px minmax(0,1fr) 120px';
+    nav.style.alignItems='center';
+    nav.style.minWidth='0';
+    menu.style.display='grid';
+    menu.style.placeItems='center';
+    menu.style.position='relative';
+    menu.style.zIndex='20';
+    menu.style.width='44px';
+    menu.style.height='44px';
+    logo.style.position='absolute';
+    logo.style.left='50%';
+    logo.style.top='50%';
+    logo.style.transform='translate(-50%,-50%)';
+    logo.style.width='78px';
+    logo.style.height='58px';
+    logo.style.margin='0';
+    logo.style.zIndex='10';
+    const img=logo.querySelector('img');
+    if(img){
+      img.style.width='72px';
+      img.style.height='54px';
+      img.style.objectFit='contain';
+      img.style.objectPosition='center';
+    }
+    actions.style.position='relative';
+    actions.style.zIndex='20';
+    actions.style.display='flex';
+    actions.style.justifyContent='flex-end';
+    actions.style.gap='0';
+    actions.querySelectorAll('.icon').forEach(b=>{
+      b.style.width='38px';
+      b.style.height='38px';
+      b.style.flex='0 0 38px';
+    });
+  }
+
+  function repairGalleries(){
+    document.querySelectorAll('.productCard .visualWrap').forEach(w=>{
+      w.style.height='285px';
+      w.style.minHeight='285px';
+      w.style.overflow='hidden';
+      w.style.touchAction='pan-y';
+    });
+    document.querySelectorAll('.productCard .cardMediaScroller').forEach(s=>{
+      s.style.display='flex';
+      s.style.width='100%';
+      s.style.height='285px';
+      s.style.minHeight='285px';
+      s.style.overflowX='auto';
+      s.style.overflowY='hidden';
+      s.style.flexWrap='nowrap';
+      s.style.scrollSnapType='x mandatory';
+      s.style.scrollBehavior='smooth';
+      s.style.webkitOverflowScrolling='touch';
+      s.style.touchAction='pan-x';
+      s.style.pointerEvents='auto';
+      s.style.scrollbarWidth='none';
+    });
+    document.querySelectorAll('.productCard .cardMediaSlide').forEach(sl=>{
+      sl.style.flex='0 0 100%';
+      sl.style.width='100%';
+      sl.style.minWidth='100%';
+      sl.style.height='285px';
+      sl.style.minHeight='285px';
+      sl.style.scrollSnapAlign='start';
+      sl.style.overflow='hidden';
+      sl.style.display='grid';
+      sl.style.placeItems='center';
+    });
+  }
+
+  function repairShopControls(){
+    if(!isMobile()) return;
+    const bar=document.querySelector('.shopBar');
+    if(!bar) return;
+    bar.style.display='grid';
+    bar.style.gridTemplateColumns='minmax(0,1fr) 128px';
+    bar.style.gap='8px';
+    bar.style.alignItems='center';
+    bar.querySelector('.search')?.style.setProperty('width','100%');
+    const select=bar.querySelector('select');
+    if(select){
+      select.style.width='100%';
+      select.style.minWidth='0';
+      select.style.height='50px';
+      select.style.boxSizing='border-box';
+    }
+  }
+
+  function repairPinRow(){
+    if(!isMobile()) return;
+    const row=document.querySelector('#checkoutOverlay .pinRow');
+    if(!row) return;
+    row.style.display='grid';
+    row.style.gridTemplateColumns='minmax(0,1fr) 120px';
+    row.style.gap='8px';
+    row.style.alignItems='end';
+    const btn=row.querySelector('button');
+    if(btn){
+      btn.style.width='120px';
+      btn.style.minWidth='120px';
+      btn.style.minHeight='52px';
+      btn.style.boxSizing='border-box';
+    }
+  }
+
+  function setupHeroSwipe(){
+    const hero=document.querySelector('.hero');
+    if(!hero || hero.dataset.v25Swipe) return;
+    hero.dataset.v25Swipe='1';
+    let sx=0,sy=0,active=false;
+    hero.addEventListener('touchstart',e=>{
+      if(e.touches.length!==1)return;
+      sx=e.touches[0].clientX; sy=e.touches[0].clientY; active=true;
+    },{passive:true});
+    hero.addEventListener('touchend',e=>{
+      if(!active)return; active=false;
+      const dx=e.changedTouches[0].clientX-sx;
+      const dy=e.changedTouches[0].clientY-sy;
+      if(Math.abs(dx)<50 || Math.abs(dx)<Math.abs(dy)*1.15)return;
+      const dots=[...document.querySelectorAll('#heroDots button')];
+      if(dots.length<2)return;
+      let i=dots.findIndex(x=>x.classList.contains('active'));
+      if(i<0)i=0;
+      dots[(i+(dx<0?1:-1)+dots.length)%dots.length].click();
+      if(typeof restartHero==='function')restartHero();
+    },{passive:true});
+  }
+
+  function setupGalleryTouch(){
+    document.querySelectorAll('.cardMediaScroller').forEach(s=>{
+      if(s.dataset.v25Touch)return;
+      s.dataset.v25Touch='1';
+      s.addEventListener('click',e=>e.stopPropagation(),{passive:true});
+      s.addEventListener('pointerdown',e=>e.stopPropagation(),{passive:true});
+    });
+  }
+
+  function setupOverlayObservers(){
+    document.querySelectorAll('.overlay').forEach(o=>{
+      if(o.dataset.v25Observed)return;
+      o.dataset.v25Observed='1';
+      new MutationObserver(syncScroll).observe(o,{attributes:true,attributeFilter:['class','style']});
+    });
+  }
+
+  /* Mobile product cards are the product view. Desktop keeps the existing
+     full product popup. */
+  const originalOpenProduct=window.openProduct;
+  window.openProduct=function(id){
+    if(isMobile()){
+      closeHiddenProductOverlay();
+      const card=document.querySelector(`.productCard[data-product-id="${CSS.escape(id)}"]`);
+      if(card){
+        card.scrollIntoView({behavior:'smooth',block:'center'});
+        const gallery=card.querySelector('.cardMediaScroller');
+        gallery?.focus?.({preventScroll:true});
       }
-    }).observe(checkout,{attributes:true,attributeFilter:['class']});
+      return;
+    }
+    if(typeof originalOpenProduct==='function') return originalOpenProduct(id);
+  };
+
+  /* Keep the approved V24 checkout behaviour, but without a submit race. */
+  window.openCheckout=function(){
+    if(CONFIG.store.vacationMode){
+      showToast(CONFIG.store.vacationMessage||'Ordering is temporarily paused.');
+      return;
+    }
+    if(!cart.length){showToast('Your cart is empty');return;}
+    closeCart();
+    const t=cartTotals(),s=getSession(),u=s?getCustomers().find(c=>c.id===s.id):null;
+    const upi=CONFIG.store.upiEnabled!==false,cod=CONFIG.store.codEnabled===true;
+    $v('checkoutContent').innerHTML=`<div class="checkoutPage">
+      <div class="eyebrow">CHECKOUT</div>
+      <h2>Delivery details.</h2>
+      <p class="muted">Enter your delivery details. No account is required.</p>
+      <div class="deliveryEstimate"><b>Estimated delivery: ${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days</b><span>Delivery across India · usually 4–8 days.</span></div>
+      <div class="guestChoice"><b>${u?'Signed-in customer':'Guest checkout'}</b>${u?`<button type="button" onclick="setSession(null);openCheckout()">Use guest</button>`:'<button type="button" onclick="closeCheckout();openAccount()">Sign in / register</button>'}</div>
+      <form id="checkoutForm" onsubmit="return false">
+        <label>Full name *<input id="coName" value="${escapeHtml(u?.name||'')}" required></label>
+        <label>Mobile *<input id="coPhone" value="${escapeHtml(u?.phone||'')}" required pattern="[0-9]{10}" maxlength="10" inputmode="numeric"></label>
+        <label>Search delivery location<div id="placeBox"></div></label>
+        <label>Address *<textarea id="coAddress" required rows="3" placeholder="House / flat, street, landmark"></textarea></label>
+        <div class="two"><label>City *<input id="coCity" required></label><label>State *<input id="coState" required></label></div>
+        <div class="pinRow"><label>PIN code *<input id="coPin" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6"></label><button type="button" class="btn outline" onclick="verifyPincode()">Verify PIN</button></div>
+        <div id="pinStatus" class="pinStatus"></div>
+        <label>Country<select id="coCountry" disabled><option value="IN">India</option></select></label>
+        <div class="paymentChooser checkoutPayment"><h3>Payment method</h3>
+          ${upi?`<label class="paymentOption active"><input type="radio" name="paymentMethod" value="upi" checked onchange="togglePaymentNote()"><span><b>Pay by UPI QR</b><small>Scan and pay the exact order amount</small></span></label>`:''}
+          ${cod?`<label class="paymentOption"><input type="radio" name="paymentMethod" value="cod" onchange="togglePaymentNote()"><span><b>Cash on Delivery</b><small>Pay when delivered</small></span></label>`:''}
+          <div id="paymentNote" class="paymentNote">${escapeHtml(CONFIG.store.paymentNote||'')}</div>
+        </div>
+        <button id="placeOrderBtn" class="btn gold full" type="button">Place order & continue →</button>
+      </form>
+      <aside class="summary"><h3>Your order</h3>${cart.map(x=>{const d=cartItemDetails(x);return `<div class="line"><span>${escapeHtml(d.name)} · ${escapeHtml(d.label)} × ${x.qty}</span><b>${money(d.price*x.qty)}</b></div>`}).join('')}<div class="line"><span>Subtotal</span><b>${money(t.sub)}</b></div><div class="line"><span>Delivery</span><b>${t.ship?money(t.ship):'FREE'}</b></div><div class="line total"><span>Total</span><b>${money(t.total)}</b></div></aside>
+    </div>`;
+    $v('checkoutOverlay').classList.add('open');
+    syncScroll();
+    repairPinRow();
+    initPlaces();
+    const btn=$v('placeOrderBtn');
+    if(btn) btn.addEventListener('click',()=>window.placeOrder({preventDefault(){}}),{once:false});
+  };
+
+  window.placeOrder=function(e){
+    e?.preventDefault?.();
+    if(window.__v25Submitting)return;
+    const form=$v('checkoutForm');
+    if(!form)return;
+    if(!form.checkValidity()){form.reportValidity();return;}
+    const pin=$v('coPin').value.trim();
+    if(!/^\d{6}$/.test(pin)){verifyPincode();showToast('Enter and verify a valid 6-digit PIN');return;}
+    const btn=$v('placeOrderBtn');
+    if(btn){btn.disabled=true;btn.textContent='Creating order…';}
+    window.__v25Submitting=true;
+    const t=cartTotals(),s=getSession(),u=s?getCustomers().find(c=>c.id===s.id):null;
+    const customerId=u?.id||null;
+    const method=document.querySelector('input[name=paymentMethod]:checked')?.value||'upi';
+    const order={id:makeOrderNumber(),date:new Date().toLocaleString('en-IN'),estimatedDelivery:`${CONFIG.store.deliveryMinDays||4}-${CONFIG.store.deliveryMaxDays||8} days`,customerId,guestContact:$v('coPhone').value.trim(),customerName:$v('coName').value.trim(),phone:$v('coPhone').value.trim(),address:$v('coAddress').value.trim(),city:$v('coCity').value.trim(),state:$v('coState').value.trim(),country:'IN',pin,items:structuredClone(cart),subtotal:t.sub,shipping:t.ship,total:t.total,status:method==='upi'?'Payment verification pending':'Order received — COD',payment:method==='upi'?'UPI QR — awaiting verification':'Cash on Delivery',paymentMethod:method,utr:'',timeline:[{status:method==='upi'?'Payment verification pending':'Order received — COD',at:new Date().toISOString()}]};
+    const os=getOrders();os.unshift(order);saveOrders(os);
+    cart=[];saveCart();renderCart();refreshProductViews();
+    if(customerId){
+      const customers=getCustomers(),cu=customers.find(x=>x.id===customerId);
+      if(cu){cu.address={line1:order.address,city:order.city,state:order.state,pincode:order.pin,landmark:''};saveCustomers(customers);}
+    }
+    if(method==='upi')showUpiPaymentV25(order);else showOrderSuccessV25(order);
+    window.__v25Submitting=false;
+  };
+
+  function showUpiPaymentV25(o){
+    const qr=CONFIG.store.upiQrImage?`<img class="upiQr" src="${CONFIG.store.upiQrImage}" alt="Jayvi Foods UPI QR">`:`<div class="upiQr placeholder"><b>UPI QR</b><span>Upload your Jayvi QR from Admin</span></div>`;
+    $v('checkoutContent').innerHTML=`<div class="v25-payment"><div class="eyebrow">PAYMENT</div><h2>Pay ${money(o.total)}</h2><p class="muted">Scan the QR, pay the exact amount, then enter the UTR/reference number below.</p>${qr}<div class="upiMeta"><b>${escapeHtml(CONFIG.store.upiName||'Jayvi Foods')}</b>${CONFIG.store.upiId?`<span>UPI ID: ${escapeHtml(CONFIG.store.upiId)}</span>`:''}</div><label>UPI transaction / UTR reference *<input id="utrInput" placeholder="Enter UTR/reference" inputmode="numeric"></label><button id="utrSubmit" class="btn gold full" type="button">I have paid →</button><button class="btn light full" type="button" onclick="closeCheckout()">Pay later</button><p class="tiny">Order ${o.id} · Payment verification pending</p></div>`;
+    $v('utrSubmit')?.addEventListener('click',()=>submitUpiProofV25(o.id));
+  }
+
+  function submitUpiProofV25(id){
+    const utr=$v('utrInput')?.value.trim();
+    if(!utr){showToast('Enter the UTR/reference number');$v('utrInput')?.focus();return;}
+    const os=getOrders(),o=os.find(x=>x.id===id);if(!o)return;
+    o.utr=utr;o.paymentStatus='Proof submitted';
+    o.timeline=(o.timeline||[]).concat({status:'Payment proof submitted',at:new Date().toISOString()});
+    saveOrders(os);showOrderSuccessV25(o);
+  }
+
+  function showOrderSuccessV25(o){
+    $v('checkoutContent').innerHTML=`<div class="v25-success"><div class="v25-celebrate">✓</div><div class="eyebrow">ORDER RECEIVED</div><h2>Thank you!</h2><p class="orderNumber">${escapeHtml(o.id)}</p><p class="muted">${escapeHtml(o.status)}. Your order is saved successfully.</p><div class="v25-confetti" aria-hidden="true">✦ &nbsp; ✦ &nbsp; ✦</div>${renderTimeline(o)}<button class="btn gold full" type="button" onclick="closeCheckout();window.scrollTo({top:0,behavior:'smooth'})">Continue shopping</button></div>`;
+    syncScroll();
+  }
+
+  function setAboutLink(){
+    const a=document.querySelector('.smallAbout a');
+    if(a){a.textContent='Our story →';a.href='#about';}
+  }
+
+  function setupWhatsApp(){
+    const w=document.querySelector('.whatsappFloat');
+    if(!w||w.dataset.v25Ready)return;
+    w.dataset.v25Ready='1';
+    w.style.zIndex='70000';
+    w.addEventListener('click',e=>{
+      if(!isMobile())return;
+      e.preventDefault();e.stopPropagation();
+      window.location.href='https://wa.me/918861981003?text='+encodeURIComponent('Hi Jayvi Foods, I need help with my order.');
+    },{capture:true});
   }
 
   function init(){
-    version();
-    observeOverlays();
-    observeProduct();
-    watchCart();
-    setTimeout(version,500);
-    setInterval(version,3000);
+    setVersion();
+    setAboutLink();
+    closeHiddenProductOverlay();
+    repairHeader();
+    repairGalleries();
+    repairShopControls();
+    repairPinRow();
+    setupHeroSwipe();
+    setupGalleryTouch();
+    setupWhatsApp();
+    setupOverlayObservers();
+    syncScroll();
+
+    document.addEventListener('click',e=>{
+      if(!isMobile())return;
+      if(e.target.closest('.mobileOnly')){setTimeout(()=>{repairHeader();syncScroll()},0);return;}
+      if(e.target.closest('.cardMediaScroller')){e.stopPropagation();return;}
+      if(e.target.closest('.productCard')) setTimeout(()=>{closeHiddenProductOverlay();repairGalleries()},0);
+    },true);
+
+    const observer=new MutationObserver(()=>{
+      closeHiddenProductOverlay();
+      repairHeader();
+      repairGalleries();
+      repairShopControls();
+      repairPinRow();
+      setupGalleryTouch();
+      setupOverlayObservers();
+      syncScroll();
+    });
+    observer.observe(document.body,{childList:true,subtree:true});
+    window.addEventListener('resize',()=>{repairHeader();repairGalleries();repairShopControls();repairPinRow();syncScroll()},{passive:true});
+    window.addEventListener('pageshow',syncScroll,{passive:true});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)syncScroll()});
   }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init);
+
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});
   else init();
-})();
-/* Jayvi Foods V24.0 — consolidated mobile UX, gallery, announcement and checkout patch */
-(function(){
-'use strict';
-const VERSION='24.1';
-const demo={
- peanut:['images/products/peanut/hero.webp','images/gallery/peanut-front.svg','images/gallery/peanut-back.svg','images/gallery/peanut-serving.svg'],
- flaxseed:['images/products/flaxseed/hero.webp','images/gallery/flaxseed-front.svg','images/gallery/flaxseed-back.svg','images/gallery/flaxseed-serving.svg'],
- pudi:['images/products/pudi/hero.webp','images/gallery/pudi-front.svg','images/gallery/pudi-back.svg','images/gallery/pudi-serving.svg'],
- puffora:['images/products/puffora/hero.webp','images/gallery/puffora-front.svg','images/gallery/puffora-back.svg','images/gallery/puffora-serving.svg']
-};
-function $v(id){return document.getElementById(id)}
-function mobile(){return matchMedia('(max-width:760px)').matches}
-function version(){const e=$v('siteVersion');if(e)e.textContent='Website v'+VERSION;document.documentElement.dataset.jayviVersion=VERSION}
-function lock(){if(!mobile())return;const open=[...document.querySelectorAll('.overlay.open')].length>0;document.documentElement.classList.toggle('v22-overlay-open',open);document.body.classList.toggle('v22-overlay-open',open);if(open){document.documentElement.style.overflow='hidden';document.body.style.overflow='hidden'}else{document.documentElement.style.overflow='';document.body.style.overflow=''}}
-function syncOverlay(){document.querySelectorAll('.overlay').forEach(o=>new MutationObserver(lock).observe(o,{attributes:true,attributeFilter:['class']}));lock()}
-
-/* Use the real product-specific images, not the old shared hero collage. */
-function fixProductImages(){try{products.forEach(p=>{if(demo[p.id])p.image=demo[p.id][0]})}catch(_){} }
-
-/* One-product-at-a-time pairing guide. */
-window.renderMeal=function(){
- const labels=CONFIG.mealLabels||{};const tabs=Object.entries(labels);const host=$v('mealRecommendations');if(!$v('mealTabs')||!host)return;
- $v('mealTabs').innerHTML=tabs.map(([id,label])=>`<button class="${id===meal?'active':''}" onclick="setMeal('${id}',this)">${escapeHtml(label)}</button>`).join('');
- const rec=products.filter(p=>p.mealTags?.includes(meal));
- const desc={idli:'Best with idli — choose a familiar podi or chutney.',dosa:'Pair your dosa with a rich, traditional chutney flavour.',chapati:'A simple pairing for chapati, roti and everyday meals.',rice:'Add a spoonful of chutney powder to rice and ghee.'}[meal]||'Pick a Jayvi favourite for this meal.';
- host.innerHTML=`<div class="mealIntro"><b>${desc}</b><span>${rec.length} matching products</span></div><div class="miniProducts">${rec.map(p=>{const v=getVariant(p,variantKey(p.id));return `<button onclick="openProduct('${p.id}')"><div class="miniImg"><img src="${p.image}" alt="${escapeHtml(p.name)}"></div><span>${escapeHtml(p.name)}</span><b>${money(v.price)}</b></button>`}).join('')}</div>`;
-};
-
-/* Product details: full-screen + swipeable image carousel. */
-window.openProduct=function(id){
- if(mobile()){
-   const card=document.querySelector(`[data-product-id="${id}"]`);
-   if(card){card.scrollIntoView({behavior:'smooth',block:'center'});}
-   return;
- }
- const p=getProduct(id);if(!p)return;const v=getVariant(p,variantKey(id));const paused=!!CONFIG.store.vacationMode;const imgs=demo[p.id]||[p.image];
- const slides=imgs.map((src,i)=>`<div class="v22-slide"><img src="${src}" alt="${escapeHtml(p.name)} ${i+1}" onerror="this.src='${p.image}'"></div>`).join('');
- const dots=imgs.map((_,i)=>`<i class="${i===0?'active':''}"></i>`).join('');
- const add=paused?'showToast(\'Ordering is paused while Jayvi Foods is away.\')':`addToCart('${p.id}','${v.id}')`;
- const buy=paused?'showToast(\'Ordering is paused while Jayvi Foods is away.\')':`buyNow('${p.id}','${v.id}')`;
- $v('productContent').innerHTML=`<div class="v22-product"><div class="v22-carousel" id="v22Carousel">${slides}</div><div class="v22-galleryDots" id="v22GalleryDots">${dots}</div><div class="v22-productInfo"><div class="eyebrow">${escapeHtml(catName(p.category))}</div><h2>${escapeHtml(p.name)}</h2><div class="stars">★★★★★ <span>${p.rating} · ${p.reviewCount} reviews</span></div><p>${escapeHtml(p.short)}</p><div class="detailVariants">${p.variants.filter(x=>x.active).map(x=>`<button class="${x.id===v.id?'active':''}" onclick="selectedVariants['${p.id}']='${x.id}';openProduct('${p.id}')">${escapeHtml(x.label)}<small>${money(x.price)}</small></button>`).join('')}</div><div class="detailPrice"><b>${money(v.price)}</b><del>${money(v.mrp)}</del><em>Save ${money(v.mrp-v.price)}</em></div><div class="detailUse"><b>Works well with</b><span>${(p.mealTags||[]).map(m=>escapeHtml((CONFIG.mealTags||[]).find(t=>t.id===m)?.name||CONFIG.mealLabels?.[m]||m)).join(' · ')}</span></div><div class="v22-productInfo detailBtns"><button class="btn light" ${paused?'disabled':''} onclick="${add}">${paused?'Orders paused':'Add to cart'}</button><button class="btn gold" ${paused?'disabled':''} onclick="${buy}">${paused?'Unavailable':'Buy now →'}</button></div></div></div>`;
- $v('productOverlay').classList.add('open');lock();
- const c=$v('v22Carousel'),ds=[...$v('v22GalleryDots').children];if(c)c.addEventListener('scroll',()=>{const idx=Math.round(c.scrollLeft/c.clientWidth);ds.forEach((d,i)=>d.classList.toggle('active',i===idx))},{passive:true});
-};
-
-/* Full-screen account is intentionally simple; no centered modal. */
-const oldOpenAccount=window.openAccount;
-window.accountFavoritesView=function(){const fav=(wishlist||[]).map(id=>getProduct(id)).filter(Boolean);return `<div class="eyebrow">MY JAYVI</div><h2>My favourites.</h2><p class="muted">Saved on this device for quick access.</p><div class="v22-favList">${fav.length?fav.map(p=>{const v=getVariant(p,variantKey(p.id));return `<button class="v22-favItem" onclick="closeAccount();openProduct('${p.id}')"><img src="${p.image}" alt=""><span><b>${escapeHtml(p.name)}</b><small>${money(v.price)}</small></span><i>→</i></button>`}).join(''):'<div class="empty">No favourites yet. Tap the heart on a product to save it.</div>'}</div>`};
-window.accountView=function(s){const u=getCustomers().find(c=>c.id===s.id);const orders=getOrders().filter(o=>o.customerId===s.id||o.guestContact===u?.phone);return `<div class="eyebrow">MY JAYVI</div><h2>Welcome, ${escapeHtml((u?.name||'Customer').split(' ')[0])}.</h2><p class="muted">${escapeHtml(u?.phone||u?.login||'')}</p><div class="accountTabs"><button class="active" onclick="this.classList.add('active');document.getElementById('v22AccountBody').innerHTML=window.accountOrdersHtml()">Orders</button><button onclick="this.classList.remove('active');document.getElementById('v22AccountBody').innerHTML=window.accountFavoritesView()">Favourites</button><button onclick="trackOrderPrompt()">Track order</button></div><div id="v22AccountBody">${window.accountOrdersHtml(s)}</div>`};
-window.accountOrdersHtml=function(s){const u=getCustomers().find(c=>c.id===s?.id)||getCustomers().find(c=>c.id===getSession()?.id);const orders=getOrders().filter(o=>o.customerId===s?.id||o.guestContact===u?.phone);return `<div class="orders">${orders.length?orders.map(o=>`<div class="order"><b>${o.id}</b><span>${o.date}</span><strong>${money(o.total)}</strong><small>${escapeHtml(o.status)}</small></div>`).join(''):'<div class="empty">No orders yet.</div>'}</div>`};
-window.openAccount=function(){const s=getSession();$v('accountContent').innerHTML=s?accountView(s):authView('login');$v('accountOverlay').classList.add('open');lock()};
-
-/* Checkout: never hand off to the Account popup. Payment/success stay inside checkout. */
-window.openCheckout=function(){
- if(CONFIG.store.vacationMode){showToast(CONFIG.store.vacationMessage||'Ordering is temporarily paused.');return}
- if(!cart.length){showToast('Your cart is empty');return}
- closeCart();const t=cartTotals(),s=getSession(),u=s?getCustomers().find(c=>c.id===s.id):null;const upi=CONFIG.store.upiEnabled!==false,cod=CONFIG.store.codEnabled===true;
- $v('checkoutContent').innerHTML=`<div class="checkoutPage"><div class="eyebrow">CHECKOUT</div><h2>Delivery details.</h2><p class="muted">Enter your delivery details. No account is required.</p><div class="deliveryEstimate"><b>Estimated delivery: ${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days</b><span>Delivery time varies by location and PIN code.</span></div><div class="guestChoice"><b>${u?'Signed-in customer':'Guest checkout'}</b>${u?`<button type="button" onclick="setSession(null);openCheckout()">Use guest</button>`:'<button type="button" onclick="closeCheckout();openAccount()">Sign in / register</button>'}</div><form id="checkoutForm" onsubmit="placeOrder(event)"><label>Full name *<input id="coName" value="${escapeHtml(u?.name||'')}" required></label><label>Mobile *<input id="coPhone" value="${escapeHtml(u?.phone||'')}" required pattern="[0-9]{10}" maxlength="10" inputmode="numeric"></label><label>Search delivery location<div id="placeBox"></div></label><label>Address *<textarea id="coAddress" required rows="3" placeholder="House / flat, street, landmark"></textarea></label><div class="two"><label>City *<input id="coCity" required></label><label>State *<input id="coState" required></label></div><div class="pinRow"><label>PIN code *<input id="coPin" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6"></label><button type="button" class="btn outline" onclick="verifyPincode()">Verify PIN</button></div><div id="pinStatus" class="pinStatus"></div><label>Country<select id="coCountry" disabled><option value="IN">India</option></select></label><div class="paymentChooser checkoutPayment"><h3>Payment method</h3>${upi?`<label class="paymentOption active"><input type="radio" name="paymentMethod" value="upi" checked onchange="togglePaymentNote()"><span><b>Pay by UPI QR</b><small>Scan and pay the exact order amount</small></span></label>`:''}${cod?`<label class="paymentOption"><input type="radio" name="paymentMethod" value="cod" onchange="togglePaymentNote()"><span><b>Cash on Delivery</b><small>Pay when delivered</small></span></label>`:''}<div id="paymentNote" class="paymentNote">${escapeHtml(CONFIG.store.paymentNote||'')}</div></div><button id="placeOrderBtn" class="btn gold full" type="button" onclick="placeOrder(event)">Place order & continue →</button></form><aside class="summary"><h3>Your order</h3>${cart.map(x=>{const d=cartItemDetails(x);return `<div class="line"><span>${escapeHtml(d.name)} · ${escapeHtml(d.label)} × ${x.qty}</span><b>${money(d.price*x.qty)}</b></div>`}).join('')}<div class="line"><span>Subtotal</span><b>${money(t.sub)}</b></div><div class="line"><span>Delivery</span><b>${t.ship?money(t.ship):'FREE'}</b></div><div class="line total"><span>Total</span><b>${money(t.total)}</b></div></aside></div>`;
- $v('checkoutOverlay').classList.add('open');lock();initPlaces();
-};
-window.placeOrder=function(e){
- e.preventDefault();if(window.__v22Submitting)return;const form=$v('checkoutForm');if(!form)return;if(!form.checkValidity()){form.reportValidity();return}
- const pin=$v('coPin').value.trim();if(!/^\d{6}$/.test(pin)){verifyPincode();showToast('Enter and verify a valid 6-digit PIN');return}
- const btn=$v('placeOrderBtn');if(btn){btn.disabled=true;btn.textContent='Creating order…'}window.__v22Submitting=true;
- const t=cartTotals(),s=getSession(),u=s?getCustomers().find(c=>c.id===s.id):null,customerId=u?.id||null,method=document.querySelector('input[name=paymentMethod]:checked')?.value||'upi';
- const order={id:makeOrderNumber(),date:new Date().toLocaleString('en-IN'),estimatedDelivery:`${CONFIG.store.deliveryMinDays||4}-${CONFIG.store.deliveryMaxDays||8} days`,customerId,guestContact:$v('coPhone').value.trim(),customerName:$v('coName').value.trim(),phone:$v('coPhone').value.trim(),address:$v('coAddress').value.trim(),city:$v('coCity').value.trim(),state:$v('coState').value.trim(),country:'IN',pin,items:structuredClone(cart),subtotal:t.sub,shipping:t.ship,total:t.total,status:method==='upi'?'Payment verification pending':'Order received — COD',payment:method==='upi'?'UPI QR — awaiting verification':'Cash on Delivery',paymentMethod:method,utr:'',timeline:[{status:method==='upi'?'Payment verification pending':'Order received — COD',at:new Date().toISOString()}]};
- const os=getOrders();os.unshift(order);saveOrders(os);cart=[];saveCart();renderCart();refreshProductViews();
- if(customerId){const customers=getCustomers();const cu=customers.find(c=>c.id===customerId);if(cu){cu.address={line1:order.address,city:order.city,state:order.state,pincode:order.pin,landmark:''};saveCustomers(customers)}}
- if(method==='upi')showUpiPayment(order);else showOrderSuccess(order);window.__v22Submitting=false;
-};
-window.showUpiPayment=function(o){
- const qr=CONFIG.store.upiQrImage?`<img class="upiQr" src="${CONFIG.store.upiQrImage}" alt="Jayvi Foods UPI QR">`:`<div class="upiQr placeholder"><b>UPI QR</b><span>Upload your Jayvi QR from Admin</span></div>`;
- $v('checkoutContent').innerHTML=`<div class="v22-payment"><div class="eyebrow">PAYMENT</div><h2>Pay ${money(o.total)}</h2><p class="muted">Scan the QR, pay the exact amount, then enter the UTR/reference number below.</p>${qr}<div class="upiMeta"><b>${escapeHtml(CONFIG.store.upiName||'Jayvi Foods')}</b>${CONFIG.store.upiId?`<span>UPI ID: ${escapeHtml(CONFIG.store.upiId)}</span>`:''}</div><label>UPI transaction / UTR reference *<input id="utrInput" placeholder="Enter UTR/reference"></label><button class="btn gold full" onclick="submitUpiProof('${o.id}')">I have paid →</button><button class="btn light full" onclick="closeCheckout()">Pay later</button><p class="tiny">Order ${o.id} · Payment verification pending</p></div>`;
-};
-window.submitUpiProof=function(id){const utr=$v('utrInput')?.value.trim();if(!utr){showToast('Enter the UTR/reference number');return}const os=getOrders(),o=os.find(x=>x.id===id);if(!o)return;o.utr=utr;o.paymentStatus='Proof submitted';o.timeline=(o.timeline||[]).concat({status:'Payment proof submitted',at:new Date().toISOString()});saveOrders(os);showOrderSuccess(o)};
-window.showOrderSuccess=function(o){$v('checkoutContent').innerHTML=`<div class="v22-success"><div class="successIcon">✓</div><div class="eyebrow">ORDER RECEIVED</div><h2>${escapeHtml(o.id)}</h2><p class="muted">${escapeHtml(o.status)}. Your order is saved successfully.</p>${renderTimeline(o)}<button class="btn gold full" onclick="closeCheckout();window.scrollTo({top:0,behavior:'smooth'})">Continue shopping</button></div>`};
-
-/* Keep cards synced when checkout closes and ensure cart count is authoritative. */
-const oldCloseCheckout=window.closeCheckout;window.closeCheckout=function(){oldCloseCheckout();renderCart();setTimeout(()=>{try{renderBest();renderProducts();renderMeal();renderCombos()}catch(_){}lock()},30)};
-
-/* Announcement touch UX + admin-configured image/price. */
-const oldHeroShow=window.heroShow;window.heroShow=function(){
- const a=(CONFIG.announcements||[]).filter(x=>x.active).sort((x,y)=>(x.order||0)-(y.order||0));if(!a.length)return;const s=a[heroIndex%a.length],p=s.productId?getProduct(s.productId):null,combo=s.comboId?getCombo(s.comboId):null;
- $v('heroLabel').textContent=s.label||'';$v('heroTitle').innerHTML=`${escapeHtml(s.title||'')}<br><em>${escapeHtml(s.em||'')}</em>`;$v('heroDesc').textContent=s.text||'';$v('heroPrice').textContent=money(p?getVariant(p,variantKey(p.id)).price:combo?.price||0);$v('heroPrice').style.display=s.showPrice===false?'none':'';$v('heroImg').src=s.image||p?.image||combo?.image||'images/hero/jayvi-products.webp';
- $v('heroShop').onclick=()=>{const type=s.actionType||(s.comboId?'combo':'product'),target=s.actionTarget||(s.comboId?s.comboId:s.productId);if(type==='product'&&getProduct(target))openProduct(target);else if(type==='combo'&&getCombo(target))document.getElementById('combos').scrollIntoView({behavior:'smooth'});else if(type==='shop')document.getElementById('shop').scrollIntoView({behavior:'smooth'});else if(type==='reviews')document.getElementById('reviews').scrollIntoView({behavior:'smooth'});else if(type==='url'&&s.actionTarget)window.location.href=s.actionTarget};
- $v('heroDots').innerHTML=a.map((_,i)=>`<button class="${i===heroIndex?'active':''}" onclick="heroIndex=${i};heroShow();restartHero()"></button>`).join('');const g=document.querySelector('.heroGrid');g.classList.remove('heroChange');void g.offsetWidth;g.classList.add('heroChange');
-};
-function heroTouch(){const h=document.querySelector('.hero');if(!h||h.dataset.v22Touch)return;h.dataset.v22Touch='1';let x=0,y=0;h.addEventListener('touchstart',e=>{x=e.changedTouches[0].clientX;y=e.changedTouches[0].clientY},{passive:true});h.addEventListener('touchend',e=>{const dx=e.changedTouches[0].clientX-x,dy=e.changedTouches[0].clientY-y;if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)){const n=(CONFIG.announcements||[]).filter(x=>x.active).length;if(n>1){heroIndex=(heroIndex+(dx<0?1:-1)+n)%n;heroShow();restartHero()}}},{passive:true})}
-
-/* About link should stay on storefront, not jump to Help & Support. */
-function fixAbout(){document.querySelector('.smallAbout')?.setAttribute('id','about');const a=document.querySelector('.smallAbout a');if(a){a.textContent='Our story →';a.href='#about'}}
-
-function init(){version();fixProductImages();syncOverlay();heroTouch();fixAbout();setTimeout(()=>{version();fixProductImages();try{renderBest();renderProducts();renderMeal();renderCombos();heroShow()}catch(_){}},80);setInterval(version,3000)}
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
-})();
-
-/* Jayvi Foods V24.0 — final mobile interaction pass
-   - Fixed-size announcement stage + reliable horizontal swipe
-   - No product popup on mobile; product cards contain a swipeable media gallery
-   - Checkout uses a non-submit action button to avoid intermittent form click failures
-   - Mobile WhatsApp uses direct navigation
-   - Simplified checkout/delivery copy
-*/
-(function(){
- 'use strict';
- const VERSION='24.1';
- const mobile=()=>window.matchMedia('(max-width:760px)').matches;
- function setVersion(){const e=document.getElementById('siteVersion');if(e)e.textContent='Website v'+VERSION;document.documentElement.dataset.jayviVersion=VERSION}
- function overlayIsOpen(){return !!document.querySelector('.overlay.open')}
- function syncPageLock(){
-   if(mobile()&&overlayIsOpen()){document.documentElement.style.overflow='hidden';document.body.style.overflow='hidden'}
-   else{document.documentElement.style.overflow='';document.body.style.overflow=''}
-   document.body.classList.toggle('v23-overlay-open',mobile()&&overlayIsOpen());
- }
- function hideWhatsAppWhenSheetOpen(){
-   const w=document.querySelector('.whatsappFloat');
-   if(w)w.style.setProperty('display',overlayIsOpen()?'none':'grid','important');
- }
- function setupOverlayWatch(){
-   document.querySelectorAll('.overlay').forEach(o=>new MutationObserver(()=>{syncPageLock();hideWhatsAppWhenSheetOpen()}).observe(o,{attributes:true,attributeFilter:['class']}));
-   syncPageLock();hideWhatsAppWhenSheetOpen();
- }
- function setupHeroSwipe(){
-   const hero=document.querySelector('.hero'); if(!hero||hero.dataset.v23Swipe)return;
-   hero.dataset.v23Swipe='1'; hero.style.touchAction='pan-y';
-   let sx=0,sy=0,active=false;
-   const count=()=>document.querySelectorAll('#heroDots button').length;
-   const go=dir=>{const n=count();if(n<2)return;const dots=[...document.querySelectorAll('#heroDots button')];let i=dots.findIndex(x=>x.classList.contains('active'));if(i<0)i=0;const next=(i+dir+n)%n;heroIndex=next;heroShow();if(typeof restartHero==='function')restartHero()};
-   hero.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const t=e.touches[0];sx=t.clientX;sy=t.clientY;active=true},{passive:true});
-   hero.addEventListener('touchend',e=>{if(!active)return;active=false;const t=e.changedTouches[0],dx=t.clientX-sx,dy=t.clientY-sy;if(Math.abs(dx)>55&&Math.abs(dx)>Math.abs(dy)*1.15)go(dx<0?1:-1)},{passive:true});
- }
- function setupWhatsApp(){
-   const w=document.querySelector('.whatsappFloat');if(!w||w.dataset.v23)return;w.dataset.v23='1';
-   w.style.zIndex='70000';
-   w.addEventListener('click',function(e){
-     if(!mobile())return;
-     e.preventDefault();e.stopPropagation();
-     window.location.href='https://wa.me/918861981003?text='+encodeURIComponent("Hi Jayvi Foods, I need help with my order.");
-   },{capture:true});
- }
- function patchCheckoutButton(){
-   const oldOpen=window.openCheckout;
-   if(typeof oldOpen==='function'&&!oldOpen.__v23){
-     const wrapped=function(){
-       if(!cart||!cart.length){showToast('Your cart is empty');return}
-       oldOpen.apply(this,arguments);
-       requestAnimationFrame(()=>{const o=document.getElementById('checkoutOverlay'),m=o?.querySelector('.checkoutModal');if(m)m.scrollTop=0;syncPageLock();hideWhatsAppWhenSheetOpen()});
-     };
-     wrapped.__v23=true;window.openCheckout=wrapped;
-   }
- }
- function simplifyCheckoutCopy(){
-   const o=document.getElementById('checkoutOverlay');if(!o)return;
-   const root=o.querySelector('#checkoutContent');if(!root)return;
-   const muted=root.querySelector('.deliveryEstimate span');if(muted)muted.textContent='Delivery across India · usually 4–8 days.';
-   root.querySelectorAll('.tiny').forEach(x=>{if(/Google Maps ready/i.test(x.textContent))x.textContent=''});
- }
- function run(){
-   setVersion();setupOverlayWatch();setupHeroSwipe();setupWhatsApp();patchCheckoutButton();
-   setTimeout(()=>{setVersion();setupHeroSwipe();setupWhatsApp();simplifyCheckoutCopy()},200);
-   setInterval(()=>{setVersion();setupWhatsApp();hideWhatsAppWhenSheetOpen()},2000);
- }
- if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',run,{once:true});else run();
-})();
-
-
-/* Jayvi Foods V24.1 — mobile loading / navigation / gallery stabilization */
-(function(){
- 'use strict';
- const isMobile=()=>window.matchMedia('(max-width:760px)').matches;
-
- function unlockPage(){
-   if(!isMobile()) return;
-   /* A hidden product overlay must never lock the storefront. */
-   const realOpen=[...document.querySelectorAll('.overlay.open')].some(o=>{
-     if(o.id==='productOverlay') return false;
-     return getComputedStyle(o).display!=='none';
-   });
-   document.documentElement.style.overflowY=realOpen?'hidden':'auto';
-   document.body.style.overflowY=realOpen?'hidden':'auto';
-   document.documentElement.style.overflowX='hidden';
-   document.body.style.overflowX='hidden';
-   document.body.classList.toggle('v24-overlay-open',realOpen);
- }
-
- function fixHeader(){
-   const header=document.querySelector('header');
-   const nav=document.querySelector('header .nav');
-   const logo=document.querySelector('header .logo');
-   const menu=document.querySelector('header .mobileOnly');
-   if(!header||!nav||!logo||!menu) return;
-   header.style.zIndex='9000';
-   nav.style.position='relative';
-   nav.style.minWidth='0';
-   menu.style.position='relative';
-   menu.style.zIndex='20';
-   logo.style.position='absolute';
-   logo.style.left='50%';
-   logo.style.top='50%';
-   logo.style.transform='translate(-50%,-50%)';
-   logo.style.width='72px';
-   logo.style.height='56px';
-   logo.style.margin='0';
-   logo.style.zIndex='10';
-   const img=logo.querySelector('img');
-   if(img){img.style.width='68px';img.style.height='52px';img.style.objectFit='contain';}
-   const actions=nav.querySelector('.navActions');
-   if(actions){actions.style.position='relative';actions.style.zIndex='20';actions.style.display='flex';actions.style.gap='0';}
-   nav.querySelectorAll('.navActions .icon').forEach(b=>{
-     b.style.width='38px';b.style.height='38px';b.style.flex='0 0 38px';
-   });
- }
-
- function fixProductGalleries(){
-   document.querySelectorAll('.productCard .visualWrap').forEach(w=>{
-     w.style.height='285px';
-     w.style.aspectRatio='auto';
-     w.style.overflow='hidden';
-   });
-   document.querySelectorAll('.productCard .cardMediaScroller').forEach(s=>{
-     s.style.height='285px';
-     s.style.minHeight='285px';
-     s.style.width='100%';
-     s.style.overflowX='auto';
-     s.style.overflowY='hidden';
-     s.style.touchAction='pan-x';
-     s.style.scrollSnapType='x mandatory';
-   });
-   document.querySelectorAll('.productCard .cardMediaSlide').forEach(sl=>{
-     sl.style.height='285px';
-     sl.style.minHeight='285px';
-     sl.style.flex='0 0 100%';
-     sl.style.width='100%';
-     sl.style.scrollSnapAlign='start';
-   });
- }
-
- function preventHiddenProductLock(){
-   const p=document.getElementById('productOverlay');
-   if(p){
-     p.classList.remove('open');
-     p.style.display='none';
-     p.style.pointerEvents='none';
-     p.style.visibility='hidden';
-   }
- }
-
- function init(){
-   fixHeader();
-   preventHiddenProductLock();
-   fixProductGalleries();
-   unlockPage();
-
-   document.querySelectorAll('.overlay').forEach(o=>{
-     new MutationObserver(()=>{
-       if(o.id==='productOverlay' && isMobile()) preventHiddenProductLock();
-       unlockPage();
-     }).observe(o,{attributes:true,attributeFilter:['class','style']});
-   });
-
-   new MutationObserver(()=>{
-     fixHeader();
-     preventHiddenProductLock();
-     fixProductGalleries();
-     unlockPage();
-   }).observe(document.body,{childList:true,subtree:true});
-
-   window.addEventListener('resize',()=>{fixHeader();fixProductGalleries();unlockPage()},{passive:true});
-   window.addEventListener('pageshow',unlockPage,{passive:true});
-   setInterval(()=>{
-     fixHeader();
-     preventHiddenProductLock();
-     fixProductGalleries();
-     unlockPage();
-   },1000);
- }
- if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true});
- else init();
 })();

@@ -1,42 +1,54 @@
-# Jayvi Foods V24.0 — final consolidated pre-production build
+# Jayvi Foods V25.0 — Production Candidate
 
-This package consolidates the latest Git project into a single V24 upload set.
+## Release
+Website version: **V25.0**
+
+This package is based on the V24.1 consolidated source and replaces the
+accumulated V21–V24 mobile patch stack with one V25 event-driven stabilization
+layer.
 
 ## Upload
+Upload/replace the **complete contents** of this package in the repository root:
 
-Upload/replace the complete contents of this package in the repository root.
+- `index.html`
+- `style.css`
+- `app.js`
+- `admin.html`
+- `admin.css`
+- `admin.js`
+- `admin-login.html`
+- `help.html`
+- `legal.html`
+- `images/`
+- `VERSION.txt`
+- `V25-INSTALL.txt`
+- `DEPLOY.md`
 
-Core files:
-- `index.html` — storefront and V24 mobile stability layer
-- `app.js` — storefront logic, catalogue, cart, checkout, account and V24 fixes
-- `style.css` — complete storefront styling and responsive/mobile rules
-- `admin.html` — admin portal
-- `admin.js` — admin logic
-- `admin.css` — admin styling
-- `admin-login.html` — admin login
-- `help.html` — help/support page
-- `images/` — brand, hero, product and gallery assets
-
-## Version
-
-Website version: **V24.0**
-
-## V24 scope
-
-V24 is the consolidated UI/mobile stability pass. It includes the fixes listed
-in `V24-INSTALL.txt`.
-
-## Data architecture
-
-No data-storage architecture change is included in V24. The current project
-continues to use the existing browser/localStorage prototype model. Backend
-database, secure authentication, server-side order persistence, payment
-verification and Google Maps production configuration remain a later phase.
+Do not mix older V15–V24 files with this release.
 
 ## GitHub Pages
-
-GitHub Pages should publish:
+Use:
 - Branch: `main`
 - Folder: `/ (root)`
 
-Do not mix older patch files into this release.
+The site assets are cache-busted as `style.css?v=25.0` and `app.js?v=25.0`.
+
+## Data architecture
+No storage architecture change is included in V25. The current application
+continues to use the existing browser/localStorage prototype model. Google
+Maps, backend order persistence, secure authentication, payment gateway
+integration and production secrets remain separate future work.
+
+## Testing priority
+1. Mobile initial load
+2. Normal page scrolling
+3. Hamburger menu
+4. Product image horizontal swipe
+5. Cart -> checkout
+6. Checkout vertical scrolling
+7. PIN verification
+8. UTR entry
+9. Order confirmation
+10. WhatsApp
+11. Desktop product popup
+12. Legal/footer
