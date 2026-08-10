@@ -1,0 +1,33 @@
+JAYVI FOODS — V30 INSTALL
+
+SOURCE OF TRUTH
+This package is built from the complete Git project supplied by the owner.
+Do not replace or delete the images/ folder.
+
+UPLOAD / REPLACE
+Replace these files in the repository root:
+  index.html
+  app.js
+  style.css
+  VERSION.txt
+  V30-INSTALL.txt
+
+KEEP
+  images/
+  admin-login.html
+  admin.css
+  admin.html
+  admin.js
+  help.html
+  legal.html
+  DEPLOY.md
+  README.md
+
+IMPORTANT
+1. GitHub Pages should deploy from main / root.
+2. Wait for the Pages deployment to show successful before testing.
+3. Test desktop and mobile in a fresh/incognito window.
+4. The storefront should show "Storefront build 30.0" in the footer for build verification.
+5. My Jayvi, favourites, cart and test orders are browser-local only in this static build.
+6. Google Reviews uses the configured fallback search URL until the exact Google Business review URL is supplied.
+7. No Google Maps API is included yet.

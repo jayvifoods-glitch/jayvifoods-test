@@ -1,218 +1,42 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#160d09">
-  <meta name="description" content="Jayvi Foods — Purely Traditional, Simply Delicious. Authentic Karnataka flavours for every meal.">
-  <meta property="og:title" content="Jayvi Foods — Purely Traditional, Simply Delicious">
-  <meta property="og:description" content="Authentic Karnataka flavours made for everyday meals.">
-  <meta property="og:image" content="images/social-preview.webp">
-  <title>Jayvi Foods — Purely Traditional, Simply Delicious</title>
-
-  <link rel="icon" href="images/favicon.png">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=29.0">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#160d09"><meta name="description" content="Jayvi Foods — Purely Traditional, Simply Delicious. Authentic Karnataka flavours for everyday meals.">
+<meta property="og:title" content="Jayvi Foods — Purely Traditional, Simply Delicious"><meta property="og:description" content="Authentic Karnataka flavours made for everyday meals."><meta property="og:image" content="images/hero/jayvi-products.webp">
+<title>Jayvi Foods — Purely Traditional, Simply Delicious</title>
+<link rel="icon" href="images/brand/jayvi-foods-logo.webp">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=30.0">
 </head>
-
 <body>
-  <div class="announcement" aria-label="Announcements">
-    <div class="announcement-track" id="announcementTrack">
-      <span>Free shipping above ₹599</span>
-      <span>Purely Traditional, Simply Delicious</span>
-      <span>Freshly packed for everyday meals</span>
-      <span>Shop Jayvi Foods</span>
-    </div>
+<div class="announcement" aria-label="Announcements"><div class="announcement-window"><div class="announcement-track" id="announcementTrack"></div></div></div>
+<header class="site-header" id="home">
+  <div class="header-inner">
+    <button class="icon-btn hamburger" id="menuBtn" aria-label="Open menu" aria-expanded="false"><span></span><span></span><span></span></button>
+    <a class="brand" href="#home" aria-label="Jayvi Foods home"><img src="images/brand/jayvi-foods-logo.webp" alt="Jayvi Foods"></a>
+    <nav class="desktop-nav" aria-label="Main navigation"><a href="#products">Products</a><a href="#story">Our Story</a><a href="#meals">Every Meal</a><a href="#reviews">Reviews</a></nav>
+    <div class="header-actions"><button class="icon-btn" id="searchBtn" aria-label="Search">⌕</button><button class="icon-btn" id="accountBtn" aria-label="My Jayvi">♙</button><button class="cart-btn" id="cartBtn" aria-label="Open cart"><span class="bag-icon">▣</span><b id="cartCount">0</b></button></div>
   </div>
-
-  <header class="site-header" id="home">
-    <div class="header-inner">
-      <button class="icon-btn hamburger" id="menuBtn" aria-label="Open menu" aria-expanded="false">
-        <span></span><span></span><span></span>
-      </button>
-
-      <a class="brand" href="#home" aria-label="Jayvi Foods home">
-        <img src="images/logo.svg" alt="Jayvi Foods">
-      </a>
-
-      <nav class="desktop-nav" aria-label="Main navigation">
-        <a href="#products">Products</a>
-        <a href="#story">Our Story</a>
-        <a href="#meals">Every Meal</a>
-        <a href="#reviews">Reviews</a>
-      </nav>
-
-      <div class="header-actions">
-        <button class="icon-btn" id="searchBtn" aria-label="Search">⌕</button>
-        <button class="icon-btn" id="accountBtn" aria-label="My Jayvi">♙</button>
-        <button class="cart-btn" id="cartBtn" aria-label="Open cart">
-          <span class="bag-icon">▣</span><b id="cartCount">0</b>
-        </button>
-      </div>
-    </div>
-
-    <div class="mobile-menu" id="mobileMenu" aria-hidden="true">
-      <a href="#products">Products</a>
-      <a href="#story">Our Story</a>
-      <a href="#meals">Every Meal</a>
-      <a href="#reviews">Reviews</a>
-      <a href="legal.html">Legal & Policies</a>
-    </div>
-  </header>
-
-  <main>
-    <section class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">JAYVI FOODS</p>
-        <h1>Traditional flavour.<br><em>Everyday joy.</em></h1>
-        <p class="hero-text">Authentic Karnataka flavours made for modern family meals — simple, comforting and full of tradition.</p>
-        <div class="hero-actions">
-          <a class="btn btn-gold" href="#products">Shop now →</a>
-          <a class="text-link" href="#products">Browse all</a>
-        </div>
-      </div>
-      <div class="hero-media">
-        <img src="images/social-preview.webp" alt="Jayvi Foods products" onerror="this.style.display='none'">
-      </div>
-    </section>
-
-    <section class="trust-strip">
-      <div><strong>Free delivery</strong><span>Above ₹599</span></div>
-      <div><strong>Freshly packed</strong><span>Made for everyday meals</span></div>
-      <div><strong>Traditional flavours</strong><span>From Jayvi's kitchen</span></div>
-      <div><strong>Need help?</strong><span>Chat with Jayvi's team</span></div>
-    </section>
-
-    <section class="section" id="products">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">SHOP JAYVI'S BESTSELLERS</p>
-          <h2>Bestsellers</h2>
-        </div>
-        <div class="catalog-tools">
-          <label class="search-box"><span>⌕</span><input id="searchInput" type="search" placeholder="Find your favourite"></label>
-          <select id="sortSelect" aria-label="Sort products">
-            <option value="popular">Popular</option>
-            <option value="price-low">Price: low</option>
-            <option value="price-high">Price: high</option>
-            <option value="name">Name</option>
-          </select>
-        </div>
-      </div>
-      <div class="product-grid" id="productGrid"></div>
-    </section>
-
-    <section class="story section" id="story">
-      <div class="story-card">
-        <p class="eyebrow">OUR STORY</p>
-        <h2>From a home kitchen to your everyday table.</h2>
-        <p>Jayvi Foods brings authentic Karnataka flavours to modern families through traditional recipes, carefully chosen ingredients and homemade care.</p>
-        <a class="btn btn-outline" href="legal.html#about">Read our story →</a>
-      </div>
-    </section>
-
-    <section class="section" id="meals">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">MADE FOR EVERY MEAL</p>
-          <h2>Good with the food you already love.</h2>
-        </div>
-      </div>
-      <div class="meal-grid">
-        <a class="meal-card" href="#products"><img src="images/With-Soft-Idlis.webp" alt="Soft idlis"><strong>Soft Idlis</strong><span>Traditional Jayvi's podi</span></a>
-        <a class="meal-card" href="#products"><img src="images/With-Crispy-Dosas.webp" alt="Crispy dosas"><strong>Crispy Dosas</strong><span>Authentic Jayvi's flavours</span></a>
-        <a class="meal-card" href="#products"><img src="images/With-Hot-Rice-&-Ghee.webp" alt="Hot rice and ghee"><strong>Hot Rice + Ghee</strong><span>Comfort in every bite</span></a>
-        <a class="meal-card" href="#products"><img src="images/Loved-by-Kids.webp" alt="Loved by kids"><strong>Loved by Kids</strong><span>Made for family meals</span></a>
-        <a class="meal-card" href="#products"><img src="images/Perfect-for-Families.webp" alt="Perfect for families"><strong>Family Meals</strong><span>Made for every family meal</span></a>
-        <a class="meal-card" href="#products"><img src="images/Taste-You-Can-Trust.webp" alt="Taste you can trust"><strong>Taste You Can Trust</strong><span>Purely traditional</span></a>
-      </div>
-    </section>
-
-    <section class="section reviews" id="reviews">
-      <div class="section-heading"><div><p class="eyebrow">CUSTOMER LOVE</p><h2>Loved by our customers.</h2></div></div>
-      <div class="review-row">
-        <article><b>★★★★★</b><p>“It was nice, perfect & tasty.”</p><strong>— Prateeksha</strong></article>
-        <article><b>★★★★★</b><p>“Best Authentic Taste! The Peanut chutney is rich and nutty, while the Flaxseed is savoury and comforting.”</p><strong>— Praveen Yandigeri</strong></article>
-        <article><b>★★★★★</b><p>“Both chutney pudis are very tasty, homely and comforting.”</p><strong>— Bhoomika</strong></article>
-      </div>
-    </section>
-  </main>
-
-  <footer class="footer">
-    <div class="footer-main">
-      <div class="footer-brand">
-        <img src="images/logo.svg" alt="Jayvi Foods">
-        <p>Jayvi's brings authentic Karnataka flavours to modern families through traditional recipes, premium ingredients and homemade care.</p>
-        <div class="socials">
-          <a href="https://instagram.com/jayvifoods" target="_blank" rel="noopener">Instagram</a>
-          <a href="https://wa.me/918861981003" target="_blank" rel="noopener">WhatsApp</a>
-          <a href="mailto:jayvifoods@gmail.com">Email</a>
-        </div>
-      </div>
-      <div>
-        <h3>Quick links</h3>
-        <a href="#home">Home</a><a href="#products">Products</a><a href="legal.html#about">Our Story</a><a href="#meals">Every Meal</a><a href="#reviews">Testimonials</a>
-      </div>
-      <div>
-        <h3>Contact</h3>
-        <a href="tel:+918861981003">+91 88619 81003</a>
-        <a href="mailto:jayvifoods@gmail.com">jayvifoods@gmail.com</a>
-        <span>Karnataka, India</span>
-      </div>
-      <div class="compliance">
-        <h3>Business details</h3>
-        <div class="fssai-badge"><span>FSSAI</span><small>Lic No. 21226177001087</small></div>
-        <span>UDYAM Registered MSME</span>
-        <small>UDYAM-KR-03-0681597</small>
-      </div>
-    </div>
-    <div class="footer-legal">
-      <span>© 2026 Jayvi Foods. All Rights Reserved.</span>
-      <span><a href="legal.html#privacy">Privacy</a> · <a href="legal.html#terms">Terms</a> · <a href="legal.html#shipping">Shipping</a> · <a href="legal.html#refund">Refunds</a></span>
-    </div>
-  </footer>
-
-  <a class="whatsapp" href="https://wa.me/918861981003" target="_blank" rel="noopener" aria-label="Chat on WhatsApp">◔</a>
-
-  <aside class="drawer" id="cartDrawer" aria-hidden="true">
-    <div class="drawer-head"><h2>Your bag</h2><button class="close-btn" data-close="cartDrawer">×</button></div>
-    <div class="drawer-body" id="cartBody"></div>
-    <div class="drawer-foot"><div><span>Subtotal</span><strong id="cartTotal">₹0</strong></div><button class="btn btn-gold full" id="checkoutBtn">Continue to checkout →</button></div>
-  </aside>
-
-  <div class="overlay" id="overlay"></div>
-
-  <dialog class="product-dialog" id="productDialog">
-    <button class="dialog-close" id="productDialogClose">×</button>
-    <div id="productDialogBody"></div>
-  </dialog>
-
-  <dialog class="checkout-dialog" id="checkoutDialog">
-    <button class="dialog-close" id="checkoutClose">×</button>
-    <div class="checkout-inner">
-      <p class="eyebrow">CHECKOUT</p><h2>Almost there.</h2>
-      <p class="muted">Your order details are saved on this device in this static version.</p>
-      <form id="checkoutForm">
-        <input required name="name" placeholder="Full name">
-        <input required name="phone" inputmode="tel" placeholder="Mobile number">
-        <textarea required name="address" rows="3" placeholder="Delivery address"></textarea>
-        <div class="pin-row"><input required name="pincode" inputmode="numeric" maxlength="6" placeholder="Pincode"><button type="button" id="verifyPin">Verify</button></div>
-        <p id="pinMessage" class="pin-message"></p>
-        <button class="btn btn-gold full" type="submit">Place order →</button>
-      </form>
-    </div>
-  </dialog>
-
-  <dialog class="success-dialog" id="successDialog">
-    <div class="success-icon">✓</div>
-    <p class="eyebrow">ORDER RECEIVED</p>
-    <h2>Yay! Your Jayvi order is in.</h2>
-    <p id="orderMessage">We've saved your order successfully.</p>
-    <button class="btn btn-gold full" id="successClose">Continue shopping</button>
-  </dialog>
-
-  <script src="app.js?v=29.0" defer></script>
-</body>
-</html>
+  <div class="mobile-menu" id="mobileMenu" aria-hidden="true"><a href="#find">Find your favourite</a><a href="#products">Products</a><a href="#story">Our Story</a><a href="#meals">Every Meal</a><a href="#reviews">Reviews</a><button id="mobileAccount">My Jayvi</button><a href="legal.html">Legal & Policies</a></div>
+</header>
+<main>
+<section class="hero"><div class="hero-copy"><p class="eyebrow">JAYVI FOODS</p><h1>Traditional flavour.<br><em>Everyday joy.</em></h1><p class="hero-text">Authentic Karnataka flavours made for modern family meals — simple, comforting and full of tradition.</p><div class="hero-actions"><a class="btn btn-gold" href="#products">Shop now →</a><a class="text-link" href="#find">Find your favourite</a></div></div><div class="hero-media"><img src="images/hero/jayvi-products.webp" alt="Jayvi Foods products"></div></section>
+<section class="trust-strip"><div><strong>Free delivery</strong><span>Above ₹599</span></div><div><strong>Freshly packed</strong><span>Made for everyday meals</span></div><div><strong>Traditional flavours</strong><span>From Jayvi's kitchen</span></div><div><strong>Need help?</strong><span><a href="https://wa.me/918861981003" target="_blank" rel="noopener">Chat with Jayvi's team</a></span></div></section>
+<section class="section find-section" id="find"><div class="section-heading"><div><p class="eyebrow">FIND YOUR FAVOURITE</p><h2>Something for every Jayvi mood.</h2></div><div class="catalog-tools"><label class="search-box"><span>⌕</span><input id="searchInput" type="search" placeholder="Find your favourite" autocomplete="off"></label><select id="sortSelect" aria-label="Sort products"><option value="popular">Popular</option><option value="price-low">Price: low</option><option value="price-high">Price: high</option><option value="name">Name</option></select></div></div><div class="category-chips" id="categoryChips"></div><div class="favourite-strip" id="favouriteStrip"></div></section>
+<section class="section" id="products"><div class="section-heading"><div><p class="eyebrow">SHOP JAYVI'S BESTSELLERS</p><h2>Bestsellers</h2></div><a class="text-link" href="#find">Filter & find →</a></div><div class="product-grid" id="productGrid"></div></section>
+<section class="story section" id="story"><div class="story-card"><p class="eyebrow">OUR STORY</p><h2>From a home kitchen to your everyday table.</h2><p>Jayvi Foods brings authentic Karnataka flavours to modern families through traditional recipes, carefully chosen ingredients and homemade care.</p><a class="btn btn-outline" href="legal.html#about">Read our story →</a></div></section>
+<section class="section" id="meals"><div class="section-heading"><div><p class="eyebrow">MADE FOR EVERY MEAL</p><h2>Good with the food you already love.</h2><p class="section-intro">Simple pairings to help you choose what to enjoy with the food already on your table.</p></div></div><div class="meal-grid" id="mealGrid"></div></section>
+<section class="section reviews" id="reviews"><div class="section-heading"><div><p class="eyebrow">CUSTOMER LOVE</p><h2>Loved by our customers.</h2></div><a class="btn btn-outline" id="googleReviewLink" href="https://www.google.com/search?q=Jayvi+Foods+reviews" target="_blank" rel="noopener">Read & review us on Google ↗</a></div><div class="review-row"><article><b>★★★★★</b><p>“It was nice, perfect & tasty.”</p><strong>— Prateeksha</strong></article><article><b>★★★★★</b><p>“Best Authentic Taste! The Peanut chutney is rich and nutty, while the Flaxseed is savoury and comforting.”</p><strong>— Praveen Yandigeri</strong></article><article><b>★★★★★</b><p>“Both chutney pudis are very tasty, homely and comforting.”</p><strong>— Bhoomika</strong></article></div></section>
+</main>
+<footer class="footer"><div class="footer-main"><div class="footer-brand"><img src="images/brand/jayvi-foods-logo.webp" alt="Jayvi Foods"><p>Jayvi's brings authentic Karnataka flavours to modern families through traditional recipes, premium ingredients and homemade care.</p><div class="socials"><a href="https://instagram.com/jayvifoods" target="_blank" rel="noopener">Instagram</a><a href="https://wa.me/918861981003" target="_blank" rel="noopener">WhatsApp</a><a href="mailto:jayvifoods@gmail.com">Email</a><a id="footerGoogle" href="https://www.google.com/search?q=Jayvi+Foods+reviews" target="_blank" rel="noopener">Google Reviews</a></div></div><div><h3>Quick links</h3><a href="#home">Home</a><a href="#find">Find your favourite</a><a href="#products">Products</a><a href="legal.html#about">Our Story</a><a href="#meals">Every Meal</a><a href="#reviews">Reviews</a></div><div><h3>Contact</h3><a href="tel:+918861981003">+91 88619 81003</a><a href="mailto:jayvifoods@gmail.com">jayvifoods@gmail.com</a><span>Karnataka, India</span></div><div class="compliance"><h3>Business details</h3><div class="fssai-badge"><img src="images/compliance/fssai-logo.png" alt="FSSAI"><small>Lic. No. 21226177001087</small></div><span>UDYAM Registered MSME</span><small>UDYAM-KR-03-0681597</small></div></div><div class="footer-legal"><span>© 2026 Jayvi Foods. All Rights Reserved.</span><span><a href="legal.html#privacy">Privacy</a> · <a href="legal.html#terms">Terms</a> · <a href="legal.html#shipping">Shipping</a> · <a href="legal.html#refund">Refunds</a> · <small>Storefront build 30.0</small></span></div></footer>
+<a class="whatsapp" href="https://wa.me/918861981003" target="_blank" rel="noopener" aria-label="Chat on WhatsApp">◔</a>
+<aside class="drawer" id="cartDrawer" aria-hidden="true"><div class="drawer-head"><h2>Your bag</h2><button class="close-btn" id="cartClose" aria-label="Close cart">×</button></div><div class="drawer-body" id="cartBody"></div><div class="drawer-foot"><div><span>Subtotal</span><strong id="cartTotal">₹0</strong></div><button class="btn btn-gold full" id="checkoutBtn">Continue to checkout →</button></div></aside>
+<div class="overlay" id="overlay"></div>
+<dialog class="product-dialog" id="productDialog"><button class="dialog-close" id="productDialogClose">×</button><div id="productDialogBody"></div></dialog>
+<dialog class="checkout-dialog" id="checkoutDialog"><button class="dialog-close" id="checkoutClose">×</button><div class="checkout-inner"><p class="eyebrow">CHECKOUT</p><h2>Almost there.</h2><p class="muted">Enter your delivery details. This static build saves test orders on this device only.</p><form id="checkoutForm"><input required name="name" placeholder="Full name"><input required name="phone" inputmode="tel" placeholder="Mobile number"><textarea required name="address" rows="3" placeholder="Delivery address"></textarea><div class="pin-row"><input required name="pincode" inputmode="numeric" maxlength="6" placeholder="Pincode"><button type="button" id="verifyPin">Verify</button></div><p id="pinMessage" class="pin-message"></p><button class="btn btn-gold full" type="submit">Place order →</button></form></div></dialog>
+<dialog class="success-dialog" id="successDialog"><div class="success-icon">✓</div><p class="eyebrow">ORDER RECEIVED</p><h2>Yay! Your Jayvi order is in.</h2><p id="orderMessage">We've saved your order successfully.</p><button class="btn btn-gold full" id="successClose">Continue shopping</button></dialog>
+<dialog class="account-dialog" id="accountDialog"><button class="dialog-close" id="accountClose">×</button><div class="account-inner" id="accountBody"></div></dialog>
+<script src="app.js?v=30.0" defer></script>
+</body></html>

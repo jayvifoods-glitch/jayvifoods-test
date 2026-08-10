@@ -1,19 +1,17 @@
-# Jayvi Foods V29.0
+# Jayvi Foods — V30
 
-Clean static frontend consolidation candidate.
+Static storefront baseline built from the complete current Git project.
 
-## Files
-- `index.html` — main storefront
-- `style.css` — responsive design system
-- `app.js` — storefront/cart/gallery/checkout interaction
-- `legal.html` — legal + business information
-- `VERSION.txt`
-- `V29-INSTALL.txt`
+## V30 priorities
+- Real repository assets only
+- Rigid responsive mobile/desktop layout
+- Working announcement slider
+- Product galleries with 1 / N indicator
+- Favourites and Find your favourite discovery
+- My Jayvi local account experience
+- Cart / checkout / success flow
+- Google Reviews link
+- FSSAI + UDYAM footer information
+- Clear meal-pairing section
 
-## Existing repository assets
-Keep the current `images/` folder and existing admin files.
-
-## Important
-This package deliberately does not introduce a database, Google Maps API,
-payment gateway, or server-side order storage. Those are planned for the
-production data/API phase after the UI is frozen.
+This remains a static frontend. Browser-local storage is used for test cart, favourites, local account and test orders. Production data storage, Google Maps API, payment gateway and secure authentication are intentionally not added in V30.

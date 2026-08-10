@@ -1,305 +1,72 @@
-/* Jayvi Foods V29.0 — one small, event-driven frontend layer */
+/* Jayvi Foods V30.0 — rigid static storefront baseline. */
 (() => {
   "use strict";
-
-  const VERSION = "29.0";
-  const CART_KEY = "jayvi_cart_v29";
-  const ORDER_KEY = "jayvi_orders_v29";
-
-  const products = [
-    {
-      id:"peanut",
-      name:"Peanut Chutney",
-      category:"Chutney Powders",
-      desc:"Rich, nutty and comforting.",
-      rating:"4.8 · 18 reviews",
-      badge:"BESTSELLER",
-      variants:[
-        {size:"200g",price:155,mrp:199},
-        {size:"400g",price:249,mrp:299}
-      ],
-      images:[
-        "images/Peanut-Chutney.webp",
-        "images/Peanut-Chutney-2.webp",
-        "images/Peanut-Chutney-3.webp",
-        "images/Peanut-Chutney-4.webp"
-      ]
-    },
-    {
-      id:"flaxseed",
-      name:"Flaxseed Chutney",
-      category:"Chutney Powders",
-      desc:"A distinctive traditional flavour.",
-      rating:"4.8 · 12 reviews",
-      badge:"BESTSELLER",
-      variants:[
-        {size:"200g",price:155,mrp:199},
-        {size:"400g",price:249,mrp:299}
-      ],
-      images:[
-        "images/Flaxseed-Chutney.webp",
-        "images/Flaxseed-Chutney-2.webp",
-        "images/Flaxseed-Chutney-3.webp",
-        "images/Flaxseed-Chutney-4.webp"
-      ]
-    },
-    {
-      id:"pudi",
-      name:"Idli Dosa Pudi",
-      category:"Breakfast",
-      desc:"The everyday breakfast companion.",
-      rating:"4.8 · 10 reviews",
-      badge:"POPULAR",
-      variants:[
-        {size:"200g",price:155,mrp:199},
-        {size:"400g",price:249,mrp:299}
-      ],
-      images:[
-        "images/Idli-Dosa-Pudi.webp",
-        "images/Idli-Dosa-Pudi-2.webp",
-        "images/Idli-Dosa-Pudi-3.webp",
-        "images/Idli-Dosa-Pudi-4.webp"
-      ]
-    },
-    {
-      id:"combo",
-      name:"Traditional Duo",
-      category:"Combo",
-      desc:"Peanut + Flaxseed together at ₹289.",
-      rating:"4.9 · customer favourite",
-      badge:"COMBO",
-      variants:[{size:"2 × 200g",price:289,mrp:398}],
-      images:[
-        "images/Traditional-Duo.webp",
-        "images/Traditional-Duo-2.webp",
-        "images/Traditional-Duo-3.webp",
-        "images/Traditional-Duo-4.webp"
-      ]
-    }
+  const VERSION="30.0", CART_KEY="jayvi_cart_v30", ORDER_KEY="jayvi_orders_v30", FAV_KEY="jayvi_favourites_v30", USER_KEY="jayvi_user_v30";
+  const GOOGLE_REVIEWS_URL="https://www.google.com/search?q=Jayvi+Foods+reviews";
+  const products=[
+    {id:"peanut",name:"Peanut Chutney",category:"Chutney Powders",desc:"Rich, nutty and comforting.",rating:"4.8 · 18 reviews",badge:"BESTSELLER",variants:[{size:"200g",price:155,mrp:199},{size:"400g",price:249,mrp:299}],images:["images/products/peanut/hero.webp","images/gallery/peanut-front.svg","images/gallery/peanut-back.svg","images/gallery/peanut-serving.svg"]},
+    {id:"flaxseed",name:"Flaxseed Chutney",category:"Chutney Powders",desc:"A distinctive traditional flavour.",rating:"4.8 · 12 reviews",badge:"BESTSELLER",variants:[{size:"200g",price:155,mrp:199},{size:"400g",price:249,mrp:299}],images:["images/products/flaxseed/hero.webp","images/gallery/flaxseed-front.svg","images/gallery/flaxseed-back.svg","images/gallery/flaxseed-serving.svg"]},
+    {id:"pudi",name:"Idli Dosa Pudi",category:"Breakfast",desc:"The everyday breakfast companion.",rating:"4.8 · 10 reviews",badge:"POPULAR",variants:[{size:"200g",price:155,mrp:199},{size:"400g",price:249,mrp:299}],images:["images/products/pudi/hero.webp","images/gallery/pudi-front.svg","images/gallery/pudi-back.svg","images/gallery/pudi-serving.svg"]},
+    {id:"combo",name:"Traditional Duo",category:"Combo",desc:"Peanut + Flaxseed together at ₹289.",rating:"4.9 · customer favourite",badge:"COMBO",variants:[{size:"2 × 200g",price:289,mrp:398}],images:["images/combos/traditional-duo.webp"]},
+    {id:"puffora",name:"Puffora",category:"Snacks",desc:"A crunchy Jayvi snack for anytime munching.",rating:"New · Jayvi favourite",badge:"NEW",variants:[{size:"200g",price:109,mrp:149}],images:["images/products/puffora/hero.webp","images/gallery/puffora-front.svg","images/gallery/puffora-back.svg","images/gallery/puffora-serving.svg"]}
   ];
+  const meals=[
+    {title:"Soft Idlis",text:"Try Idli Dosa Pudi with warm idlis and a little ghee.",product:"pudi",image:"images/gallery/pudi-serving.svg"},
+    {title:"Crispy Dosas",text:"Peanut Chutney makes a classic dosa companion.",product:"peanut",image:"images/gallery/peanut-serving.svg"},
+    {title:"Hot Rice + Ghee",text:"Flaxseed Chutney brings a traditional flavour to rice.",product:"flaxseed",image:"images/gallery/flaxseed-serving.svg"},
+    {title:"Loved by Kids",text:"Puffora is made for easy anytime munching.",product:"puffora",image:"images/gallery/puffora-serving.svg"},
+    {title:"Family Meals",text:"Keep the Traditional Duo ready for shared meals.",product:"combo",image:"images/combos/traditional-duo.webp"},
+    {title:"Taste You Can Trust",text:"Choose the flavour that fits your everyday table.",product:"peanut",image:"images/products/peanut/hero.webp"}
+  ];
+  const announcements=[
+    {label:"FREE SHIPPING",text:"Above ₹599",target:"#products"},
+    {label:"PURELY TRADITIONAL",text:"Simply Delicious",target:"#story"},
+    {label:"FRESHLY PACKED",text:"For everyday meals",target:"#meals"},
+    {label:"SHOP JAYVI FOODS",text:"Find your favourite",target:"#find"}
+  ];
+  let cart=loadJSON(CART_KEY,[]), favourites=loadJSON(FAV_KEY,[]), user=loadJSON(USER_KEY,null), selectedVariants=Object.fromEntries(products.map(p=>[p.id,0]));
+  const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+  function loadJSON(k,f){try{return JSON.parse(localStorage.getItem(k))??f}catch(e){return f}}
+  function saveJSON(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+  function money(n){return `₹${Number(n).toLocaleString("en-IN")}`}
+  function esc(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
+  function findProduct(id){return products.find(p=>p.id===id)}
 
-  let cart = loadJSON(CART_KEY, []);
-  let selectedVariants = Object.fromEntries(products.map(p => [p.id, 0]));
-  let activeProduct = null;
-
-  const $ = s => document.querySelector(s);
-  const $$ = s => [...document.querySelectorAll(s)];
-
-  function loadJSON(key, fallback) {
-    try { return JSON.parse(localStorage.getItem(key)) || fallback; }
-    catch (_) { return fallback; }
+  function initAnnouncements(){
+    const track=$("#announcementTrack"); track.innerHTML=announcements.map((a,i)=>`<a href="${a.target}" class="announcement-item" data-ann="${i}"><strong>${a.label}</strong><span>${a.text}</span></a>`).join("");
+    let index=0,timer=null,startX=0,moving=false;
+    const show=i=>{index=(i+announcements.length)%announcements.length;track.style.transform=`translateX(-${index*100}%)`};
+    const next=()=>show(index+1); const start=()=>{clearInterval(timer);timer=setInterval(next,3400)}; start();
+    track.addEventListener("touchstart",e=>{startX=e.touches[0].clientX;moving=true;clearInterval(timer)},{passive:true});
+    track.addEventListener("touchend",e=>{if(!moving)return;const dx=e.changedTouches[0].clientX-startX;if(Math.abs(dx)>40)show(index+(dx<0?1:-1));moving=false;start()},{passive:true});
+    track.addEventListener("mouseenter",()=>clearInterval(timer));track.addEventListener("mouseleave",start);
   }
-  function saveJSON(key, value) {
-    try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
+  function mediaHTML(p,detail=false){return `<div class="${detail?"detail-gallery":"product-media"}" data-gallery="${p.id}"><div class="media-track">${p.images.map((src,i)=>`<div class="media-item"><img src="${src}" alt="${esc(p.name)} image ${i+1}" loading="${i?'lazy':'eager'}"></div>`).join("")}</div><span class="media-count">1 / ${p.images.length}</span></div>`}
+  function setupGallery(track,counter){if(!track||!counter)return;const update=()=>{const w=track.clientWidth||1;const i=Math.min(track.children.length,Math.max(1,Math.round(track.scrollLeft/w)+1));counter.textContent=`${i} / ${track.children.length}`};track.addEventListener("scroll",update,{passive:true});track.addEventListener("wheel",e=>{if(Math.abs(e.deltaY)>Math.abs(e.deltaX)){track.scrollLeft+=e.deltaY;e.preventDefault()}},{passive:false});update()}
+  function isFav(id){return favourites.includes(id)}
+  function toggleFav(id){favourites=isFav(id)?favourites.filter(x=>x!==id):[...favourites,id];saveJSON(FAV_KEY,favourites);renderProducts();renderFavourites()}
+  function cardHTML(p){const vi=selectedVariants[p.id]||0,v=p.variants[vi],save=v.mrp-v.price;return `<article class="product-card" data-id="${p.id}"><div class="media-wrap">${mediaHTML(p)}<button class="fav-btn ${isFav(p.id)?"active":""}" data-fav="${p.id}" aria-label="${isFav(p.id)?"Remove from favourites":"Add to favourites"}">${isFav(p.id)?"♥":"♡"}</button></div><div class="product-body"><span class="badge">${p.badge}</span><div class="eyebrow">${p.category}</div><h3>${esc(p.name)}</h3><div class="rating">★★★★★ <span>${esc(p.rating)}</span></div><p class="desc">${esc(p.desc)}</p><div class="variants">${p.variants.map((x,i)=>`<button class="variant ${i===vi?"active":""}" data-variant="${i}">${esc(x.size)}</button>`).join("")}</div><div class="price-row"><strong class="price">${money(v.price)}</strong><span class="mrp">${money(v.mrp)}</span><span class="saving">Save ${money(save)}</span></div><div class="product-actions"><button data-action="add">Add to cart</button><button class="buy" data-action="buy">Buy now</button></div></div></article>`}
+  function renderProducts(){const q=( $("#searchInput")?.value||"").trim().toLowerCase(),sort=$("#sortSelect")?.value||"popular";let list=products.filter(p=>`${p.name} ${p.category} ${p.desc}`.toLowerCase().includes(q));if(sort==="price-low")list.sort((a,b)=>a.variants[0].price-b.variants[0].price);if(sort==="price-high")list.sort((a,b)=>b.variants[0].price-a.variants[0].price);if(sort==="name")list.sort((a,b)=>a.name.localeCompare(b.name));$("#productGrid").innerHTML=list.map(cardHTML).join("");bindProducts()}
+  function bindProducts(){$$(".product-card").forEach(card=>{const id=card.dataset.id,p=findProduct(id);card.querySelectorAll(".variant").forEach(b=>b.addEventListener("click",()=>{selectedVariants[id]=Number(b.dataset.variant);renderProducts();renderFavourites()}));card.querySelector("[data-action=add]").addEventListener("click",()=>addToCart(p,selectedVariants[id]||0));card.querySelector("[data-action=buy]").addEventListener("click",()=>{addToCart(p,selectedVariants[id]||0);openCart()});card.querySelector(".product-media").addEventListener("click",()=>openProduct(p));card.querySelector("[data-fav]").addEventListener("click",e=>{e.stopPropagation();toggleFav(id)});setupGallery(card.querySelector(".media-track"),card.querySelector(".media-count"))})}
+  function renderCategories(){const cats=["All","Chutney Powders","Breakfast","Combo","Snacks"];$("#categoryChips").innerHTML=cats.map(c=>`<button class="category-chip ${c==="All"?"active":""}" data-cat="${c}">${c}</button>`).join("");$$('.category-chip').forEach(b=>b.addEventListener('click',()=>{$$('.category-chip').forEach(x=>x.classList.remove('active'));b.classList.add('active');const c=b.dataset.cat;$("#searchInput").value=c==="All"?"":c;renderProducts()}))}
+  function renderFavourites(){const list=favourites.map(findProduct).filter(Boolean);$("#favouriteStrip").innerHTML=list.length?list.map(p=>`<button class="favourite-card" data-fav-open="${p.id}"><img src="${p.images[0]}" alt="${esc(p.name)}"><span>${esc(p.name)}</span><small>${money(p.variants[0].price)} from</small></button>`).join(""):`<div class="favourite-empty"><strong>Your favourites will appear here.</strong><span>Tap ♡ on any product to save it for later.</span></div>`;$$('[data-fav-open]').forEach(b=>b.addEventListener('click',()=>openProduct(findProduct(b.dataset.favOpen))))}
+  function renderMeals(){$("#mealGrid").innerHTML=meals.map(m=>`<a class="meal-card" href="#products" data-meal="${m.product}"><div class="meal-image"><img src="${m.image}" alt="${esc(m.title)}"></div><strong>${esc(m.title)}</strong><span>${esc(m.text)}</span><em>Shop pairing →</em></a>`).join("");$$('[data-meal]').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();const p=findProduct(a.dataset.meal);if(p)openProduct(p)}))}
+  function addToCart(p,vi){const v=p.variants[vi],key=`${p.id}:${v.size}`,found=cart.find(x=>x.key===key);if(found)found.qty++;else cart.push({key,id:p.id,size:v.size,price:v.price,mrp:v.mrp,name:p.name,qty:1,image:p.images[0]});saveJSON(CART_KEY,cart);renderCart();updateCartCount();openCart()}
+  function updateCartCount(){$("#cartCount").textContent=cart.reduce((s,x)=>s+x.qty,0)}
+  function renderCart(){const body=$("#cartBody");if(!cart.length)body.innerHTML=`<div class="empty"><div class="empty-bag">▣</div><strong>Your bag is empty</strong><span>Add a Jayvi favourite to get started.</span></div>`;else{body.innerHTML=cart.map((x,i)=>`<div class="cart-line"><img src="${x.image}" alt="${esc(x.name)}"><div><h4>${esc(x.name)}</h4><p>${esc(x.size)} · ${money(x.price)}</p><div class="qty"><button data-i="${i}" data-q="-1">−</button><span>${x.qty}</span><button data-i="${i}" data-q="1">+</button></div></div><strong>${money(x.price*x.qty)}</strong></div>`).join("");$$('.qty button').forEach(b=>b.addEventListener('click',()=>{const i=+b.dataset.i;cart[i].qty+=+b.dataset.q;if(cart[i].qty<=0)cart.splice(i,1);saveJSON(CART_KEY,cart);renderCart();updateCartCount()}))}$("#cartTotal").textContent=money(cart.reduce((s,x)=>s+x.price*x.qty,0));$("#checkoutBtn").disabled=!cart.length}
+  function openCart(){$("#cartDrawer").classList.add("open");$("#overlay").classList.add("open");document.body.classList.add("locked");setTimeout(()=>$("#cartClose").focus(),50)}
+  function closeCart(){$("#cartDrawer").classList.remove("open");if(!$("#productDialog").open&&!$("#checkoutDialog").open&&!$("#accountDialog").open){$("#overlay").classList.remove("open");document.body.classList.remove("locked")}}
+  function openProduct(p){const vi=selectedVariants[p.id]||0,v=p.variants[vi],d=$("#productDialog");$("#productDialogBody").innerHTML=`<div class="product-detail">${mediaHTML(p,true)}<div class="detail-info"><p class="eyebrow">${p.category}</p><h2>${esc(p.name)}</h2><div class="rating">★★★★★ <span>${esc(p.rating)}</span></div><p class="desc">${esc(p.desc)}</p><div class="variants">${p.variants.map((x,i)=>`<button class="variant ${i===vi?"active":""}" data-detail-variant="${i}">${esc(x.size)}</button>`).join("")}</div><div class="price-row"><strong class="price">${money(v.price)}</strong><span class="mrp">${money(v.mrp)}</span><span class="saving">Save ${money(v.mrp-v.price)}</span></div><div class="product-actions"><button id="detailAdd">Add to cart</button><button class="buy" id="detailBuy">Buy now</button></div><button class="favourite-detail" id="detailFav">${isFav(p.id)?"♥ Remove from favourites":"♡ Add to favourites"}</button></div></div>`;d.showModal();$("#overlay").classList.add("open");document.body.classList.add("locked");setupGallery(d.querySelector('.media-track'),d.querySelector('.media-count'));$$('#productDialog .variant').forEach(b=>b.addEventListener('click',()=>{selectedVariants[p.id]=+b.dataset.detailVariant;openProduct(p)}));$("#detailAdd").addEventListener('click',()=>addToCart(p,selectedVariants[p.id]||0));$("#detailBuy").addEventListener('click',()=>{addToCart(p,selectedVariants[p.id]||0);d.close();openCart()});$("#detailFav").addEventListener('click',()=>toggleFav(p.id))}
+  function closeDialogs(){[$("#productDialog"),$("#checkoutDialog"),$("#successDialog"),$("#accountDialog")].forEach(d=>{if(d.open)d.close()});if(!$("#cartDrawer").classList.contains('open')){$("#overlay").classList.remove('open');document.body.classList.remove('locked')}}
+  function openAccount(){renderAccount();$("#accountDialog").showModal();$("#overlay").classList.add('open');document.body.classList.add('locked')}
+  function renderAccount(){const b=$("#accountBody");if(user){const orders=loadJSON(ORDER_KEY,[]).filter(o=>o.customer?.phone===user.phone);b.innerHTML=`<p class="eyebrow">MY JAYVI</p><h2>Welcome, ${esc(user.name)}.</h2><p class="account-phone">${esc(user.phone)}</p><div class="account-tabs"><button class="active">Orders</button><button>Favourites (${favourites.length})</button><button>Track order</button></div><div class="account-panel"><h3>Recent orders</h3>${orders.length?orders.slice(-5).reverse().map(o=>`<article class="order-mini"><strong>${esc(o.orderId)}</strong><span>${money(o.total)}</span><small>${new Date(o.createdAt).toLocaleDateString('en-IN')} · ${esc(o.status||'Order received')}</small></article>`).join(''):`<p class="muted">Your orders will appear here after checkout on this device.</p>`}</div><div class="account-actions"><a class="btn btn-gold" href="#products" id="accountShop">Shop now</a><button class="btn btn-outline" id="logoutBtn">Sign out</button></div>`;$("#logoutBtn").addEventListener('click',()=>{user=null;localStorage.removeItem(USER_KEY);renderAccount()});$("#accountShop").addEventListener('click',()=>{closeDialogs();location.hash='#products'})}else{b.innerHTML=`<p class="eyebrow">MY JAYVI</p><h2>Welcome to Jayvi.</h2><p class="muted">Sign in on this device to keep your favourites and see test orders together.</p><form id="accountForm" class="account-form"><input required name="name" placeholder="Your name"><input required name="phone" inputmode="tel" placeholder="Mobile number" maxlength="10"><button class="btn btn-gold full" type="submit">Continue →</button></form><p class="account-note">This static storefront uses local browser storage only. It is not a secure production login yet.</p><a href="help.html">Need help?</a>`;$("#accountForm").addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget);user={name:String(fd.get('name')).trim(),phone:String(fd.get('phone')).trim()};saveJSON(USER_KEY,user);renderAccount()})}}
+  function init(){initAnnouncements();renderCategories();renderProducts();renderFavourites();renderMeals();renderCart();updateCartCount();
+    $("#searchInput").addEventListener('input',renderProducts);$("#sortSelect").addEventListener('change',renderProducts);$("#cartBtn").addEventListener('click',openCart);$("#cartClose").addEventListener('click',closeCart);$("#accountBtn").addEventListener('click',openAccount);$("#mobileAccount").addEventListener('click',()=>{ $("#mobileMenu").classList.remove('open');openAccount() });$("#searchBtn").addEventListener('click',()=>{location.hash='#find';setTimeout(()=>$("#searchInput").focus(),150)});
+    $("#menuBtn").addEventListener('click',()=>{const m=$("#mobileMenu"),open=m.classList.toggle('open');$("#menuBtn").setAttribute('aria-expanded',String(open));m.setAttribute('aria-hidden',String(!open))});$$('#mobileMenu a').forEach(a=>a.addEventListener('click',()=>$("#mobileMenu").classList.remove('open')));
+    $("#checkoutBtn").addEventListener('click',()=>{if(!cart.length)return;$("#checkoutDialog").showModal();$("#overlay").classList.add('open');document.body.classList.add('locked')});$("#verifyPin").addEventListener('click',()=>{$("#pinMessage").textContent=/^\d{6}$/.test($("input[name=pincode]").value.trim())?'Pincode looks good.':'Please enter a valid 6-digit pincode.'});
+    $("#checkoutForm").addEventListener('submit',e=>{e.preventDefault();const fd=new FormData(e.currentTarget),orderId=`JF-${new Date().toISOString().slice(0,10).replaceAll('-','')}-${String(Date.now()).slice(-4)}`,order={orderId,createdAt:new Date().toISOString(),customer:Object.fromEntries(fd.entries()),items:cart,total:cart.reduce((s,x)=>s+x.price*x.qty,0),status:'Order received'};const orders=loadJSON(ORDER_KEY,[]);orders.push(order);saveJSON(ORDER_KEY,orders);if(!user){user={name:order.customer.name,phone:order.customer.phone};saveJSON(USER_KEY,user)}cart=[];saveJSON(CART_KEY,cart);renderCart();updateCartCount();$("#checkoutDialog").close();$("#successDialog").showModal();$("#orderMessage").textContent=`Order ${orderId} has been saved successfully on this device.`;e.currentTarget.reset()});
+    $("#productDialogClose").addEventListener('click',()=>{$("#productDialog").close();closeDialogs()});$("#checkoutClose").addEventListener('click',()=>{$("#checkoutDialog").close();closeDialogs()});$("#successClose").addEventListener('click',()=>{$("#successDialog").close();closeDialogs();location.hash='#products'});$("#accountClose").addEventListener('click',()=>{$("#accountDialog").close();closeDialogs()});$("#overlay").addEventListener('click',()=>{closeCart();closeDialogs()});document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeCart();closeDialogs()}});
+    [$("#googleReviewLink"),$("#footerGoogle")].forEach(a=>a.href=GOOGLE_REVIEWS_URL);
   }
-  function money(n){ return `₹${Number(n).toLocaleString("en-IN")}`; }
-  function escapeHTML(v){
-    return String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
-  }
-
-  function imageHTML(src, alt){
-    return `<img src="${src}" alt="${escapeHTML(alt)}" loading="lazy"
-      onerror="this.dataset.failed='1';this.closest('.media-item').classList.add('media-fallback')">`;
-  }
-
-  function mediaHTML(product, detail=false){
-    const items = product.images.map((src,i) =>
-      `<div class="media-item">${imageHTML(src, product.name + " image " + (i+1))}</div>`
-    ).join("");
-    return `<div class="${detail ? "detail-gallery" : "product-media"}">
-      <div class="media-track">${items}</div>
-      <span class="media-count">1 / ${product.images.length}</span>
-    </div>`;
-  }
-
-  function renderProducts(){
-    const q = ($("#searchInput")?.value || "").trim().toLowerCase();
-    const sort = $("#sortSelect")?.value || "popular";
-    let list = products.filter(p => `${p.name} ${p.category} ${p.desc}`.toLowerCase().includes(q));
-
-    if(sort === "price-low") list.sort((a,b)=>a.variants[0].price-b.variants[0].price);
-    if(sort === "price-high") list.sort((a,b)=>b.variants[0].price-a.variants[0].price);
-    if(sort === "name") list.sort((a,b)=>a.name.localeCompare(b.name));
-
-    $("#productGrid").innerHTML = list.length ? list.map(cardHTML).join("") :
-      `<div class="empty" style="grid-column:1/-1;color:#6f655d"><strong>No favourites found</strong>Try another search.</div>`;
-    bindProductEvents();
-  }
-
-  function cardHTML(p){
-    const vi = selectedVariants[p.id] || 0;
-    const v = p.variants[vi];
-    const save = v.mrp - v.price;
-    return `<article class="product-card" data-id="${p.id}">
-      ${mediaHTML(p)}
-      <div class="product-body">
-        <span class="badge">${p.badge}</span>
-        <div class="eyebrow">${p.category}</div>
-        <h3>${escapeHTML(p.name)}</h3>
-        <div class="rating">★★★★★ <span style="color:#7b7169">${escapeHTML(p.rating)}</span></div>
-        <p class="desc">${escapeHTML(p.desc)}</p>
-        <div class="variants">
-          ${p.variants.map((x,i)=>`<button class="variant ${i===vi?"active":""}" data-variant="${i}">${escapeHTML(x.size)}</button>`).join("")}
-        </div>
-        <div class="price-row"><strong class="price">${money(v.price)}</strong><span class="mrp">${money(v.mrp)}</span><span class="saving">Save ${money(save)}</span></div>
-        <div class="product-actions">
-          <button class="add" data-action="add">Add to cart</button>
-          <button class="buy" data-action="buy">Buy now</button>
-        </div>
-      </div>
-    </article>`;
-  }
-
-  function bindProductEvents(){
-    $$(".product-card").forEach(card => {
-      const id = card.dataset.id, p = products.find(x=>x.id===id);
-      card.querySelectorAll(".variant").forEach(btn => btn.addEventListener("click", e => {
-        selectedVariants[id] = Number(e.currentTarget.dataset.variant);
-        renderProducts();
-      }));
-      card.querySelector('[data-action="add"]').addEventListener("click", () => addToCart(p, selectedVariants[id] || 0));
-      card.querySelector('[data-action="buy"]').addEventListener("click", () => {
-        addToCart(p, selectedVariants[id] || 0);
-        openCart();
-      });
-      card.querySelector(".product-media").addEventListener("click", () => openProduct(p));
-      setupGallery(card.querySelector(".media-track"), card.querySelector(".media-count"));
-    });
-  }
-
-  function setupGallery(track, counter){
-    if(!track || !counter) return;
-    const update = () => {
-      const width = track.clientWidth || 1;
-      const index = Math.min(track.children.length, Math.max(1, Math.round(track.scrollLeft / width) + 1));
-      counter.textContent = `${index} / ${track.children.length}`;
-    };
-    track.addEventListener("scroll", update, {passive:true});
-    update();
-  }
-
-  function addToCart(p, vi){
-    const variant = p.variants[vi];
-    const key = `${p.id}:${variant.size}`;
-    const found = cart.find(x=>x.key===key);
-    if(found) found.qty += 1;
-    else cart.push({key,id:p.id,size:variant.size,price:variant.price,mrp:variant.mrp,name:p.name,qty:1,image:p.images[0]});
-    saveJSON(CART_KEY,cart); renderCart(); updateCartCount();
-    openCart();
-  }
-
-  function updateCartCount(){
-    $("#cartCount").textContent = cart.reduce((s,x)=>s+x.qty,0);
-  }
-
-  function renderCart(){
-    const body = $("#cartBody");
-    if(!cart.length){
-      body.innerHTML = `<div class="empty"><div style="font-size:45px;margin-bottom:15px">▣</div><strong>Your bag is empty</strong><span>Add a Jayvi favourite to get started.</span></div>`;
-    } else {
-      body.innerHTML = cart.map((x,i)=>`<div class="cart-line">
-        <img src="${x.image}" alt="${escapeHTML(x.name)}">
-        <div><h4>${escapeHTML(x.name)}</h4><p>${escapeHTML(x.size)} · ${money(x.price)}</p>
-          <div class="qty"><button data-i="${i}" data-q="-1">−</button><span>${x.qty}</span><button data-i="${i}" data-q="1">+</button></div>
-        </div><strong>${money(x.price*x.qty)}</strong>
-      </div>`).join("");
-      $$(".qty button").forEach(b=>b.addEventListener("click",()=>{
-        const i=Number(b.dataset.i); cart[i].qty += Number(b.dataset.q);
-        if(cart[i].qty<=0) cart.splice(i,1);
-        saveJSON(CART_KEY,cart); renderCart(); updateCartCount();
-      }));
-    }
-    $("#cartTotal").textContent = money(cart.reduce((s,x)=>s+x.price*x.qty,0));
-    $("#checkoutBtn").disabled = !cart.length;
-    $("#checkoutBtn").style.opacity = cart.length ? "1" : ".55";
-  }
-
-  function openCart(){
-    $("#cartDrawer").classList.add("open");
-    $("#cartDrawer").setAttribute("aria-hidden","false");
-    $("#overlay").classList.add("open");
-    document.body.classList.add("locked");
-  }
-  function closeCart(){
-    $("#cartDrawer").classList.remove("open");
-    $("#cartDrawer").setAttribute("aria-hidden","true");
-    if(!$("#productDialog").open && !$("#checkoutDialog").open) $("#overlay").classList.remove("open");
-    if(!$("#productDialog").open && !$("#checkoutDialog").open) document.body.classList.remove("locked");
-  }
-
-  function openProduct(p){
-    activeProduct = p;
-    const vi = selectedVariants[p.id] || 0, v = p.variants[vi];
-    $("#productDialogBody").innerHTML = `<div class="product-detail">
-      ${mediaHTML(p,true)}
-      <div class="detail-info">
-        <p class="eyebrow">${p.category}</p><h2>${escapeHTML(p.name)}</h2>
-        <div class="rating">★★★★★ <span style="color:#7b7169">${escapeHTML(p.rating)}</span></div>
-        <p class="desc">${escapeHTML(p.desc)}</p>
-        <div class="variants">${p.variants.map((x,i)=>`<button class="variant ${i===vi?"active":""}" data-detail-variant="${i}">${escapeHTML(x.size)}</button>`).join("")}</div>
-        <div class="price-row"><strong class="price">${money(v.price)}</strong><span class="mrp">${money(v.mrp)}</span><span class="saving">Save ${money(v.mrp-v.price)}</span></div>
-        <div class="product-actions"><button id="detailAdd">Add to cart</button><button class="buy" id="detailBuy">Buy now</button></div>
-      </div>
-    </div>`;
-    const d=$("#productDialog");
-    d.showModal();
-    $("#overlay").classList.add("open"); document.body.classList.add("locked");
-    setupGallery(d.querySelector(".media-track"),d.querySelector(".media-count"));
-    $$("#productDialog .variant").forEach(b=>b.addEventListener("click",()=>{selectedVariants[p.id]=Number(b.dataset.detailVariant);openProduct(p)}));
-    $("#detailAdd").addEventListener("click",()=>addToCart(p,selectedVariants[p.id]||0));
-    $("#detailBuy").addEventListener("click",()=>{addToCart(p,selectedVariants[p.id]||0);d.close();openCart()});
-  }
-
-  function closeDialogs(){
-    [$("#productDialog"),$("#checkoutDialog"),$("#successDialog")].forEach(d=>{if(d.open)d.close()});
-    if(!$("#cartDrawer").classList.contains("open")){$("#overlay").classList.remove("open");document.body.classList.remove("locked")}
-  }
-
-  function init(){
-    renderProducts(); renderCart(); updateCartCount();
-
-    $("#searchInput").addEventListener("input",renderProducts);
-    $("#sortSelect").addEventListener("change",renderProducts);
-    $("#cartBtn").addEventListener("click",openCart);
-    $("#checkoutBtn").addEventListener("click",()=>{
-      if(!cart.length)return;
-      $("#checkoutDialog").showModal(); $("#overlay").classList.add("open"); document.body.classList.add("locked");
-    });
-
-    $("#menuBtn").addEventListener("click",()=>{
-      const menu=$("#mobileMenu"), open=menu.classList.toggle("open");
-      $("#menuBtn").setAttribute("aria-expanded",String(open)); menu.setAttribute("aria-hidden",String(!open));
-    });
-    $$("#mobileMenu a").forEach(a=>a.addEventListener("click",()=>$("#mobileMenu").classList.remove("open")));
-
-    $("#accountBtn").addEventListener("click",()=>location.href="#story");
-    $("#searchBtn").addEventListener("click",()=>$("#searchInput").focus());
-
-    $("#overlay").addEventListener("click",()=>{closeCart();closeDialogs()});
-    $$(".close-btn").forEach(b=>b.addEventListener("click",closeCart));
-    $("#productDialogClose").addEventListener("click",()=>{$("#productDialog").close();closeDialogs()});
-    $("#checkoutClose").addEventListener("click",()=>{$("#checkoutDialog").close();closeDialogs()});
-    $("#successClose").addEventListener("click",()=>{$("#successDialog").close();closeDialogs();location.hash="#products"});
-
-    $("#verifyPin").addEventListener("click",()=>{
-      const pin=$('input[name="pincode"]').value.trim();
-      $("#pinMessage").textContent = /^\d{6}$/.test(pin) ? "Pincode looks good." : "Please enter a valid 6-digit pincode.";
-    });
-
-    $("#checkoutForm").addEventListener("submit",e=>{
-      e.preventDefault();
-      const fd=new FormData(e.currentTarget);
-      const orderId=`JF-${new Date().toISOString().slice(0,10).replaceAll("-","")}-${String(Date.now()).slice(-4)}`;
-      const order={orderId,createdAt:new Date().toISOString(),customer:Object.fromEntries(fd.entries()),items:cart,total:cart.reduce((s,x)=>s+x.price*x.qty,0)};
-      const orders=loadJSON(ORDER_KEY,[]);orders.push(order);saveJSON(ORDER_KEY,orders);
-      cart=[];saveJSON(CART_KEY,cart);renderCart();updateCartCount();
-      $("#checkoutDialog").close();$("#successDialog").showModal();
-      $("#orderMessage").textContent=`Order ${orderId} has been saved successfully on this device.`;
-      e.currentTarget.reset();
-    });
-
-    document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeCart();closeDialogs()}});
-  }
-
-  document.addEventListener("DOMContentLoaded",init);
+  document.addEventListener('DOMContentLoaded',init);
 })();
