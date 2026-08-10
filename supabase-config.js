@@ -15,21 +15,29 @@ const SUPABASE_ANON_KEY = 'sb_publishable_Ywh8mxQHi7-LpUu7bkdisQ_GmVFlVTO';
   ever see "mobile number" + "password") — this only changes what
   happens inside Supabase.
 
-  'phone'     — uses Supabase's native phone+password auth
-                (auth.users.phone). Simplest if your project's phone
-                auth works without extra setup.
-  'email-map' — maps the phone number to a synthetic internal email
-                (e.g. 9198xxxxxxx@customers.jayvifoods.internal) and
-                uses standard email+password auth underneath. Use this
-                if 'phone' mode gives you an error mentioning an SMS
-                provider (Supabase's phone auth provider requires one
-                to be configured even when you don't intend to send
-                real SMS — this has been a recurring point of friction
-                in Supabase's phone-auth flow).
+  RESOLVED (live-tested): 'phone' mode was tried against the real
+  project and Supabase rejected it with "Phone signups are disabled"
+  (native phone auth needs an SMS provider configured in Supabase even
+  when no real SMS is ever sent — the friction flagged earlier turned
+  out to be real). Switched to 'email-map', confirmed below.
 
-  Try 'phone' first. If registration fails with an SMS/provider error,
-  switch this one line to 'email-map' and re-deploy — no other code
-  changes needed, both paths are already implemented in app.js.
+  'phone'     — Supabase's native phone+password auth. Left in the code
+                for reference / in case an SMS provider is added later,
+                but not currently usable on this project without one.
+  'email-map' — CURRENT MODE. Maps the phone number to a synthetic
+                internal email (e.g. 9198xxxxxxx@customers.jayvifoods.internal)
+                and uses standard email+password auth underneath. No SMS
+                provider involved at all.
+
+  IMPORTANT for 'email-map' to work: in Supabase Dashboard →
+  Authentication → Providers → Email, turn OFF "Confirm email" (also
+  called "Enable email confirmations" in some dashboard versions).
+  These synthetic addresses end in .internal and can never receive a
+  real confirmation email — if confirmation is required, the customer
+  would be stuck unable to complete sign-in with no way to click a link
+  that can never arrive. With confirmation off, signUp() returns a
+  session immediately and the customer never sees or knows an email was
+  involved at all.
 */
-const AUTH_MODE = 'phone'; // 'phone' | 'email-map'
+const AUTH_MODE = 'email-map'; // 'phone' | 'email-map'
 const EMAIL_MAP_DOMAIN = 'customers.jayvifoods.internal';

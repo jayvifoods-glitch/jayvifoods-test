@@ -22,12 +22,23 @@ Both are safe to commit to Git (the anon key is meant to be public — RLS
 in `supabase_schema_phase1_v3.sql` controls what it can actually do).
 **Never** put the `service_role` key here or anywhere in this repo.
 
-### 2. Decide `AUTH_MODE` (also in `supabase-config.js`)
-Try `'phone'` first (native Supabase phone+password auth). If customer
-registration fails with an error mentioning an SMS provider, switch the
-one line to `'email-map'` and redeploy — no other code changes needed,
-both paths are already implemented. The customer-facing UI is identical
-either way; they only ever see "mobile number."
+### 2. `AUTH_MODE` (also in `supabase-config.js`) — RESOLVED
+Live-tested against the real project: native `'phone'` mode was
+rejected with "Phone signups are disabled" (Supabase's phone auth
+requires an SMS provider configured even for password-only use — the
+friction flagged earlier was real). **Switched to `'email-map'`,
+currently active.** One additional one-time Dashboard setting is
+required for this mode — see below.
+
+**Required Supabase Dashboard setting for `email-map` mode:**
+Authentication → Providers → Email → turn OFF "Confirm email" /
+"Enable email confirmations." The synthetic addresses this mode
+generates end in `.internal` and can never receive a real email — if
+confirmation is required, a customer's sign-up would leave them
+permanently unable to complete sign-in (waiting on a confirmation link
+that can never arrive). With confirmation off, `signUp()` returns a
+usable session immediately, exactly as the current registration flow
+expects.
 
 ### 3. Make sure the schema is already run
 This release assumes `supabase_schema_phase1_v3.sql` has already been
