@@ -1,23 +1,19 @@
-# Jayvi Foods V27.0
+# Jayvi Foods V28.0
 
-## Upload
-Replace the complete GitHub repository root with all files in this package, including `images/`. Do not mix older website files.
+Consolidated GitHub Pages website package.
 
-## GitHub Pages
+## Deployment
 - Branch: `main`
 - Folder: `/ (root)`
-- Confirm the latest Pages deployment is successful before testing.
+- Upload the complete package; do not mix files from older versions.
+- Keep the complete `images/` directory.
 
-## Cache busting
-The site references `style.css?v=27.0` and `app.js?v=27.0`.
-
-## V27.0 checks
-1. Mobile logo is centered and does not overlap actions.
-2. Page can scroll vertically when the finger starts over a product image.
-3. Product cards show multiple images with arrows, dots and `1 / N`.
-4. Desktop product cards also allow gallery navigation.
-5. Footer shows FSSAI licence, UDYAM registration and email.
-6. WhatsApp/Instagram/phone/email links work.
-7. Cart -> checkout still works.
-8. Checkout vertical scrolling and PIN/UTR controls work.
-9. Order confirmation remains modern and simple.
+## V28.0 checks
+- Mobile header logo is centred to the viewport.
+- Announcement strip supports horizontal touch scrolling and moderate automatic movement.
+- Cart sheet is above the sticky header and its close button remains visible.
+- Product media shows only `1 / N`; arrows and dot controls are removed.
+- Product media supports horizontal swipe; desktop supports mouse drag.
+- Savings are shown when MRP exceeds selling price.
+- FSSAI artwork/licence and UDYAM registration are shown in the footer.
+- Existing cart, checkout, admin and localStorage architecture remain unchanged.

@@ -1,0 +1,27 @@
+JAYVI FOODS — V28.0 WEBSITE RELEASE
+
+V28.0 is a consolidated UI/UX release based on the V27 production candidate.
+It keeps the existing catalogue, cart, checkout, admin and localStorage data architecture.
+
+V28.0 changes:
+- True viewport-centred mobile Jayvi Foods logo.
+- Compact modern horizontal announcement strip with swipe support and moderate auto-movement.
+- Cart sheet now always sits above the sticky mobile header and has a visible close button.
+- Product galleries use a clean 1 / N media counter only; arrows and dot/bubble controls removed.
+- Product images/videos remain horizontally swipeable on mobile and desktop; desktop mouse-drag support added.
+- Selling-price savings are always shown when MRP is higher.
+- Supplied FSSAI artwork added to the footer with licence number 21226177001087.
+- UDYAM Registered MSME and UDYAM-KR-03-0681597 retained.
+- Mobile footer compacted without removing business/contact information.
+- Desktop layout is otherwise preserved.
+
+UPLOAD RULE:
+Replace the complete repository contents with this package. Do not mix older V15–V27 files.
+Keep the entire images/ folder.
+
+GitHub Pages:
+- Branch: main
+- Folder: / (root)
+
+After upload, wait for the GitHub Pages deployment to show successful before testing.
+The HTML references style.css?v=28.0 and app.js?v=28.0.

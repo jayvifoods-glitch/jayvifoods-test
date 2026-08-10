@@ -96,8 +96,8 @@ function cardMediaMarkup(p){
     ? `<div class="cardMediaSlide cardVideo"><video controls playsinline preload="metadata" poster="${escapeHtml(m.poster||'')}"><source src="${escapeHtml(m.path)}" type="video/mp4"></video><span class="mediaLabel">Video</span></div>`
     : `<div class="cardMediaSlide"><img src="${escapeHtml(m.path||m)}" alt="${escapeHtml(p.name)} image ${i+1}" loading="${i?'lazy':'eager'}" onerror="this.closest('.cardMediaSlide')?.remove()"></div>`
   ).join('');
- const controls=count>1?`<button type="button" class="galleryArrow galleryPrev" aria-label="Previous image" onclick="scrollCardGallery(this,-1);event.stopPropagation()">‹</button><button type="button" class="galleryArrow galleryNext" aria-label="Next image" onclick="scrollCardGallery(this,1);event.stopPropagation()">›</button><span class="galleryCount">1 / ${count}</span><div class="galleryDots">${media.map((_,i)=>`<button type="button" class="${i===0?'active':''}" aria-label="Image ${i+1}" onclick="jumpCardGallery(this,${i});event.stopPropagation()"></button>`).join('')}</div>`:'';
- return `<div class="cardMediaFrame"><div class="cardMediaScroller" data-count="${count}" aria-label="${escapeHtml(p.name)} product images">${slides}</div>${controls}</div>`;
+ const controls=count>1?`<span class="galleryCount" aria-label="${count} product media items">1 / ${count}</span>`:'';
+ return `<div class="cardMediaFrame"><div class="cardMediaScroller" data-count="${count}" aria-label="${escapeHtml(p.name)} product images and videos">${slides}</div>${controls}</div>`;
 }
 function getCardGalleryParts(btn){const frame=btn?.closest('.cardMediaFrame');return frame?{frame,scroller:frame.querySelector('.cardMediaScroller'),count:Math.max(1,Number(frame.querySelector('.cardMediaScroller')?.dataset.count||1))}:{};}
 function scrollCardGallery(btn,dir){const {scroller}=getCardGalleryParts(btn);if(!scroller)return;const w=scroller.clientWidth||1;scroller.scrollBy({left:dir*w,behavior:'smooth'});}
@@ -637,7 +637,7 @@ init();
 })();
 /* Jayvi Foods V20 — checkout stability + visible version */
 (function(){
-  const VERSION='20.0';
+  const VERSION='28.0';
   function setVersion(){
     const el=document.getElementById('siteVersion');
     if(el) el.textContent='Website v'+VERSION;
@@ -684,7 +684,7 @@ init();
    One event-driven layer. No polling loops or full-body mutation polling. */
 (function(){
   'use strict';
-  const VERSION='27.0';
+  const VERSION='28.0';
   const isMobile=()=>window.matchMedia('(max-width:760px)').matches;
   const $v=id=>document.getElementById(id);
 
@@ -1046,4 +1046,163 @@ init();
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});
   else init();
+})();
+
+/* =========================================================
+   JAYVI FOODS V28.0 — mobile app UX polish
+   ========================================================= */
+(function(){
+  'use strict';
+  const ready=fn=>document.readyState==='loading'
+    ?document.addEventListener('DOMContentLoaded',fn,{once:true}) : fn();
+  const isMobile=()=>window.matchMedia('(max-width:760px)').matches;
+
+  function setVersion(){
+    document.querySelectorAll('.siteVersion').forEach(el=>el.textContent='Website v28.0');
+    document.documentElement.dataset.jayviVersion='28.0';
+    document.body.dataset.jayviVersion='28.0';
+  }
+
+  function fixMobileHeader(){
+    if(!isMobile())return;
+    const nav=document.querySelector('header .nav');
+    const logo=document.querySelector('header .logo');
+    if(!nav||!logo)return;
+    nav.style.width='100%';
+    nav.style.maxWidth='none';
+    nav.style.paddingLeft='18px';
+    nav.style.paddingRight='18px';
+    nav.style.position='relative';
+    logo.style.position='absolute';
+    logo.style.left='50%';
+    logo.style.top='50%';
+    logo.style.transform='translate(-50%,-50%)';
+    logo.style.margin='0';
+    logo.style.width='82px';
+    logo.style.height='60px';
+    logo.style.display='flex';
+    logo.style.alignItems='center';
+    logo.style.justifyContent='center';
+    logo.style.zIndex='10';
+    const img=logo.querySelector('img');
+    if(img){img.style.width='76px';img.style.height='58px';img.style.objectFit='contain';img.style.objectPosition='center';}
+  }
+
+  function fixCartLayer(){
+    const o=document.getElementById('cartOverlay');
+    if(!o)return;
+    o.style.zIndex='50000';
+    const d=o.querySelector('.drawer');
+    if(d)d.style.zIndex='50001';
+    const c=o.querySelector('.drawerClose');
+    if(c){
+      c.style.position='fixed';
+      c.style.top='calc(12px + env(safe-area-inset-top))';
+      c.style.right='12px';
+      c.style.zIndex='50010';
+      c.style.width='44px';
+      c.style.height='44px';
+      c.style.borderRadius='50%';
+      c.style.background='#17100d';
+      c.style.color='#fff';
+      c.style.display='grid';
+      c.style.placeItems='center';
+      c.style.fontSize='26px';
+      c.style.lineHeight='1';
+      c.style.boxShadow='0 5px 18px rgba(0,0,0,.28)';
+    }
+  }
+
+  function setupAnnouncementTicker(){
+    const viewport=document.querySelector('.announcementViewport');
+    const track=document.getElementById('announcementTrack');
+    if(!viewport||!track||track.dataset.v28Ready)return;
+    track.dataset.v28Ready='1';
+    let paused=false,last=performance.now();
+    const speed= isMobile()?22:14; // px/sec: noticeable, not distracting
+    function tick(now){
+      const dt=Math.min(50,now-last); last=now;
+      if(!paused && track.scrollWidth>viewport.clientWidth){
+        track.scrollLeft += speed*(dt/1000);
+        const half=track.scrollWidth/2;
+        if(track.scrollLeft>=half) track.scrollLeft-=half;
+      }
+      requestAnimationFrame(tick);
+    }
+    const pause=()=>{paused=true;};
+    const resume=()=>{clearTimeout(track.__v28Resume);track.__v28Resume=setTimeout(()=>{paused=false;last=performance.now();},1800);};
+    viewport.addEventListener('pointerdown',pause,{passive:true});
+    viewport.addEventListener('pointerup',resume,{passive:true});
+    viewport.addEventListener('pointercancel',resume,{passive:true});
+    viewport.addEventListener('pointerleave',resume,{passive:true});
+    viewport.addEventListener('wheel',()=>{paused=true;resume();},{passive:true});
+    requestAnimationFrame(tick);
+  }
+
+  function setupDesktopGalleryDrag(){
+    document.querySelectorAll('.cardMediaScroller').forEach(s=>{
+      if(s.dataset.v28Drag)return;
+      s.dataset.v28Drag='1';
+      let down=false,startX=0,startScroll=0,moved=false;
+      s.addEventListener('pointerdown',e=>{
+        if(e.pointerType!=='mouse')return;
+        down=true;moved=false;startX=e.clientX;startScroll=s.scrollLeft;
+        s.setPointerCapture?.(e.pointerId);
+      });
+      s.addEventListener('pointermove',e=>{
+        if(!down||e.pointerType!=='mouse')return;
+        const dx=e.clientX-startX;
+        if(Math.abs(dx)>5)moved=true;
+        if(moved)s.scrollLeft=startScroll-dx;
+      });
+      const end=e=>{if(e.pointerType==='mouse')down=false;};
+      s.addEventListener('pointerup',end);s.addEventListener('pointercancel',end);
+      s.addEventListener('click',e=>{if(moved){e.preventDefault();e.stopPropagation();moved=false;}},{capture:true});
+    });
+  }
+
+  function refreshGalleryCount(){
+    document.querySelectorAll('.cardMediaFrame').forEach(frame=>{
+      const s=frame.querySelector('.cardMediaScroller'), c=frame.querySelector('.galleryCount');
+      if(!s||!c)return;
+      const count=Math.max(1,Number(s.dataset.count||1));
+      const idx=Math.max(0,Math.min(count-1,Math.round(s.scrollLeft/(s.clientWidth||1))));
+      c.textContent=`${idx+1} / ${count}`;
+    });
+  }
+
+  function setupGallery(){
+    document.querySelectorAll('.galleryArrow,.galleryDots').forEach(el=>el.remove());
+    document.querySelectorAll('.cardMediaScroller').forEach(s=>{
+      if(!s.dataset.v28Count){
+        s.dataset.v28Count='1';
+        s.addEventListener('scroll',()=>refreshGalleryCount(),{passive:true});
+      }
+    });
+    refreshGalleryCount();
+    setupDesktopGalleryDrag();
+  }
+
+  function ensureSavings(){
+    document.querySelectorAll('.productCard .price').forEach(price=>{
+      const current=price.querySelector('b'),mrp=price.querySelector('del');
+      if(!current||!mrp)return;
+      let save=price.querySelector('.v28Save');
+      const c=parseFloat((current.textContent||'').replace(/[^0-9.]/g,''));
+      const m=parseFloat((mrp.textContent||'').replace(/[^0-9.]/g,''));
+      if(!(m>c))return;
+      if(!save){save=document.createElement('em');save.className='v28Save';price.appendChild(save);}
+      const label=`Save ₹${Math.round(m-c).toLocaleString('en-IN')}`;
+      if(save.textContent!==label) save.textContent=label;
+      if(save.style.display!=='inline-flex') save.style.display='inline-flex';
+    });
+  }
+
+  function boot(){
+    setVersion();fixMobileHeader();fixCartLayer();setupAnnouncementTicker();setupGallery();ensureSavings();
+    const observer=new MutationObserver(()=>{setupGallery();ensureSavings();});
+    ['bestGrid','productGrid'].forEach(id=>{const el=document.getElementById(id);if(el)observer.observe(el,{childList:true,subtree:true});});
+    window.addEventListener('resize',()=>{fixMobileHeader();fixCartLayer();refreshGalleryCount();},{passive:true});
+  }
+  ready(boot);
 })();

@@ -1190,3 +1190,67 @@ html,body{overflow-x:hidden}
   .productCard .cardMediaScroller{height:100%}
   .galleryArrow{opacity:.92}
 }
+
+/* =========================================================
+   JAYVI FOODS V28.0 — polished mobile-app presentation
+   ========================================================= */
+.announcementViewport{width:100%;height:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;touch-action:pan-x;display:flex;align-items:center}
+.announcementViewport::-webkit-scrollbar{display:none}
+.announcementTrack{display:flex;align-items:center;width:max-content;min-width:100%;white-space:nowrap;will-change:scroll-position}
+.announcementTrack span{display:inline-flex;align-items:center;padding:0 18px;height:100%;font-size:10px;letter-spacing:.8px;font-weight:800;color:#bdb4ab}
+.announcementTrack span:first-child{color:#f0c85e}
+.announcementTrack span::after{content:'•';margin-left:18px;color:#5c4938}
+.announcementTrack span:last-child::after{content:''}
+
+/* The cart sheet must sit above the sticky header on every viewport. */
+#cartOverlay{z-index:50000!important}
+#cartOverlay .drawer{z-index:50001!important}
+#cartOverlay .drawerClose{position:fixed!important;top:calc(12px + env(safe-area-inset-top))!important;right:12px!important;z-index:50010!important;width:44px!important;height:44px!important;border-radius:50%!important;background:#17100d!important;color:#fff!important;display:grid!important;place-items:center!important;font-size:26px!important;line-height:1!important;box-shadow:0 5px 18px rgba(0,0,0,.28)!important}
+
+/* Product cards: clean gallery, only one compact count indicator. */
+.galleryArrow,.galleryDots{display:none!important}
+.galleryCount{top:10px!important;right:10px!important;padding:6px 9px!important;background:rgba(23,17,13,.86)!important;color:#fff8ef!important;border-radius:999px!important;font:800 11px/1 'DM Sans',sans-serif!important;letter-spacing:.03em!important;pointer-events:none!important}
+.cardMediaScroller{overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:none!important;touch-action:pan-x pan-y!important;overscroll-behavior-x:contain!important}
+.cardMediaScroller::-webkit-scrollbar{display:none!important}
+@media(min-width:761px){
+  .cardMediaScroller{cursor:grab!important}
+  .cardMediaScroller:active{cursor:grabbing!important}
+}
+
+/* Savings are always visible when an MRP is higher than the selling price. */
+.productCard .price .v28Save{display:inline-flex!important;color:#5e8159!important;font-size:12px!important;font-style:normal!important;font-weight:800!important;white-space:nowrap!important}
+
+/* Official FSSAI artwork supplied by Jayvi Foods. */
+.fssaiBadge{display:flex!important;align-items:center!important;justify-content:flex-start!important;width:92px!important;height:42px!important;padding:3px!important;border:0!important;border-radius:0!important;background:#fff!important;overflow:hidden!important}
+.fssaiBadge img{width:100%!important;height:100%!important;object-fit:contain!important}
+
+@media(max-width:760px){
+  /* Full-width nav gives the logo a true viewport centre. */
+  header .nav{width:100%!important;max-width:none!important;padding-left:18px!important;padding-right:18px!important;position:relative!important}
+  header .logo{left:50%!important;top:50%!important;transform:translate(-50%,-50%)!important;margin:0!important;width:82px!important;height:60px!important}
+  header .logo img{width:76px!important;height:58px!important;object-fit:contain!important;object-position:center!important}
+
+  /* Short, app-like announcement strip. */
+  .topbar{height:34px!important;min-height:34px!important;padding:0!important;font-size:9px!important}
+  .announcementTrack span{font-size:9px!important;padding:0 13px!important;letter-spacing:.65px!important}
+  .announcementTrack span::after{margin-left:13px!important}
+
+  /* Cart close is always above the sheet/header. */
+  #cartOverlay .drawerClose{top:calc(10px + env(safe-area-inset-top))!important;right:12px!important}
+
+  /* Compact footer: business information remains visible without a very long page. */
+  footer{padding-top:14px!important;padding-bottom:8px!important}
+  .footerGrid{grid-template-columns:1fr 1fr!important;gap:0 18px!important;align-items:start!important}
+  .footerGrid>div{padding:12px 0!important}
+  .footerBrand{grid-column:1/-1!important;display:flex!important;align-items:center!important;gap:12px!important}
+  .footerLogo,.footerLogo img{width:54px!important;height:54px!important}
+  .footerBrand p{font-size:11px!important;line-height:1.35!important}
+  .footerGrid b{font-size:12px!important}
+  .footerGrid a,.footerGrid p{font-size:11px!important;line-height:1.35!important;margin:4px 0!important}
+  .footerCompliance{grid-column:auto!important;border-top:0!important;margin-top:0!important;padding:12px 0 8px!important;min-width:0!important}
+  .footerCompliance>b{font-size:12px!important;margin-bottom:7px!important}
+  .footerCompliance p{font-size:10px!important;margin:3px 0!important}
+  .fssaiBadge{width:82px!important;height:36px!important;margin-bottom:5px!important}
+  .copyright{padding:10px 0!important;margin-top:4px!important;font-size:9px!important;display:flex!important;flex-wrap:wrap!important;gap:4px 10px!important}
+  .copyright span{display:inline!important;margin:0!important;font-size:9px!important}
+}
