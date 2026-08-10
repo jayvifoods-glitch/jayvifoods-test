@@ -1,13 +1,21 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jayvi Foods — Admin Portal</title><link rel="stylesheet" href="admin.css"></head>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jayvi Foods — Admin Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="admin.css?v=30.0">
+</head>
 <body>
 <aside>
-  <div class="adminBrand"><img src="images/brand/jayvi-foods-logo.webp" alt="Jayvi Foods"><small>ADMIN PORTAL</small></div>
+  <div class="adminBrand"><img src="images/brand/jayvi-foods-logo.webp" alt="Jayvi Foods"><small>Admin Portal</small></div>
   <button class="nav active" data-tab="dashboard">Dashboard</button>
   <button class="nav" data-tab="orders">Orders</button>
   <button class="nav" data-tab="customers">Customers</button>
   <button class="nav" data-tab="products">Products</button>
-  <button class="nav" data-tab="variants">Variants & sizes</button>
+  <button class="nav" data-tab="variants">Variants &amp; sizes</button>
   <button class="nav" data-tab="combos">Combos</button>
   <button class="nav" data-tab="categories">Categories</button>
   <button class="nav" data-tab="mealtags">Meal tags</button>
@@ -21,6 +29,7 @@
   <header><div><div class="eyebrow">JAYVI FOODS</div><h1 id="title">Dashboard</h1></div><div id="headerContext" class="headerContext"></div></header>
   <div id="app"></div>
 </main>
-<div id="modal" class="modalWrap"><div class="modal"><button class="x" onclick="closeModal()">×</button><div id="modalBody"></div></div></div><div id="toast" class="toast"></div>
-
-<script src="admin.js"></script></body></html>
+<div id="modal" class="modalWrap"><div class="modal"><button class="x" onclick="closeModal()">×</button><div id="modalBody"></div></div></div>
+<div id="toast" class="toast"></div>
+<script src="admin.js?v=30.0"></script>
+</body></html>

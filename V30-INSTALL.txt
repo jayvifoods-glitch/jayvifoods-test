@@ -1,33 +1,17 @@
-JAYVI FOODS — V30 INSTALL
+JAYVI FOODS — V30.0 WEBSITE RELEASE
 
-SOURCE OF TRUTH
-This package is built from the complete Git project supplied by the owner.
-Do not replace or delete the images/ folder.
+V30.0 is a full front-end redesign built on the existing V27/V28 catalogue,
+cart, checkout, admin and localStorage data architecture. See DEPLOY.md for
+the full list of design and bug-fix changes.
 
-UPLOAD / REPLACE
-Replace these files in the repository root:
-  index.html
-  app.js
-  style.css
-  VERSION.txt
-  V30-INSTALL.txt
+UPLOAD RULE:
+Replace the complete repository contents with this package. Do not mix
+older V15-V28 files.
+Keep the entire images/ folder.
 
-KEEP
-  images/
-  admin-login.html
-  admin.css
-  admin.html
-  admin.js
-  help.html
-  legal.html
-  DEPLOY.md
-  README.md
+GitHub Pages:
+- Branch: main
+- Folder: / (root)
 
-IMPORTANT
-1. GitHub Pages should deploy from main / root.
-2. Wait for the Pages deployment to show successful before testing.
-3. Test desktop and mobile in a fresh/incognito window.
-4. The storefront should show "Storefront build 30.0" in the footer for build verification.
-5. My Jayvi, favourites, cart and test orders are browser-local only in this static build.
-6. Google Reviews uses the configured fallback search URL until the exact Google Business review URL is supplied.
-7. No Google Maps API is included yet.
+After upload, wait for the GitHub Pages deployment to show successful
+before testing. index.html references style.css?v=30.0 and app.js?v=30.0.

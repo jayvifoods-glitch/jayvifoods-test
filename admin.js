@@ -191,8 +191,6 @@ window.announcementForm=function(index=-1){
  window._announcementDraft=s;renderAnnouncementTarget();
 };
 window.saveAnnouncement=function(i){const type=document.getElementById('aAction').value,target=document.getElementById('aTarget')?.value||'';const s={id:data.announcements[i]?.id||('ann-'+Date.now().toString(36)),label:document.getElementById('aLabel').value.trim(),title:document.getElementById('aTitle').value.trim(),em:document.getElementById('aEm').value.trim(),text:document.getElementById('aText').value.trim(),image:document.getElementById('aImage').value.trim(),showPrice:document.getElementById('aShowPrice').checked,actionType:type,actionTarget:target,productId:type==='product'?target:'',comboId:type==='combo'?target:'',active:document.getElementById('aActive').checked,order:Number(document.getElementById('aOrder').value||1)};if(i<0)data.announcements.push(s);else data.announcements[i]=s;persist();closeModal();render()};
-/* Consistent review controls. */
-const oldReviewForm=window.reviewForm;window.reviewForm=function(i=-1){oldReviewForm(i)};
 function polish(){document.querySelectorAll('.cardActions button').forEach(b=>b.classList.add('v22-action'));document.querySelectorAll('.reviewAdmin article,.announcementAdmin article').forEach(x=>x.classList.add('v22-admin-card'))}
 new MutationObserver(polish).observe(document.getElementById('app'),{childList:true,subtree:true});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',polish);else polish();
