@@ -360,15 +360,28 @@ function renderSearch(){
 }
 
 /* ---------- Customers / auth ---------- */
-function getCustomers(){try{return JSON.parse(localStorage.getItem('jayviCustomersV14')||'[]')}catch{return []}}
-function saveCustomers(x){localStorage.setItem('jayviCustomersV14',JSON.stringify(x))}
-function getSession(){try{return JSON.parse(localStorage.getItem('jayviSessionV14')||'null')}catch{return null}}
-function setSession(x){if(x)localStorage.setItem('jayviSessionV14',JSON.stringify(x));else localStorage.removeItem('jayviSessionV14')}
-async function hashPassword(p){
-  if(window.crypto?.subtle){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(p));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
-  return btoa(unescape(encodeURIComponent(p)));
+/* ---------- Supabase client + auth (customers, addresses, session) ---------- */
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let currentUser = null;   // { id, email/phone } from supabase auth
+let currentProfile = null; // row from public.profiles
+
+function phoneToAuthEmail(phone){ return phone + '@' + EMAIL_MAP_DOMAIN; }
+
+async function getSessionUser(){
+  const {data} = await sb.auth.getSession();
+  return data?.session?.user || null;
 }
-function openAccount(){const s=getSession();$('accountContent').innerHTML=s?accountView(s):authView('login');$('accountOverlay').classList.add('open');document.body.classList.add('modalOpen')}
+async function refreshProfile(){
+  if(!currentUser){ currentProfile = null; return null; }
+  const {data, error} = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  if(error){ currentProfile = null; return null; }
+  currentProfile = data;
+  return data;
+}
+function openAccount(){
+  $('accountOverlay').classList.add('open');document.body.classList.add('modalOpen');
+  if(currentUser) renderAccountView(); else $('accountContent').innerHTML = authView('login');
+}
 function closeAccount(){$('accountOverlay').classList.remove('open');document.body.classList.remove('modalOpen')}
 function openAuth(m){$('accountContent').innerHTML=authView(m)}
 function authView(mode){
@@ -381,62 +394,152 @@ function authView(mode){
     ${mode==='register'?'<label>Confirm password *<input id="authPass2" type="password" minlength="6" required></label>':''}
     <button class="btn gold full">${mode==='login'?'Sign in':'Create account'} →</button>
   </form>
+  <div id="authError" class="tiny" style="color:var(--danger)"></div>
   <div class="authSwitch">${mode==='login'?`New here? <button onclick="openAuth('register')">Create account</button>`:`Already have an account? <button onclick="openAuth('login')">Sign in</button>`}</div>
   ${mode==='login'?'<button class="textBtn" onclick="showOtpUnavailable()">Use OTP instead</button>':''}
   <div class="guestNote">You can always <button onclick="closeAccount();openCheckout()">continue as guest</button> without creating an account.</div>`;
 }
 function showOtpUnavailable(){showToast('OTP login is not available yet. Password login is currently enabled.')}
+function authErr(msg){ const el=$('authError'); if(el) el.textContent=msg; else showToast(msg); }
+
 async function registerSubmit(e){
   e.preventDefault();
   const name=$('authName').value.trim(), phone=$('authId').value.trim(), p=$('authPass').value, p2=$('authPass2').value;
-  if(!/^\d{10}$/.test(phone)){showToast('Enter a valid 10-digit mobile number');return}
-  if(p!==p2){showToast('Passwords do not match');return}
-  const customers=getCustomers();
-  if(customers.some(c=>c.phone===phone)){showToast('An account already exists with this mobile number');return}
-  const user={id:'CUS'+Date.now().toString(36),name,login:phone,phone,passwordHash:await hashPassword(p),createdAt:new Date().toISOString(),address:null};
-  customers.push(user);saveCustomers(customers);setSession({id:user.id});
+  if(!/^\d{10}$/.test(phone)){authErr('Enter a valid 10-digit mobile number');return}
+  if(p!==p2){authErr('Passwords do not match');return}
+
+  let signUpResult;
+  if(AUTH_MODE==='phone'){
+    signUpResult = await sb.auth.signUp({ phone, password:p, options:{ data:{ name, phone } } });
+  }else{
+    signUpResult = await sb.auth.signUp({ email:phoneToAuthEmail(phone), password:p, options:{ data:{ name, phone } } });
+  }
+  const {data, error} = signUpResult;
+  if(error){
+    authErr(/already|exists|registered/i.test(error.message) ? 'An account already exists with this mobile number' : error.message);
+    return;
+  }
+  currentUser = data.user;
+  // Some Supabase configs require confirmation before a session exists yet.
+  if(!data.session){
+    const {data:signInData, error:signInErr} = AUTH_MODE==='phone'
+      ? await sb.auth.signInWithPassword({ phone, password:p })
+      : await sb.auth.signInWithPassword({ email:phoneToAuthEmail(phone), password:p });
+    if(signInErr){ authErr('Account created — please sign in.'); openAuth('login'); return; }
+    currentUser = signInData.user;
+  }
+  await refreshProfile();
   // Associate any existing guest orders placed with the same phone number.
-  const os=getOrders();let changed=false;
-  os.forEach(o=>{if(!o.customerId&&String(o.phone||o.guestContact||'').replace(/\D/g,'')===phone){o.customerId=user.id;changed=true}});
-  if(changed)saveOrders(os);
-  showToast('Account created');openAccount();
+  try{ await sb.rpc('link_guest_orders_to_me'); }catch{}
+  showToast('Account created');
+  renderAccountView();
 }
 async function loginSubmit(e){
   e.preventDefault();
-  const login=$('authId').value.trim(), p=await hashPassword($('authPass').value);
-  const u=getCustomers().find(c=>c.phone===login&&c.passwordHash===p);
-  if(!u){showToast('Mobile number or password is incorrect');return}
-  setSession({id:u.id});showToast('Signed in');openAccount();
+  const phone=$('authId').value.trim(), p=$('authPass').value;
+  const {data, error} = AUTH_MODE==='phone'
+    ? await sb.auth.signInWithPassword({ phone, password:p })
+    : await sb.auth.signInWithPassword({ email:phoneToAuthEmail(phone), password:p });
+  if(error){ authErr('Mobile number or password is incorrect'); return; }
+  currentUser = data.user;
+  await refreshProfile();
+  showToast('Signed in');
+  renderAccountView();
 }
-function accountView(s){
-  const u=getCustomers().find(c=>c.id===s.id);
-  const orders=getOrders().filter(o=>o.customerId===s.id||String(o.phone||o.guestContact||'')===String(u?.phone||''));
-  return `<div class="eyebrow">MY JAYVI</div><h2>Welcome, ${escapeHtml((u?.name||'Customer').split(' ')[0])}.</h2>
-    <p class="muted">${escapeHtml(u?.phone||u?.login||'')}</p>
-    <div class="accountTabs"><button class="active">Orders</button><button onclick="trackOrderPrompt()">Track order</button><button onclick="setSession(null);openAccount()">Sign out</button></div>
-    <div class="orders">${orders.length?orders.map(o=>`<button class="order" type="button" onclick="trackKnownOrder('${escapeHtml(o.id)}','${escapeHtml(o.phone||o.guestContact||'')}')"><b>${escapeHtml(o.id)}</b><span>${escapeHtml(o.date||'')}</span><strong>${money(o.total)}</strong><small>${escapeHtml(o.status)}</small></button>`).join(''):'<div class="empty">No orders yet.</div>'}</div>`;
+async function signOut(){
+  await sb.auth.signOut();
+  currentUser = null; currentProfile = null;
+  openAuth('login');
+}
+
+async function renderAccountView(activeTab='orders'){
+  if(!currentUser){ $('accountContent').innerHTML = authView('login'); return; }
+  if(!currentProfile) await refreshProfile();
+  $('accountContent').innerHTML = `<div class="eyebrow">MY JAYVI</div><h2>Welcome, ${escapeHtml((currentProfile?.name||'Customer').split(' ')[0])}.</h2>
+    <p class="muted">${escapeHtml(currentProfile?.phone||'')}</p>
+    <div class="accountTabs">
+      <button class="${activeTab==='orders'?'active':''}" onclick="renderAccountView('orders')">Orders</button>
+      <button class="${activeTab==='addresses'?'active':''}" onclick="renderAccountView('addresses')">Addresses</button>
+      <button onclick="trackOrderPrompt()">Track order</button>
+      <button onclick="signOut()">Sign out</button>
+    </div>
+    <div id="accountTabBody">Loading…</div>`;
+  if(activeTab==='addresses') renderAddressTab(); else renderOrdersTab();
+}
+async function renderOrdersTab(){
+  const body = $('accountTabBody'); if(!body) return;
+  const {data, error} = await sb.from('orders')
+    .select('order_number,status,total,created_at')
+    .order('created_at',{ascending:false});
+  if(error){ body.innerHTML = `<div class="empty">Could not load orders: ${escapeHtml(error.message)}</div>`; return; }
+  body.innerHTML = `<div class="orders">${(data||[]).length ? data.map(o=>
+    `<button class="order" type="button" onclick="trackKnownOrder('${escapeHtml(o.order_number)}','${escapeHtml(currentProfile?.phone||'')}')"><b>${escapeHtml(o.order_number)}</b><span>${new Date(o.created_at).toLocaleDateString('en-IN')}</span><strong>${money(o.total)}</strong><small>${escapeHtml(o.status)}</small></button>`
+  ).join('') : '<div class="empty">No orders yet.</div>'}</div>`;
+}
+async function renderAddressTab(){
+  const body = $('accountTabBody'); if(!body) return;
+  const {data, error} = await sb.from('customer_addresses').select('*').order('is_default',{ascending:false});
+  if(error){ body.innerHTML = `<div class="empty">Could not load addresses: ${escapeHtml(error.message)}</div>`; return; }
+  body.innerHTML = `<div class="orders">${(data||[]).map(a=>`
+    <div class="order" style="cursor:default">
+      <div><b>${escapeHtml(a.line1)}</b><span>${escapeHtml(a.city)}, ${escapeHtml(a.state)} – ${escapeHtml(a.pincode)}${a.landmark?' · '+escapeHtml(a.landmark):''}</span></div>
+      <button class="textBtn" type="button" onclick="deleteAddress('${a.id}')">Remove</button>
+    </div>`).join('') || '<div class="empty">No saved addresses yet.</div>'}</div>
+    <form onsubmit="addAddress(event)" style="margin-top:14px">
+      <label>Address line *<input id="newAddrLine1" required placeholder="House/flat, street"></label>
+      <label>Landmark<input id="newAddrLandmark"></label>
+      <div class="two"><label>City *<input id="newAddrCity" required></label><label>State *<input id="newAddrState" required></label></div>
+      <label>PIN code *<input id="newAddrPin" required maxlength="6" pattern="[0-9]{6}"></label>
+      <button class="btn light full" type="submit">Save address</button>
+    </form>`;
+}
+async function addAddress(e){
+  e.preventDefault();
+  const {error} = await sb.from('customer_addresses').insert({
+    customer_id: currentUser.id,
+    line1: $('newAddrLine1').value.trim(),
+    landmark: $('newAddrLandmark').value.trim() || null,
+    city: $('newAddrCity').value.trim(),
+    state: $('newAddrState').value.trim(),
+    pincode: $('newAddrPin').value.trim(),
+    is_default: true
+  });
+  if(error){ showToast('Could not save address: '+error.message); return; }
+  showToast('Address saved');
+  renderAddressTab();
+}
+async function deleteAddress(id){
+  const {error} = await sb.from('customer_addresses').delete().eq('id', id);
+  if(error){ showToast('Could not remove address: '+error.message); return; }
+  renderAddressTab();
 }
 
 /* ---------- Checkout ---------- */
-function openCheckout(){
+async function openCheckout(){
   if(CONFIG.store.vacationMode){showToast(CONFIG.store.vacationMessage||'Ordering is temporarily paused.');return}
   if(!cart.length){showToast('Your cart is empty');return}
   closeCart();
-  const t=cartTotals(), s=getSession(), u=s?getCustomers().find(c=>c.id===s.id):null;
+  const t=cartTotals();
+  const u = currentUser ? currentProfile : null;
+  let savedAddr = null;
+  if(currentUser){
+    const {data} = await sb.from('customer_addresses').select('*').order('is_default',{ascending:false}).limit(1);
+    savedAddr = data?.[0] || null;
+  }
   const upi=CONFIG.store.upiEnabled!==false, cod=CONFIG.store.codEnabled!==false;
   $('checkoutContent').innerHTML=`<div class="checkoutGrid">
     <div>
       <div class="eyebrow">CHECKOUT</div><h2>Delivery details.</h2>
       <p class="muted">Choose how you want to pay. You can order as a guest or sign in.</p>
       <div class="deliveryEstimate"><b>Estimated delivery: ${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days</b><span>Delivery time varies by location and PIN code.</span></div>
-      <div class="guestChoice"><b>Checkout as ${u?'signed-in customer':'guest'}</b>${u?`<button onclick="setSession(null);openCheckout()">Use guest</button>`:'<button onclick="closeCheckout();openAccount()">Sign in / register</button>'}</div>
+      <div class="guestChoice"><b>Checkout as ${u?'signed-in customer':'guest'}</b>${u?`<button onclick="signOut().then(openCheckout)">Use guest</button>`:'<button onclick="closeCheckout();openAccount()">Sign in / register</button>'}</div>
       <form id="checkoutForm" onsubmit="placeOrder(event)">
         <label>Full name *<input id="coName" value="${escapeHtml(u?.name||'')}" required></label>
         <label>Mobile *<input id="coPhone" value="${escapeHtml(u?.phone||'')}" required pattern="[0-9]{10}" maxlength="10"></label>
         <label>Search delivery location <span class="tiny">Google Maps ready</span><div id="placeBox"></div></label>
-        <label>Address *<textarea id="coAddress" required rows="3" placeholder="House / flat, street, landmark"></textarea></label>
-        <div class="two"><label>City *<input id="coCity" required></label><label>State *<input id="coState" required></label></div>
-        <div class="pinRow"><label>PIN code *<input id="coPin" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6"></label><button type="button" class="btn outline" onclick="verifyPincode()">Verify PIN</button></div>
+        <label>Address *<textarea id="coAddress" required rows="3" placeholder="House / flat, street, landmark">${escapeHtml(savedAddr?.line1||'')}</textarea></label>
+        <div class="two"><label>City *<input id="coCity" required value="${escapeHtml(savedAddr?.city||'')}"></label><label>State *<input id="coState" required value="${escapeHtml(savedAddr?.state||'')}"></label></div>
+        <div class="pinRow"><label>PIN code *<input id="coPin" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" value="${escapeHtml(savedAddr?.pincode||'')}"></label><button type="button" class="btn outline" onclick="verifyPincode()">Verify PIN</button></div>
         <div id="pinStatus" class="pinStatus"></div>
         <label>Country<select id="coCountry" disabled><option value="IN">India</option></select></label>
         <div class="paymentChooser"><h3>Payment method</h3>
@@ -496,39 +599,57 @@ async function initPlaces(){
     mapsReady=true;
   }catch{ box.innerHTML='<input id="placeFallback" placeholder="Google Maps could not be loaded — enter address manually">'; }
 }
-function getOrders(){try{return JSON.parse(localStorage.getItem('jayviOrdersV14')||'[]')}catch{return []}}
-function saveOrders(x){localStorage.setItem('jayviOrdersV14',JSON.stringify(x))}
 function makeOrderNumber(){
   const d=new Date(), y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
-  const key=`jayviOrderSeq-${y}${m}${day}`, n=+(localStorage.getItem(key)||0)+1;
-  localStorage.setItem(key,String(n));
-  return `JF-${y}${m}${day}-${String(n).padStart(4,'0')}`;
+  // Client-generated, but must be safe against collisions across different
+  // devices/customers now that orders live in one shared database (a
+  // simple local daily counter, as used pre-Supabase, is no longer safe).
+  const suffix = Date.now().toString(36).slice(-4).toUpperCase() + Math.random().toString(36).slice(2,4).toUpperCase();
+  return `JF-${y}${m}${day}-${suffix}`;
 }
-function placeOrder(e){
+async function placeOrder(e){
   e.preventDefault();
   const pin=$('coPin').value.trim();
   if(!/^\d{6}$/.test(pin)){verifyPincode();showToast('Please verify your 6-digit PIN');return}
-  const t=cartTotals(), s=getSession(), u=s?getCustomers().find(c=>c.id===s.id):null;
-  const customerId=u?.id||null;
+  const t=cartTotals();
   const method=document.querySelector('input[name=paymentMethod]:checked')?.value||'upi';
-  const order={
-    id:makeOrderNumber(),date:new Date().toLocaleString('en-IN'),
-    estimatedDelivery:`${CONFIG.store.deliveryMinDays||4}-${CONFIG.store.deliveryMaxDays||8} days`,
-    customerId,guestContact:$('coPhone').value.trim(),customerName:$('coName').value.trim(),phone:$('coPhone').value.trim(),
-    address:$('coAddress').value.trim(),city:$('coCity').value.trim(),state:$('coState').value.trim(),country:'IN',pin,
-    items:structuredClone(cart),subtotal:t.sub,shipping:t.ship,total:t.total,
-    status:method==='upi'?'Payment verification pending':'Order received — COD',
-    payment:method==='upi'?'UPI QR — awaiting verification':'Cash on Delivery',paymentMethod:method,utr:'',
-    timeline:[{status:method==='upi'?'Payment verification pending':'Order received — COD',at:new Date().toISOString()}]
-  };
-  const os=getOrders(); os.unshift(order); saveOrders(os);
+  const items = cart.map(x=>{
+    const d=cartItemDetails(x);
+    return {
+      item_type: x.type, product_id: x.productId||null, variant_id: x.variantId||null, combo_id: x.comboId||null,
+      name: d.name, variant_label: d.label, unit_price: d.price, qty: x.qty, line_total: Math.round(d.price*x.qty*100)/100
+    };
+  });
+  const submitBtn = e.target.querySelector('button[type=submit]');
+  if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Placing order…'; }
+
+  let orderNumber = makeOrderNumber(), attempt = 0, result;
+  while(attempt < 2){
+    result = await sb.rpc('place_order', {
+      p_order_number: orderNumber,
+      p_guest_name: $('coName').value.trim(),
+      p_guest_phone: $('coPhone').value.trim(),
+      p_address_line1: $('coAddress').value.trim(),
+      p_address_city: $('coCity').value.trim(),
+      p_address_state: $('coState').value.trim(),
+      p_address_pincode: pin,
+      p_subtotal: t.sub, p_shipping: t.ship, p_total: t.total,
+      p_payment_method: method,
+      p_estimated_delivery: `${CONFIG.store.deliveryMinDays||4}-${CONFIG.store.deliveryMaxDays||8} days`,
+      p_items: items
+    });
+    if(!result.error || result.error.code !== '23505') break; // 23505 = unique_violation, retry with a new number
+    orderNumber = makeOrderNumber(); attempt++;
+  }
+  if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = 'Continue checkout'; }
+
+  if(result.error){ showToast('Could not place order: '+result.error.message); return; }
+
+  const phone = $('coPhone').value.trim(), name = $('coName').value.trim();
   cart=[]; saveCart();
   closeCheckout();
-  if(method==='upi') showUpiPayment(order); else showOrderSuccess(order);
-  if(customerId){
-    const customers=getCustomers(), cu=customers.find(c=>c.id===customerId);
-    if(cu){cu.address={line1:order.address,city:order.city,state:order.state,pincode:order.pin,landmark:''};saveCustomers(customers)}
-  }
+  const orderStub = { order_number: orderNumber, total: t.total, status: method==='upi'?'Payment verification pending':'Order received — COD', customerName:name, phone, estimated_delivery:`${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days` };
+  if(method==='upi') showUpiPayment(orderStub); else showOrderSuccess(orderStub);
   refreshProductViews(); renderCart();
 }
 function showUpiPayment(o){
@@ -537,22 +658,20 @@ function showUpiPayment(o){
     <p class="muted">Scan this QR with any UPI app. Your order will move to processing after we verify the payment.</p>${qr}
     <div class="upiMeta"><b>${escapeHtml(CONFIG.store.upiName||'Jayvi Foods')}</b>${CONFIG.store.upiId?`<span>UPI ID: ${escapeHtml(CONFIG.store.upiId)}</span>`:''}</div>
     <label>UPI transaction / UTR reference *<input id="utrInput" placeholder="Enter the reference after payment"></label>
-    <button class="btn gold full" onclick="submitUpiProof('${o.id}')">I have paid →</button>
-    <p class="tiny">Order ${o.id} · Payment verification pending</p></div>`;
+    <button class="btn gold full" onclick="submitUpiProof('${escapeHtml(o.order_number)}','${escapeHtml(o.phone)}')">I have paid →</button>
+    <p class="tiny">Order ${escapeHtml(o.order_number)} · Payment verification pending</p></div>`;
   $('accountOverlay').classList.add('open');document.body.classList.add('modalOpen');
 }
-function submitUpiProof(id){
+async function submitUpiProof(orderNumber, phone){
   const utr=$('utrInput')?.value.trim();
   if(!utr){showToast('Enter the UTR/reference number');return}
-  const os=getOrders(), o=os.find(x=>x.id===id); if(!o)return;
-  o.utr=utr; o.paymentStatus='Proof submitted — awaiting verification'; o.status='Payment verification pending';
-  o.timeline=(o.timeline||[]).concat({status:'Payment proof submitted',at:new Date().toISOString()});
-  saveOrders(os);
+  const {error} = await sb.rpc('submit_payment_proof', {p_order_number:orderNumber, p_phone:phone, p_utr:utr});
+  if(error){ showToast('Could not submit payment proof: '+error.message); return; }
   showToast('Payment proof submitted. Jayvi will verify it.');
-  showOrderSuccess(o);
+  showOrderSuccess({ order_number:orderNumber, phone, status:'Payment verification pending', total:null });
 }
 function showOrderSuccess(o){
-  $('accountContent').innerHTML=`<div class="successIcon"><i class="fa-solid fa-check"></i></div><div class="eyebrow">ORDER RECEIVED</div><h2>${escapeHtml(o.id)}</h2>
+  $('accountContent').innerHTML=`<div class="successIcon"><i class="fa-solid fa-check"></i></div><div class="eyebrow">ORDER RECEIVED</div><h2>${escapeHtml(o.order_number)}</h2>
     <p class="muted">${escapeHtml(o.status)}. We'll update the order status as it moves through fulfilment.</p>
     <div class="trackMini">${renderTimeline(o)}</div>
     <button class="btn gold full" onclick="closeAccount()">Continue shopping</button>`;
@@ -566,17 +685,18 @@ function renderTimeline(o){
 function trackOrderPrompt(){
   openAccount();
   $('accountContent').innerHTML=`<div class="eyebrow">TRACK ORDER</div><h2>Where is my order?</h2><p class="muted">Enter your order number and mobile number.</p>
-    <label>Order number<input id="trackId" placeholder="JF-YYYYMMDD-0001"></label>
+    <label>Order number<input id="trackId" placeholder="JF-YYYYMMDD-XXXXXX"></label>
     <label>Mobile<input id="trackPhone" maxlength="10"></label>
     <button class="btn gold full" onclick="trackOrder()">Track order →</button>`;
 }
-function trackKnownOrder(id,phone){
-  const norm=x=>String(x||'').replace(/[^a-z0-9]/gi,'').toUpperCase();
-  const o=getOrders().find(x=>norm(x.id)===norm(id)&&norm(x.phone||x.guestContact)===norm(phone));
-  if(!o){showToast('Order could not be found for this mobile number.');return}
-  $('accountContent').innerHTML=`<div class="eyebrow">ORDER ${escapeHtml(o.id)}</div><h2>${escapeHtml(o.status||'Order received')}</h2>
-    <p class="muted">${escapeHtml(o.customerName||'Customer')} · ${money(o.total)}</p>${renderTimeline(o)}
-    <div class="orderTrackNote">${o.trackingUrl?`Tracking: <a href="${escapeHtml(o.trackingUrl)}" target="_blank">Open courier tracking →</a><br>`:''}${o.deliveryPartner?`Courier: ${escapeHtml(o.deliveryPartner)}<br>`:''}Estimated delivery: ${escapeHtml(o.estimatedDelivery||'4–8 days')}.</div>`;
+async function trackKnownOrder(orderNumber, phone){
+  const {data, error} = await sb.rpc('track_guest_order', {p_order_number:orderNumber, p_phone:phone});
+  const o = data?.[0];
+  if(error || !o){showToast('Order could not be found for this mobile number.');return}
+  $('accountContent').innerHTML=`<div class="eyebrow">ORDER ${escapeHtml(o.order_number)}</div><h2>${escapeHtml(o.status||'Order received')}</h2>
+    <p class="muted">${money(o.total)}</p>${renderTimeline(o)}
+    <div class="orderTrackNote">${o.tracking_url?`Tracking: <a href="${escapeHtml(o.tracking_url)}" target="_blank">Open courier tracking →</a><br>`:''}${o.delivery_partner?`Courier: ${escapeHtml(o.delivery_partner)}<br>`:''}Estimated delivery: ${escapeHtml(o.estimated_delivery||'4–8 days')}.</div>`;
+  $('accountOverlay').classList.add('open');document.body.classList.add('modalOpen');
 }
 function trackOrder(){
   const id=$('trackId').value.trim(), phone=$('trackPhone').value.trim();
@@ -654,7 +774,7 @@ function setupAnnouncementTicker(){
 }
 
 /* ---------- Boot ---------- */
-function init(){
+async function init(){
   CONFIG=loadConfig();
   initOverlayDismissal();
   sync();
@@ -665,5 +785,16 @@ function init(){
   renderBest();renderCategories();renderProducts();renderCombos();renderMeal();renderReviews();renderCart();
   heroShow();startHero();enableHeroSwipe();setupAnnouncementTicker();
   applyVacation();
+
+  // Restore a persistent Supabase session (works across devices in the
+  // sense that signing in on any device authenticates against the same
+  // Supabase account — profile/orders/addresses always come from
+  // Supabase, never from this device's localStorage).
+  currentUser = await getSessionUser();
+  if(currentUser) await refreshProfile();
+  sb.auth.onAuthStateChange((_event, session) => {
+    currentUser = session?.user || null;
+    if(!currentUser) currentProfile = null;
+  });
 }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true}); else init();

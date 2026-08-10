@@ -8,29 +8,65 @@ mealTags:[
 {id:'vada',name:'Vada',enabled:true,order:9},{id:'curd-rice',name:'Curd Rice',enabled:true,order:10}
 ],
 reviews:[],pendingReviews:[]};
-if(localStorage.getItem('jayviAdminSessionV8')!=='active') location.href='admin-login.html';
+
+/* ---------- Supabase admin session ---------- */
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let adminUser = null, adminProfile = null;
+
+async function requireAdminSession(){
+  const {data} = await sb.auth.getSession();
+  const user = data?.session?.user;
+  if(!user){ location.href='admin-login.html'; return false; }
+  const {data:profile, error} = await sb.from('profiles').select('*').eq('id', user.id).single();
+  if(error || profile?.role !== 'admin'){
+    await sb.auth.signOut();
+    location.href='admin-login.html';
+    return false;
+  }
+  adminUser = user; adminProfile = profile;
+  return true;
+}
+
 let data=loadData(),tab='dashboard';
 const app=document.getElementById('app'), title=document.getElementById('title');
 const money=n=>'₹'+Number(n||0).toLocaleString('en-IN');
 function loadData(){try{const x=JSON.parse(localStorage.getItem(KEY)||'null');return x?mergeDefaults(x):structuredClone(CONFIG_FALLBACK)}catch{return structuredClone(CONFIG_FALLBACK)}}
 function mergeDefaults(x){const d=structuredClone(CONFIG_FALLBACK);Object.keys(x||{}).forEach(k=>d[k]=x[k]);d.store={...CONFIG_FALLBACK.store,...(x.store||{})};d.homepage={...CONFIG_FALLBACK.homepage,...(x.homepage||{})};d.categories=x.categories||d.categories;d.products=x.products||d.products;d.combos=x.combos||d.combos;d.announcements=x.announcements||d.announcements;d.mealTags=x.mealTags||d.mealTags;d.mealLabels=Object.fromEntries((d.mealTags||[]).map(t=>[t.id,t.name]));d.reviews=x.reviews||d.reviews;d.pendingReviews=x.pendingReviews||[];return d}
-function persist(){localStorage.setItem(KEY,JSON.stringify(data));toast('Saved to this browser prototype. Production will move this data to the Git-backed backend.')}
+function persist(){localStorage.setItem(KEY,JSON.stringify(data));toast('Catalogue/settings saved to this browser. Per the agreed architecture, catalogue and store configuration stay Git-managed — sync this out to your repo when ready.')}
 function toast(t){const x=document.getElementById('toast');x.textContent=t;x.classList.add('show');setTimeout(()=>x.classList.remove('show'),2300)}
-function logout(){localStorage.removeItem('jayviAdminSessionV8');location.href='admin-login.html'}
-function getOrders(){try{return JSON.parse(localStorage.getItem('jayviOrdersV14')||'[]')}catch{return []}}
-function getCustomers(){try{return JSON.parse(localStorage.getItem('jayviCustomersV14')||'[]')}catch{return []}}
-function saveOrders(x){localStorage.setItem('jayviOrdersV14',JSON.stringify(x))}
-function saveCustomers(x){localStorage.setItem('jayviCustomersV14',JSON.stringify(x))}
+async function logout(){await sb.auth.signOut();location.href='admin-login.html'}
+
+/* ---------- Orders & customers now come from Supabase, not localStorage ---------- */
+async function fetchOrders(){
+  const {data:orders, error} = await sb.from('orders').select('*, order_items(*)').order('created_at',{ascending:false});
+  if(error){ toast('Could not load orders: '+error.message); return []; }
+  return orders||[];
+}
+async function fetchOrder(orderNumber){
+  const {data:orders, error} = await sb.from('orders').select('*, order_items(*)').eq('order_number', orderNumber).single();
+  if(error) return null;
+  const {data:history} = await sb.from('order_status_history').select('*').eq('order_id', orders.id).order('created_at',{ascending:true});
+  orders.history = history||[];
+  return orders;
+}
+async function fetchCustomers(){
+  const {data:profiles, error} = await sb.from('profiles').select('*').eq('role','customer').order('created_at',{ascending:false});
+  if(error){ toast('Could not load customers: '+error.message); return []; }
+  return profiles||[];
+}
+
 function catName(id){return data.categories.find(c=>c.id===id)?.name||id||'Uncategorised'}
 function product(id){return data.products.find(p=>p.id===id)}
 function variant(pid,vid){return product(pid)?.variants?.find(v=>v.id===vid)}
 function esc(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function setTab(t){tab=t;document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));render()}
 document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
-function render(){title.textContent=tab==='variants'?'Variants & sizes':tab==='mealtags'?'Meal tags':tab==='settings'?'Store settings':tab[0].toUpperCase()+tab.slice(1);document.getElementById('headerContext').innerHTML=tab==='dashboard'?'<span class="livePill">Local prototype</span>':'';let h='';
- if(tab==='dashboard')h=dashboard();
- if(tab==='orders')h=ordersPage();
- if(tab==='customers')h=customersPage();
+async function render(){title.textContent=tab==='variants'?'Variants & sizes':tab==='mealtags'?'Meal tags':tab==='settings'?'Store settings':tab[0].toUpperCase()+tab.slice(1);document.getElementById('headerContext').innerHTML=tab==='dashboard'?'<span class="livePill">Connected to Supabase</span>':'';
+ app.innerHTML = '<div class="empty">Loading…</div>';
+ let h='';
+ if(tab==='dashboard')h=await dashboard();
+ if(tab==='orders')h=await ordersPage();
+ if(tab==='customers')h=await customersPage();
  if(tab==='products')h=productsPage();
  if(tab==='variants')h=variantsPage();
  if(tab==='combos')h=combosPage();
@@ -41,12 +77,46 @@ function render(){title.textContent=tab==='variants'?'Variants & sizes':tab==='m
  if(tab==='settings')h=settingsPage();
  app.innerHTML=h;
 }
-function dashboard(){const os=getOrders(),cs=getCustomers(),today=new Date().toLocaleDateString('en-IN');const todayOrders=os.filter(o=>String(o.date||'').includes(today));const sales=os.filter(o=>String(o.status||'').toLowerCase()!=='cancelled').reduce((s,o)=>s+Number(o.total||0),0);const todaySales=todayOrders.reduce((s,o)=>s+Number(o.total||0),0);const pending=os.filter(o=>/pending|received|preparing|packed|shipped|out for/i.test(o.status||'')).length;const delivered=os.filter(o=>String(o.status||'').toLowerCase().includes('delivered')).length;const top={};os.forEach(o=>(o.items||[]).forEach(i=>{const p=product(i.productId);const k=p?.name||i.comboId||'Combo';top[k]=(top[k]||0)+Number(i.qty||0)}));const topList=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,5);return `<section class="kpis"><article><small>ORDERS TODAY</small><b>${todayOrders.length}</b><span>${todaySales?money(todaySales):'No sales yet'}</span></article><article><small>TOTAL ORDERS</small><b>${os.length}</b><span>${delivered} delivered</span></article><article><small>SALES</small><b>${money(sales)}</b><span>All non-cancelled orders</span></article><article><small>ACTIVE CUSTOMERS</small><b>${cs.length}</b><span>Includes guests</span></article><article><small>PENDING ORDERS</small><b>${pending}</b><span>Need attention</span></article><article><small>FREE SHIPPING</small><b>${money(data.store.freeShippingThreshold)}</b><span>Configured threshold</span></article></section><div class="dashboardGrid"><section class="panel wide"><div class="panelHead"><div><h2>Latest orders</h2><p>Your operational view: customer, amount, payment and current status.</p></div><button class="gold" onclick="setTab('orders')">View all orders →</button></div>${os.length?`<div class="orderTable"><div class="orderHead"><span>Order</span><span>Customer</span><span>Amount</span><span>Payment</span><span>Status</span></div>${os.slice(0,10).map(o=>`<button class="orderLine" onclick="orderView('${esc(o.id)}')"><span><b>${esc(o.id)}</b><small>${esc(o.date||'')}</small></span><span><b>${esc(o.customerName||'Guest')}</b><small>${esc(o.phone||o.guestContact||'')}</small></span><strong>${money(o.total)}</strong><span>${esc(o.paymentMethod||'')}</span><span class="statusTag">${esc(o.status||'')}</span></button>`).join('')}</div>`:'<div class="empty">No orders yet. Orders placed on this browser will appear here.</div>'}</section><section class="panel"><div class="panelHead"><div><h2>Top products</h2><p>Based on local prototype orders.</p></div></div>${topList.length?topList.map(x=>`<div class="metricRow"><span>${esc(x[0])}</span><b>${x[1]} sold</b></div>`).join(''):'<div class="empty smallEmpty">No sales data yet.</div>'}</section><section class="panel"><div class="panelHead"><div><h2>Store operations</h2><p>Quick controls that affect ordering.</p></div><button class="outline" onclick="setTab('settings')">Open settings</button></div><div class="operation"><span>Vacation mode</span><b class="${data.store.vacationMode?'danger':'good'}">${data.store.vacationMode?'ON — ordering paused':'OFF — ordering open'}</b></div><div class="operation"><span>UPI</span><b class="good">${data.store.upiEnabled===false?'OFF':'ON'}</b></div><div class="operation"><span>COD</span><b>${data.store.codEnabled===false?'OFF':'ON'}</b></div><div class="operation"><span>Razorpay</span><b>${data.store.razorpayEnabled?'ON':'OFF'}</b></div><div class="operation"><span>OTP login</span><b>${data.store.otpEnabled?'ON':'OFF — future'}</b></div></section></div>`}
-function ordersPage(){const os=getOrders();return `<section class="panel"><div class="panelHead"><div><h2>Orders</h2><p>Guest and registered orders are shown together. Open an order for the full customer, payment and delivery view.</p></div><div class="filterPills"><button class="outline" onclick="render()">Refresh</button></div></div>${os.length?`<div class="orderTable fullTable"><div class="orderHead"><span>Order</span><span>Customer</span><span>Amount</span><span>Payment</span><span>Status</span></div>${os.map(o=>`<button class="orderLine" onclick="orderView('${esc(o.id)}')"><span><b>${esc(o.id)}</b><small>${esc(o.date||'')}</small></span><span><b>${esc(o.customerName||'Guest')}</b><small>${esc(o.phone||o.guestContact||'')}</small></span><strong>${money(o.total)}</strong><span>${esc(o.payment||o.paymentMethod||'')}</span><span class="statusTag">${esc(o.status||'')}</span></button>`).join('')}</div>`:'<div class="empty">No orders found.</div>'}</section>`}
-function orderView(id){const os=getOrders(),o=os.find(x=>x.id===id);if(!o)return;const timeline=(o.timeline||[]).map(t=>`<div class="timelineItem"><b>${esc(t.status)}</b><small>${new Date(t.at).toLocaleString('en-IN')}</small></div>`).join('');openModal(`<div class="eyebrow">ORDER</div><h2>${esc(o.id)}</h2><div class="detailColumns"><div><h3>Customer</h3><p><b>${esc(o.customerName||'Guest')}</b><br>${esc(o.phone||o.guestContact||'')}<br>${esc(o.email||'')}</p><h3>Delivery</h3><p>${esc(o.address||'')}<br>${esc(o.city||'')}, ${esc(o.state||'')} ${esc(o.pin||'')}<br>${esc(o.landmark||'')}</p></div><div><h3>Payment</h3><p>${esc(o.payment||o.paymentMethod||'')}<br>Status: <b>${esc(o.paymentStatus||'')}</b><br>UTR: ${esc(o.utr||'Not provided')}</p><h3>Items</h3>${(o.items||[]).map(i=>{const d=i.type==='combo'?data.combos.find(c=>c.id===i.comboId):product(i.productId);const v=i.type==='combo'?null:variant(i.productId,i.variantId);return `<div class="miniLine"><span>${esc(d?.name||'Item')} ${v?'· '+esc(v.label):''} × ${i.qty}</span><b>${money((v?.price||d?.price||0)*i.qty)}</b></div>`}).join('')}<div class="miniLine total"><span>Total</span><b>${money(o.total)}</b></div></div></div><div class="statusEditor"><label>Order status<select id="orderStatus"><option>Order received</option><option>Payment verification pending</option><option>Payment verified</option><option>Preparing</option><option>Packed</option><option>Shipped</option><option>Out for delivery</option><option>Delivered</option><option>Cancelled</option></select></label><label>Delivery partner<input id="deliveryPartner" value="${esc(o.deliveryPartner||'')}"></label><label>Tracking number<input id="trackingNumber" value="${esc(o.trackingNumber||'')}"></label><label>Tracking URL<input id="trackingUrl" value="${esc(o.trackingUrl||'')}"></label><button class="gold full" onclick="updateOrder('${esc(o.id)}')">Update order</button></div><div class="timeline"><h3>Order timeline</h3>${timeline||'<div class="empty smallEmpty">No timeline yet.</div>'}</div><div class="notificationBox"><b>Customer update</b><p>V12/V13 can prepare the customer-facing status. Automated WhatsApp delivery will be connected later through WhatsApp Business messaging.</p><button class="outline" onclick="manualWhatsApp('${esc(o.phone||o.guestContact||'')}','${esc(o.id)}')">Open WhatsApp update</button></div>`);document.getElementById('orderStatus').value=o.status||'Order received';}
-function updateOrder(id){const os=getOrders(),o=os.find(x=>x.id===id);if(!o)return;const ns=document.getElementById('orderStatus').value;o.deliveryPartner=document.getElementById('deliveryPartner').value.trim();o.trackingNumber=document.getElementById('trackingNumber').value.trim();o.trackingUrl=document.getElementById('trackingUrl').value.trim();if(ns!==o.status){o.status=ns;o.timeline=(o.timeline||[]).concat({status:ns,at:new Date().toISOString()})}saveOrders(os);closeModal();toast('Order updated');render()}
-function manualWhatsApp(phone,id){if(!phone){toast('Customer mobile number is missing');return}const msg=`Jayvi Foods order ${id}: Your order status has been updated. Please contact us if you need help.`;window.open('https://wa.me/'+phone.replace(/\D/g,'')+'?text='+encodeURIComponent(msg),'_blank')}
-function customersPage(){const cs=getCustomers(),os=getOrders();const guestPhones=new Set(os.filter(o=>!o.customerId).map(o=>o.phone||o.guestContact).filter(Boolean));const registered=cs.map(c=>({...c,type:'Registered'}));const guests=[...guestPhones].filter(p=>!cs.some(c=>c.phone===p)).map((p,i)=>({id:'GUEST-'+i,type:'Guest',name:'Guest customer',phone:p}));const all=[...registered,...guests];return `<section class="panel"><div class="panelHead"><div><h2>Customers</h2><p>Registered customers and guest buyers are both visible. Guest records are identified by verified/entered mobile number.</p></div><span class="countPill">${all.length} records</span></div>${all.length?`<div class="customerGrid">${all.map(c=>{const count=os.filter(o=>o.customerId===c.id||(!o.customerId&&(o.phone||o.guestContact)===c.phone)).length;return `<article class="customerCard"><div><span class="typeTag">${c.type}</span><h3>${esc(c.name||'Customer')}</h3><p>${esc(c.phone||'')}<br>${esc(c.email||'')}</p></div><b>${count} order${count===1?'':'s'}</b></article>`}).join('')}</div>`:'<div class="empty">No customers yet.</div>'}</section>`}
+async function dashboard(){
+  const os=await fetchOrders(), cs=await fetchCustomers();
+  const today=new Date().toLocaleDateString('en-IN');
+  const todayOrders=os.filter(o=>new Date(o.created_at).toLocaleDateString('en-IN')===today);
+  const sales=os.filter(o=>String(o.status||'').toLowerCase()!=='cancelled').reduce((s,o)=>s+Number(o.total||0),0);
+  const todaySales=todayOrders.reduce((s,o)=>s+Number(o.total||0),0);
+  const pending=os.filter(o=>/pending|received|preparing|packed|shipped|out for/i.test(o.status||'')).length;
+  const delivered=os.filter(o=>String(o.status||'').toLowerCase().includes('delivered')).length;
+  const top={};os.forEach(o=>(o.order_items||[]).forEach(i=>{const k=i.name||i.combo_id||'Combo';top[k]=(top[k]||0)+Number(i.qty||0)}));
+  const topList=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  return `<section class="kpis"><article><small>ORDERS TODAY</small><b>${todayOrders.length}</b><span>${todaySales?money(todaySales):'No sales yet'}</span></article><article><small>TOTAL ORDERS</small><b>${os.length}</b><span>${delivered} delivered</span></article><article><small>SALES</small><b>${money(sales)}</b><span>All non-cancelled orders</span></article><article><small>REGISTERED CUSTOMERS</small><b>${cs.length}</b><span>Excludes guests</span></article><article><small>PENDING ORDERS</small><b>${pending}</b><span>Need attention</span></article><article><small>FREE SHIPPING</small><b>${money(data.store.freeShippingThreshold)}</b><span>Configured threshold</span></article></section><div class="dashboardGrid"><section class="panel wide"><div class="panelHead"><div><h2>Latest orders</h2><p>Your operational view: customer, amount, payment and current status.</p></div><button class="gold" onclick="setTab('orders')">View all orders →</button></div>${os.length?`<div class="orderTable"><div class="orderHead"><span>Order</span><span>Customer</span><span>Amount</span><span>Payment</span><span>Status</span></div>${os.slice(0,10).map(o=>`<button class="orderLine" onclick="orderView('${esc(o.order_number)}')"><span><b>${esc(o.order_number)}</b><small>${new Date(o.created_at).toLocaleDateString('en-IN')}</small></span><span><b>${esc(o.guest_name||'Guest')}</b><small>${esc(o.guest_phone||'')}</small></span><strong>${money(o.total)}</strong><span>${esc(o.payment_method||'')}</span><span class="statusTag">${esc(o.status||'')}</span></button>`).join('')}</div>`:'<div class="empty">No orders yet.</div>'}</section><section class="panel"><div class="panelHead"><div><h2>Top products</h2><p>Based on live Supabase orders.</p></div></div>${topList.length?topList.map(x=>`<div class="metricRow"><span>${esc(x[0])}</span><b>${x[1]} sold</b></div>`).join(''):'<div class="empty smallEmpty">No sales data yet.</div>'}</section><section class="panel"><div class="panelHead"><div><h2>Store operations</h2><p>Quick controls that affect ordering.</p></div><button class="outline" onclick="setTab('settings')">Open settings</button></div><div class="operation"><span>Vacation mode</span><b class="${data.store.vacationMode?'danger':'good'}">${data.store.vacationMode?'ON — ordering paused':'OFF — ordering open'}</b></div><div class="operation"><span>UPI</span><b class="good">${data.store.upiEnabled===false?'OFF':'ON'}</b></div><div class="operation"><span>COD</span><b>${data.store.codEnabled===false?'OFF':'ON'}</b></div><div class="operation"><span>Razorpay</span><b>${data.store.razorpayEnabled?'ON':'OFF'}</b></div><div class="operation"><span>OTP login</span><b>${data.store.otpEnabled?'ON':'OFF — future'}</b></div></section></div>`;
+}
+async function ordersPage(){
+  const os=await fetchOrders();
+  return `<section class="panel"><div class="panelHead"><div><h2>Orders</h2><p>Guest and registered orders are shown together. Open an order for the full customer, payment and delivery view.</p></div><div class="filterPills"><button class="outline" onclick="render()">Refresh</button></div></div>${os.length?`<div class="orderTable fullTable"><div class="orderHead"><span>Order</span><span>Customer</span><span>Amount</span><span>Payment</span><span>Status</span></div>${os.map(o=>`<button class="orderLine" onclick="orderView('${esc(o.order_number)}')"><span><b>${esc(o.order_number)}</b><small>${new Date(o.created_at).toLocaleDateString('en-IN')}</small></span><span><b>${esc(o.guest_name||'Guest')}</b><small>${esc(o.guest_phone||'')}</small></span><strong>${money(o.total)}</strong><span>${esc(o.payment_method||'')}</span><span class="statusTag">${esc(o.status||'')}</span></button>`).join('')}</div>`:'<div class="empty">No orders found.</div>'}</section>`;
+}
+async function orderView(orderNumber){
+  const o = await fetchOrder(orderNumber);
+  if(!o){ toast('Order not found'); return; }
+  const timeline=(o.history||[]).map(t=>`<div class="timelineItem"><b>${esc(t.status)}</b><small>${new Date(t.created_at).toLocaleString('en-IN')}</small>${t.note?` — ${esc(t.note)}`:''}</div>`).join('');
+  openModal(`<div class="eyebrow">ORDER</div><h2>${esc(o.order_number)}</h2><div class="detailColumns"><div><h3>Customer</h3><p><b>${esc(o.guest_name||'Guest')}</b><br>${esc(o.guest_phone||'')}</p><h3>Delivery</h3><p>${esc(o.address_line1||'')}<br>${esc(o.address_city||'')}, ${esc(o.address_state||'')} ${esc(o.address_pincode||'')}</p></div><div><h3>Payment</h3><p>${esc(o.payment_method||'')}<br>Status: <b>${esc(o.payment_status||'')}</b><br>UTR: ${esc(o.utr||'Not provided')}</p><h3>Items</h3>${(o.order_items||[]).map(i=>`<div class="miniLine"><span>${esc(i.name)} ${i.variant_label?'· '+esc(i.variant_label):''} × ${i.qty}</span><b>${money(i.line_total)}</b></div>`).join('')}<div class="miniLine total"><span>Total</span><b>${money(o.total)}</b></div></div></div><div class="statusEditor"><label>Order status<select id="orderStatus"><option>Order received</option><option>Order received — COD</option><option>Payment verification pending</option><option>Payment verified</option><option>Preparing</option><option>Packed</option><option>Shipped</option><option>Out for delivery</option><option>Delivered</option><option>Cancelled</option></select></label><label>Delivery partner<input id="deliveryPartner" value="${esc(o.delivery_partner||'')}"></label><label>Tracking number<input id="trackingNumber" value="${esc(o.tracking_number||'')}"></label><label>Tracking URL<input id="trackingUrl" value="${esc(o.tracking_url||'')}"></label><button class="gold full" onclick="updateOrder('${esc(o.order_number)}','${o.id}')">Update order</button></div><div class="timeline"><h3>Order timeline</h3>${timeline||'<div class="empty smallEmpty">No timeline yet.</div>'}</div><div class="notificationBox"><b>Customer update</b><p>Automated WhatsApp delivery will be connected later through WhatsApp Business messaging.</p><button class="outline" onclick="manualWhatsApp('${esc(o.guest_phone||'')}','${esc(o.order_number)}')">Open WhatsApp update</button></div>`);
+  document.getElementById('orderStatus').value=o.status||'Order received';
+}
+async function updateOrder(orderNumber, orderId){
+  const ns=document.getElementById('orderStatus').value;
+  const deliveryPartner=document.getElementById('deliveryPartner').value.trim();
+  const trackingNumber=document.getElementById('trackingNumber').value.trim();
+  const trackingUrl=document.getElementById('trackingUrl').value.trim();
+  const {error} = await sb.from('orders').update({
+    status: ns, delivery_partner: deliveryPartner||null, tracking_number: trackingNumber||null, tracking_url: trackingUrl||null
+  }).eq('order_number', orderNumber);
+  if(error){ toast('Could not update order: '+error.message); return; }
+  await sb.from('order_status_history').insert({ order_id: orderId, status: ns });
+  closeModal();toast('Order updated');render();
+}
+function manualWhatsApp(phone,orderNumber){if(!phone){toast('Customer mobile number is missing');return}const msg=`Jayvi Foods order ${orderNumber}: Your order status has been updated. Please contact us if you need help.`;window.open('https://wa.me/'+phone.replace(/\D/g,'')+'?text='+encodeURIComponent(msg),'_blank')}
+async function customersPage(){
+  const cs=await fetchCustomers(), os=await fetchOrders();
+  return `<section class="panel"><div class="panelHead"><div><h2>Customers</h2><p>Registered customers from Supabase. Guest buyers (no account) appear in Orders by mobile number, not here.</p></div><span class="countPill">${cs.length} registered</span></div>${cs.length?`<div class="customerGrid">${cs.map(c=>{const count=os.filter(o=>o.customer_id===c.id).length;return `<article class="customerCard"><div><span class="typeTag">Registered</span><h3>${esc(c.name||'Customer')}</h3><p>${esc(c.phone||'')}</p></div><b>${count} order${count===1?'':'s'}</b></article>`}).join('')}</div>`:'<div class="empty">No registered customers yet.</div>'}</section>`;
+}
 function productsPage(){return `<section class="panel"><div class="panelHead"><div><h2>Products</h2><p>Product catalogue, merchandising, multiple categories and media.</p></div><button class="gold" onclick="productForm()">+ Add product</button></div><div class="productAdminGrid">${data.products.map((p,i)=>`<article class="productAdminCard"><div class="thumb"><img src="${esc(p.image||'')}" alt=""></div><div class="productInfo"><span class="typeTag">${p.best?'BESTSELLER':'PRODUCT'}</span><h3>${esc(p.name)}</h3><p>${esc(p.short||'')}</p><small>${(p.categories||[p.category]).map(catName).join(' · ')} · ${p.variants?.length||0} variants</small><div class="cardActions"><button class="outline" onclick="productForm(${i})">Edit</button><button class="outline dangerBtn" onclick="deleteProduct(${i})">Delete</button></div></div></article>`).join('')}</div></section>`}
 function productForm(index=-1){
  const p=index>=0?data.products[index]:{id:'',sku:'',name:'',short:'',description:'',category:data.categories[0]?.id||'',categories:[],active:true,best:false,image:'',mediaFolder:'',media:[],mealTags:[],rating:0,reviewCount:0,variants:[]};
@@ -180,7 +250,7 @@ function saveContactSettings(){data.store.whatsapp=document.getElementById('setW
 function openModal(html){document.getElementById('modalBody').innerHTML=html;document.getElementById('modal').classList.add('open')}
 function closeModal(){document.getElementById('modal').classList.remove('open')}
 document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
-render();
+requireAdminSession().then(ok=>{ if(ok) render(); });
 /* Jayvi Foods V22 Admin polish */
 (function(){
 'use strict';
