@@ -1,9 +1,9 @@
 /* =========================================================
-   Jayvi Foods — v30.0 storefront logic
+   Jayvi Foods — v31.0 storefront logic
    Data model and localStorage keys are unchanged from v27/28
    so existing Admin-entered data keeps working after this
    upgrade. All UI/interaction code has been rewritten as a
-   single clean pass (no runtime "patches") for v30.
+   single clean pass (no runtime "patches") for v31.
    ========================================================= */
 
 const EMBEDDED_CONFIG = {
@@ -106,6 +106,27 @@ function refreshGalleryCounts(){
     c.textContent=`${idx+1} / ${count}`;
   });
 }
+function refreshComboGalleryCounts(){
+  document.querySelectorAll('.comboImage').forEach(frame=>{
+    const s=frame.querySelector('.comboMediaScroller'), c=frame.querySelector('.galleryCount');
+    if(!s||!c)return;
+    const count=Math.max(1,Number(s.dataset.count||1));
+    const idx=Math.max(0,Math.min(count-1,Math.round(s.scrollLeft/(s.clientWidth||1))));
+    c.textContent=`${idx+1} / ${count}`;
+  });
+}
+function bindComboGalleryScrollers(){
+  document.querySelectorAll('.comboMediaScroller').forEach(s=>{
+    if(s.dataset.bound)return; s.dataset.bound='1';
+    s.addEventListener('scroll',refreshComboGalleryCounts,{passive:true});
+    let down=false,startX=0,startScroll=0,moved=false;
+    s.addEventListener('pointerdown',e=>{if(e.pointerType!=='mouse')return;down=true;moved=false;startX=e.clientX;startScroll=s.scrollLeft;s.setPointerCapture?.(e.pointerId)});
+    s.addEventListener('pointermove',e=>{if(!down||e.pointerType!=='mouse')return;const dx=e.clientX-startX;if(Math.abs(dx)>5)moved=true;if(moved)s.scrollLeft=startScroll-dx});
+    const end=e=>{if(e.pointerType==='mouse')down=false};
+    s.addEventListener('pointerup',end);s.addEventListener('pointercancel',end);
+  });
+  refreshComboGalleryCounts();
+}
 function bindGalleryScrollers(){
   document.querySelectorAll('.cardMediaScroller').forEach(s=>{
     if(s.dataset.bound)return; s.dataset.bound='1';
@@ -136,7 +157,7 @@ function setGalleryImage(path,btn){
 function productCard(p){
   const v=getVariant(p,variantKey(p.id)),off=v.mrp-v.price,q=cartQtyFor(p.id,v.id);
   const actions=q
-    ?`<div class="pcActions"><div class="inlineQty"><button onclick="changeProductQty('${p.id}','${v.id}',-1)">−</button><b>${q}</b><button onclick="changeProductQty('${p.id}','${v.id}',1)">+</button></div><button onclick="openCart()">View cart</button></div>`
+    ?`<div class="pcActions hasQty"><div class="inlineQty"><button onclick="changeProductQty('${p.id}','${v.id}',-1)" aria-label="Decrease quantity">−</button><b>${q}</b><button onclick="changeProductQty('${p.id}','${v.id}',1)" aria-label="Increase quantity">+</button></div><button class="viewCartBtn" onclick="openCart()" aria-label="View cart"><i class="fa-solid fa-bag-shopping"></i></button></div>`
     :`<div class="pcActions"><button onclick="addToCart('${p.id}','${v.id}')">Add to cart</button><button onclick="buyNow('${p.id}','${v.id}')">Buy now</button></div>`;
   return `<article class="productCard" data-product-id="${p.id}">
     <div class="visualWrap" onclick="openProduct('${p.id}')">${cardMediaMarkup(p)}${p.best?'<span class="badge">BESTSELLER</span>':''}<button class="heart ${wishlist.includes(p.id)?'isWish':''}" onclick="event.stopPropagation();toggleWishlist('${p.id}')" aria-label="Favourite ${escapeHtml(p.name)}"><i class="${wishlist.includes(p.id)?'fa-solid':'fa-regular'} fa-heart"></i></button></div>
@@ -169,12 +190,21 @@ function renderProducts(){
   $('productGrid').innerHTML=arr.map(productCard).join('')||'<div class="empty">No products found.</div>';
   bindGalleryScrollers();
 }
+function comboMediaMarkup(c){
+  const itemImages=(c.items||[]).map(i=>getProduct(i.productId)?.image).filter(Boolean);
+  const media=[c.image,...itemImages].filter(Boolean);
+  const unique=[...new Set(media)];
+  const count=unique.length;
+  const slides=unique.map((src,i)=>`<div class="comboSlide"><img src="${escapeHtml(src)}" alt="${escapeHtml(c.name)} image ${i+1}" loading="${i?'lazy':'eager'}"></div>`).join('');
+  const controls=count>1?`<span class="galleryCount">1 / ${count}</span>`:'';
+  return `<div class="comboMediaScroller" data-count="${count}" aria-label="${escapeHtml(c.name)} images">${slides}</div>${controls}`;
+}
 function renderCombos(){
   if(!$('comboGrid'))return;
   const cs=(CONFIG.combos||[]).filter(c=>c.active);
   $('comboCount').textContent=cs.length?`${cs.length} combo${cs.length>1?'s':''}`:'';
   $('comboGrid').innerHTML=cs.length?cs.map(c=>`<article class="comboCard">
-    <div class="comboImage"><img src="${c.image}" alt="${escapeHtml(c.name)}"></div>
+    <div class="comboImage">${comboMediaMarkup(c)}</div>
     <div class="comboBody">
       <div class="eyebrow" style="color:#e8d9b6">COMBO</div>
       <h3>${escapeHtml(c.name)}</h3><p>${escapeHtml(c.short)}</p>
@@ -182,6 +212,7 @@ function renderCombos(){
       <div class="comboPrice"><b>${money(c.price)}</b><del>${money(c.mrp)}</del><em>Save ${money(c.mrp-c.price)}</em></div>
       <div class="pcActions comboActions"><button onclick="addCombo('${c.id}')">Add to cart</button><button onclick="buyCombo('${c.id}')">Buy now</button></div>
     </div></article>`).join(''):'<div class="empty" style="color:#cbbca8">No active combos yet.</div>';
+  bindComboGalleryScrollers();
 }
 function addCombo(id){const c=getCombo(id);if(!c)return;const key='combo:'+id;const x=cart.find(i=>i.key===key);if(x)x.qty++;else cart.push({key,type:'combo',comboId:id,qty:1});saveCart();renderCart();refreshProductViews();openCart();showToast(c.name+' added to cart')}
 function buyCombo(id){const c=getCombo(id);if(!c)return;const key='combo:'+id;const x=cart.find(i=>i.key===key);if(x)x.qty++;else cart.push({key,type:'combo',comboId:id,qty:1});saveCart();renderCart();refreshProductViews();openCheckout()}
@@ -581,7 +612,8 @@ function openProduct(id){
 function closeProduct(){$('productOverlay').classList.remove('open');document.body.classList.remove('modalOpen')}
 
 /* ---------- Misc UI ---------- */
-function toggleMenu(){$('mobileMenu').classList.toggle('open')}
+function toggleMenu(){$('mobileMenu').classList.toggle('open');$('menuScrim')?.classList.toggle('open')}
+function closeMenu(){$('mobileMenu').classList.remove('open');$('menuScrim')?.classList.remove('open')}
 function initOverlayDismissal(){
   document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{
     if(e.target!==o)return;
@@ -593,7 +625,7 @@ function initOverlayDismissal(){
   }));
   document.addEventListener('keydown',e=>{
     if(e.key!=='Escape')return;
-    closeCart();closeProduct();closeSearch();closeAccount();closeCheckout();
+    closeCart();closeProduct();closeSearch();closeAccount();closeCheckout();closeMenu();
   });
 }
 let toastTimer;

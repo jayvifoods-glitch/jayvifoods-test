@@ -1,0 +1,19 @@
+JAYVI FOODS — V31.0 WEBSITE RELEASE
+
+V31.0 is a refinement pass on the V30.0 redesign: fixes the mobile cart
+quantity control layout, adds distinct background bands between sections,
+replaces the see-through hamburger menu with a solid dark drawer, and
+gives combo cards a multi-image swipeable gallery. See DEPLOY.md for full
+details and the Admin login credentials.
+
+UPLOAD RULE:
+Replace the complete repository contents with this package. Do not mix
+older V15-V30 files.
+Keep the entire images/ folder.
+
+GitHub Pages:
+- Branch: main
+- Folder: / (root)
+
+After upload, wait for the GitHub Pages deployment to show successful
+before testing. index.html references style.css?v=31.0 and app.js?v=31.0.

@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link rel="stylesheet" href="style.css?v=30.0">
+<link rel="stylesheet" href="style.css?v=31.0">
 </head>
 <body>
 
@@ -32,12 +32,15 @@
       <button class="icon" onclick="openCart()" aria-label="Cart"><i class="fa-solid fa-bag-shopping"></i><b id="cartCount">0</b></button>
     </div>
   </div>
+  <div class="menuScrim" id="menuScrim" onclick="closeMenu()"></div>
   <div id="mobileMenu">
-    <a href="#shop" onclick="toggleMenu()">Shop</a>
-    <a href="#bestsellers" onclick="toggleMenu()">Bestsellers</a>
-    <a href="#combos" onclick="toggleMenu()">Combos</a>
-    <a href="#reviews" onclick="toggleMenu()">Reviews</a>
-    <a href="help.html" onclick="toggleMenu()">Help &amp; Shipping</a>
+    <div class="menuTop"><img src="images/brand/jayvi-foods-logo.webp" alt="Jayvi Foods"><button class="menuClose" onclick="closeMenu()" aria-label="Close menu">×</button></div>
+    <a href="#shop" onclick="closeMenu()"><i class="fa-solid fa-bag-shopping"></i>Shop</a>
+    <a href="#bestsellers" onclick="closeMenu()"><i class="fa-solid fa-star"></i>Bestsellers</a>
+    <a href="#combos" onclick="closeMenu()"><i class="fa-solid fa-layer-group"></i>Combos</a>
+    <a href="#reviews" onclick="closeMenu()"><i class="fa-solid fa-comment"></i>Reviews</a>
+    <a href="help.html"><i class="fa-solid fa-circle-question"></i>Help &amp; Shipping</a>
+    <div class="menuFoot">Need help now?<br><a href="https://wa.me/918861981003" target="_blank">Chat on WhatsApp →</a></div>
   </div>
 </header>
 
@@ -118,7 +121,7 @@
   <div><b>Connect</b><a href="https://wa.me/918861981003" target="_blank">WhatsApp</a><a href="https://instagram.com/jayvifoods" target="_blank">Instagram</a><a href="mailto:jayvifoods@gmail.com">jayvifoods@gmail.com</a><a href="tel:+918861981003">+91 88619 81003</a><a href="admin-login.html">Admin login</a></div>
   <div class="footerCompliance"><b>Food Safety &amp; Business</b><div class="fssaiBadge" aria-label="FSSAI"><img src="images/compliance/fssai-logo.png" alt="FSSAI"></div><p>FSSAI Lic. No. <strong>21226177001087</strong></p><p>UDYAM Registered MSME</p><p>UDYAM-KR-03-0681597</p></div>
 </div>
-<div class="wrap copyright">© 2026 Jayvi Foods <span>Delivered across India · Jayvi Foods</span><span class="siteVersion" id="siteVersion">Website v30.0</span></div></footer>
+<div class="wrap copyright">© 2026 Jayvi Foods <span>Delivered across India · Jayvi Foods</span><span class="siteVersion" id="siteVersion">Website v31.0</span></div></footer>
 
 <a class="whatsappFloat" href="https://wa.me/918861981003?text=Hi%20Jayvi%20Foods%2C%20I%20need%20help%20with%20my%20order." target="_blank" aria-label="Chat with Jayvi's team"><i class="fa-brands fa-whatsapp"></i><span>Chat with us</span></a>
 
@@ -139,6 +142,6 @@
 <div class="overlay" id="checkoutOverlay"><div class="modal checkoutModal"><button class="close" onclick="closeCheckout()">×</button><div id="checkoutContent"></div></div></div>
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=30.0"></script>
+<script src="app.js?v=31.0"></script>
 </body>
 </html>
