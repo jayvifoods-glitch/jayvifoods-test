@@ -10,13 +10,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link rel="stylesheet" href="style.css?v=32.0">
+<link rel="stylesheet" href="style.css?v=32.1">
 </head>
 <body>
 
 <div class="topbar" aria-label="Store announcements"><div class="announcementViewport"><div class="announcementTrack" id="announcementTrack">
-  <span id="topShipping">FREE SHIPPING ABOVE ₹599</span><span>FRESHLY PACKED</span><span>DELIVERED ACROSS INDIA</span><span>TRADITIONAL FLAVOURS · SIMPLY DELICIOUS</span>
-  <span aria-hidden="true">FREE SHIPPING ABOVE ₹599</span><span aria-hidden="true">FRESHLY PACKED</span><span aria-hidden="true">DELIVERED ACROSS INDIA</span><span aria-hidden="true">TRADITIONAL FLAVOURS · SIMPLY DELICIOUS</span>
+  <span id="topShipping">FREE SHIPPING ABOVE ₹599</span><span>FRESHLY PACKED</span><span>DELIVERED ACROSS INDIA</span><span>PURELY TRADITIONAL · SIMPLY DELICIOUS</span>
+  <span aria-hidden="true">FREE SHIPPING ABOVE ₹599</span><span aria-hidden="true">FRESHLY PACKED</span><span aria-hidden="true">DELIVERED ACROSS INDIA</span><span aria-hidden="true">PURELY TRADITIONAL · SIMPLY DELICIOUS</span>
 </div></div></div>
 
 <div id="vacationBanner" class="vacationBanner" style="display:none"></div>
@@ -25,7 +25,7 @@
   <div class="wrap nav">
     <button class="mobileOnly icon" onclick="toggleMenu()" aria-label="Menu"><i class="fa-solid fa-bars"></i></button>
     <a class="logo" href="#home" aria-label="Jayvi Foods"><img src="images/brand/jayvi-foods-logo.webp" alt="Jayvi Foods"></a>
-    <nav><a href="#shop">Shop</a><a href="#bestsellers">Bestsellers</a><a href="#combos">Combos</a><a href="#reviews">Reviews</a></nav>
+    <nav><a href="#shop">Shop</a><a href="#bestsellers">Bestsellers</a><a href="#combos">Combos</a><a href="#reviews">Reviews</a><a href="#" onclick="openTrackOrder();return false">Track Order</a></nav>
     <div class="navActions">
       <button class="icon" onclick="openSearch()" aria-label="Search"><i class="fa-solid fa-magnifying-glass"></i></button>
       <button class="icon" onclick="openAccount()" aria-label="Account"><i class="fa-regular fa-user"></i></button>
@@ -40,6 +40,7 @@
     <a href="#combos" onclick="closeMenu()"><i class="fa-solid fa-layer-group"></i>Combos</a>
     <a href="#reviews" onclick="closeMenu()"><i class="fa-solid fa-comment"></i>Reviews</a>
     <a href="help.html"><i class="fa-solid fa-circle-question"></i>Help &amp; Shipping</a>
+    <a href="#" onclick="closeMenu();openTrackOrder()"><i class="fa-solid fa-location-dot"></i>Track Order</a>
     <div class="menuFoot">Need help now?<br><a href="https://wa.me/918861981003" target="_blank">Chat on WhatsApp →</a></div>
   </div>
 </header>
@@ -107,7 +108,7 @@
 
   <section class="smallAbout" id="about"><div class="wrap">
     <div><div class="eyebrow">ABOUT JAYVI</div><h2>Traditional flavour.<br><em>Made for today.</em></h2></div>
-    <div><p>Authentic Karnataka-inspired flavours made for everyday meals.</p><a href="#about">Our story →</a></div>
+    <div><p>Jayvi Foods started with one simple idea: the chutney powders and podi our families have always made shouldn't disappear from busy kitchens. Every batch is made in small quantities, using the same proportions and process passed down at home — nothing shortcut for shelf life, nothing added for show.</p><a href="#reviews">See what customers say →</a></div>
   </div></section>
 
   <section class="finalCta"><div class="wrap"><h2>Pick your favourites.</h2><a href="#bestsellers" class="btn gold">Shop now →</a></div></section>
@@ -117,11 +118,11 @@
 <footer><div class="wrap footerGrid">
   <div class="footerBrand"><a class="footerLogo" href="#home"><img src="images/brand/jayvi-foods-logo.webp" alt="Jayvi Foods"></a><p>Purely Traditional.<br>Simply Delicious.</p></div>
   <div><b>Shop</b><a href="#bestsellers">Bestsellers</a><a href="#shop">All products</a><a href="#combos">Combos</a></div>
-  <div><b>Help &amp; Legal</b><a href="help.html">Help &amp; Shipping</a><a href="legal.html#returns">Returns &amp; Refunds</a><a href="legal.html#privacy">Privacy</a><a href="legal.html#terms">Terms</a><a href="#" onclick="openAccount();return false">My account</a></div>
+  <div><b>Help &amp; Legal</b><a href="help.html">Help &amp; Shipping</a><a href="#" onclick="openTrackOrder();return false">Track Order</a><a href="legal.html#returns">Returns &amp; Refunds</a><a href="legal.html#privacy">Privacy</a><a href="legal.html#terms">Terms</a><a href="#" onclick="openAccount();return false">My account</a></div>
   <div><b>Connect</b><a href="https://wa.me/918861981003" target="_blank">WhatsApp</a><a href="https://instagram.com/jayvifoods" target="_blank">Instagram</a><a href="mailto:jayvifoods@gmail.com">jayvifoods@gmail.com</a><a href="tel:+918861981003">+91 88619 81003</a><a href="admin-login.html">Admin login</a></div>
   <div class="footerCompliance"><b>Food Safety &amp; Business</b><div class="fssaiBadge" aria-label="FSSAI"><img src="images/compliance/fssai-logo.png" alt="FSSAI"></div><p>FSSAI Lic. No. <strong>21226177001087</strong></p><p>UDYAM Registered MSME</p><p>UDYAM-KR-03-0681597</p></div>
 </div>
-<div class="wrap copyright">© 2026 Jayvi Foods <span>Delivered across India · Jayvi Foods</span><span class="siteVersion" id="siteVersion">Website v32.0</span></div></footer>
+<div class="wrap copyright">© 2026 Jayvi Foods <span>Delivered across India · Jayvi Foods</span><span class="siteVersion" id="siteVersion">Website v32.1</span></div></footer>
 
 <a class="whatsappFloat" href="https://wa.me/918861981003?text=Hi%20Jayvi%20Foods%2C%20I%20need%20help%20with%20my%20order." target="_blank" aria-label="Chat with Jayvi's team"><i class="fa-brands fa-whatsapp"></i><span>Chat with us</span></a>
 
@@ -143,7 +144,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="supabase-config.js?v=32.0"></script>
-<script src="app.js?v=32.0"></script>
+<script src="supabase-config.js?v=32.1"></script>
+<script src="app.js?v=32.1"></script>
 </body>
 </html>

@@ -59,7 +59,6 @@ function loadConfig(){
     d.mealTags=u.mealTags||d.mealTags;
     d.mealLabels=Object.fromEntries((d.mealTags||[]).map(t=>[t.id,t.name]));
     d.reviews=u.reviews||d.reviews;
-    d.pendingReviews=u.pendingReviews||[];
     return d;
   }catch{ return structuredClone(EMBEDDED_CONFIG); }
 }
@@ -157,7 +156,7 @@ function setGalleryImage(path,btn){
 function productCard(p){
   const v=getVariant(p,variantKey(p.id)),off=v.mrp-v.price,q=cartQtyFor(p.id,v.id);
   const actions=q
-    ?`<div class="pcActions hasQty"><div class="inlineQty"><button onclick="changeProductQty('${p.id}','${v.id}',-1)" aria-label="Decrease quantity">−</button><b>${q}</b><button onclick="changeProductQty('${p.id}','${v.id}',1)" aria-label="Increase quantity">+</button></div><button class="viewCartBtn" onclick="openCart()" aria-label="View cart"><i class="fa-solid fa-bag-shopping"></i></button></div>`
+    ?`<div class="pcActions hasQty"><div class="inlineQty"><button onclick="changeProductQty('${p.id}','${v.id}',-1)" aria-label="Decrease quantity"><i class="fa-solid fa-minus"></i></button><b>${q}</b><button onclick="changeProductQty('${p.id}','${v.id}',1)" aria-label="Increase quantity"><i class="fa-solid fa-plus"></i></button></div><button class="viewCartBtn" onclick="openCart()" aria-label="View cart"><i class="fa-solid fa-bag-shopping"></i></button></div>`
     :`<div class="pcActions"><button onclick="addToCart('${p.id}','${v.id}')">Add to cart</button><button onclick="buyNow('${p.id}','${v.id}')">Buy now</button></div>`;
   return `<article class="productCard" data-product-id="${p.id}">
     <div class="visualWrap" onclick="openProduct('${p.id}')">${cardMediaMarkup(p)}${p.best?'<span class="badge">BESTSELLER</span>':''}<button class="heart ${wishlist.includes(p.id)?'isWish':''}" onclick="event.stopPropagation();toggleWishlist('${p.id}')" aria-label="Favourite ${escapeHtml(p.name)}"><i class="${wishlist.includes(p.id)?'fa-solid':'fa-regular'} fa-heart"></i></button></div>
@@ -230,12 +229,57 @@ function renderMeal(){
 function setMeal(m){meal=m;renderMeal()}
 
 /* ---------- Reviews ---------- */
-function renderReviews(){
+async function renderReviews(){
   if(!$('reviewGrid'))return;
-  const rev=(CONFIG.reviews||[]).filter(r=>r.active&&r.source==='customer').slice(0,4);
-  $('reviewGrid').innerHTML=rev.map(r=>`<article><div class="stars">${'★'.repeat(r.rating)}</div><p>“${escapeHtml(r.text)}”</p><b>${escapeHtml(r.name)}</b><small>Customer review</small></article>`).join('')+
+  // Two separate, independently-sourced pipelines rendered into the same
+  // grid: curated Google-linked testimonials (Admin-JSON, unchanged) and
+  // live customer-submitted reviews (Supabase, approved only). They are
+  // never mixed into one workflow — Admin manages Google Reviews content
+  // as before, and approves/rejects website reviews separately.
+  const curated=(CONFIG.reviews||[]).filter(r=>r.active&&r.source==='customer').slice(0,3);
+  let live=[];
+  try{
+    const {data} = await sb.from('website_reviews').select('customer_name,rating,review_text,created_at').eq('status','approved').order('created_at',{ascending:false}).limit(6);
+    live = data||[];
+  }catch{}
+  const curatedCards = curated.map(r=>`<article><div class="stars">${'★'.repeat(r.rating)}</div><p>“${escapeHtml(r.text)}”</p><b>${escapeHtml(r.name)}</b><small>Customer review</small></article>`).join('');
+  const liveCards = live.map(r=>`<article><div class="stars">${'★'.repeat(r.rating)}</div><p>“${escapeHtml(r.review_text)}”</p><b>${escapeHtml(r.customer_name)}</b><small>Verified Jayvi customer</small></article>`).join('');
+  const writeReviewCard = `<article class="googleCard" style="background:var(--brand-soft)!important"><i class="fa-regular fa-pen-to-square"></i><h3>Bought something recently?</h3><p>Tell other customers what you thought.</p><a href="#" onclick="openReviewForm();return false">Write a review →</a></article>`;
+  $('reviewGrid').innerHTML = curatedCards + liveCards + writeReviewCard +
     `<article class="googleCard"><i class="fa-brands fa-google"></i><h3>More reviews on Google</h3><p>See the latest customer feedback directly on Google.</p><a href="${CONFIG.store.googleReviewsUrl}" target="_blank">View Google reviews →</a></article>`;
   if($('googleReviewsTop'))$('googleReviewsTop').href=CONFIG.store.googleReviewsUrl;
+}
+function openReviewForm(){
+  $('accountOverlay').classList.add('open');document.body.classList.add('modalOpen');
+  $('accountContent').innerHTML = `<div class="eyebrow">WRITE A REVIEW</div><h2>Tell us what you thought.</h2>
+    <p class="muted">Your review is checked by Jayvi before it appears on the site — this usually takes a day or two.</p>
+    <form onsubmit="submitReview(event)">
+      <label>Your name *<input id="revName" required value="${escapeHtml(currentProfile?.name||'')}"></label>
+      <label>Rating *<select id="revRating" required>
+        <option value="5">★★★★★ — Excellent</option><option value="4">★★★★ — Good</option>
+        <option value="3">★★★ — Okay</option><option value="2">★★ — Not great</option><option value="1">★ — Poor</option>
+      </select></label>
+      <label>Which product? (optional)<select id="revProduct"><option value="">General review</option>${products.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('')}</select></label>
+      <label>Order number (optional)<input id="revOrder" placeholder="JF-YYYYMMDD-XXXXXX"></label>
+      <label>Your review *<textarea id="revText" required rows="4" placeholder="What did you think?"></textarea></label>
+      <button class="btn gold full" type="submit">Submit review →</button>
+    </form>`;
+}
+async function submitReview(e){
+  e.preventDefault();
+  const payload = {
+    customer_id: currentUser?.id || null,
+    customer_name: $('revName').value.trim(),
+    rating: Number($('revRating').value),
+    review_text: $('revText').value.trim(),
+    product_id: $('revProduct').value || null,
+    order_number: $('revOrder').value.trim() || null,
+    status: 'pending'
+  };
+  if(!payload.customer_name || !payload.review_text){ showToast('Please fill in your name and review'); return; }
+  const {error} = await sb.from('website_reviews').insert(payload);
+  if(error){ showToast('Could not submit review: '+error.message); return; }
+  $('accountContent').innerHTML = `<div class="successIcon"><i class="fa-solid fa-check"></i></div><div class="eyebrow">THANK YOU</div><h2>Review submitted.</h2><p class="muted">Jayvi will review it shortly — approved reviews appear on the site automatically.</p><button class="btn gold full" onclick="closeAccount()">Close</button>`;
 }
 
 /* ---------- Hero ---------- */
@@ -382,6 +426,10 @@ function openAccount(){
   $('accountOverlay').classList.add('open');document.body.classList.add('modalOpen');
   if(currentUser) renderAccountView(); else $('accountContent').innerHTML = authView('login');
 }
+function openTrackOrder(){
+  $('accountOverlay').classList.add('open');document.body.classList.add('modalOpen');
+  trackOrderPrompt();
+}
 function closeAccount(){$('accountOverlay').classList.remove('open');document.body.classList.remove('modalOpen')}
 function openAuth(m){$('accountContent').innerHTML=authView(m)}
 function authView(mode){
@@ -397,7 +445,7 @@ function authView(mode){
   <div id="authError" class="tiny" style="color:var(--danger)"></div>
   <div class="authSwitch">${mode==='login'?`New here? <button onclick="openAuth('register')">Create account</button>`:`Already have an account? <button onclick="openAuth('login')">Sign in</button>`}</div>
   ${mode==='login'?'<button class="textBtn" onclick="showOtpUnavailable()">Use OTP instead</button>':''}
-  <div class="guestNote">You can always <button onclick="closeAccount();openCheckout()">continue as guest</button> without creating an account.</div>`;
+  <div class="guestNote">You can always <button onclick="closeAccount();openCheckout()">continue as guest</button> without creating an account. Already placed an order? <button onclick="trackOrderPrompt()">Track it here</button>.</div>`;
 }
 function showOtpUnavailable(){showToast('OTP login is not available yet. Password login is currently enabled.')}
 function authErr(msg){ const el=$('authError'); if(el) el.textContent=msg; else showToast(msg); }
@@ -455,8 +503,10 @@ async function signOut(){
 async function renderAccountView(activeTab='orders'){
   if(!currentUser){ $('accountContent').innerHTML = authView('login'); return; }
   if(!currentProfile) await refreshProfile();
+  const isAdmin = currentProfile?.role === 'admin';
   $('accountContent').innerHTML = `<div class="eyebrow">MY JAYVI</div><h2>Welcome, ${escapeHtml((currentProfile?.name||'Customer').split(' ')[0])}.</h2>
     <p class="muted">${escapeHtml(currentProfile?.phone||'')}</p>
+    ${isAdmin?`<div class="notice" style="background:var(--olive-soft);border-radius:var(--radius-md);padding:12px 14px;margin:10px 0;font-size:12.5px">You're signed in with an Admin account. This shows only orders placed directly by this account — for the full order list and order management, use <a href="admin.html" style="font-weight:700;color:var(--brand-dark)">the Admin panel</a>.</div>`:''}
     <div class="accountTabs">
       <button class="${activeTab==='orders'?'active':''}" onclick="renderAccountView('orders')">Orders</button>
       <button class="${activeTab==='addresses'?'active':''}" onclick="renderAccountView('addresses')">Addresses</button>
@@ -468,8 +518,16 @@ async function renderAccountView(activeTab='orders'){
 }
 async function renderOrdersTab(){
   const body = $('accountTabBody'); if(!body) return;
+  // Explicitly scoped to this signed-in user's own id — never relies on
+  // RLS alone to narrow the result. RLS legitimately allows an admin
+  // session to read every order (correct, at the database level); this
+  // explicit filter keeps the storefront's "My Orders" UI showing only
+  // this account's own orders regardless of what role is signed in, so
+  // an admin session never has the full order list surfaced through the
+  // customer-facing account view.
   const {data, error} = await sb.from('orders')
     .select('order_number,status,total,created_at')
+    .eq('customer_id', currentUser.id)
     .order('created_at',{ascending:false});
   if(error){ body.innerHTML = `<div class="empty">Could not load orders: ${escapeHtml(error.message)}</div>`; return; }
   body.innerHTML = `<div class="orders">${(data||[]).length ? data.map(o=>
@@ -478,7 +536,8 @@ async function renderOrdersTab(){
 }
 async function renderAddressTab(){
   const body = $('accountTabBody'); if(!body) return;
-  const {data, error} = await sb.from('customer_addresses').select('*').order('is_default',{ascending:false});
+  // Same explicit-scoping principle as renderOrdersTab() above.
+  const {data, error} = await sb.from('customer_addresses').select('*').eq('customer_id', currentUser.id).order('is_default',{ascending:false});
   if(error){ body.innerHTML = `<div class="empty">Could not load addresses: ${escapeHtml(error.message)}</div>`; return; }
   body.innerHTML = `<div class="orders">${(data||[]).map(a=>`
     <div class="order" style="cursor:default">
@@ -523,7 +582,7 @@ async function openCheckout(){
   const u = currentUser ? currentProfile : null;
   let savedAddr = null;
   if(currentUser){
-    const {data} = await sb.from('customer_addresses').select('*').order('is_default',{ascending:false}).limit(1);
+    const {data} = await sb.from('customer_addresses').select('*').eq('customer_id', currentUser.id).order('is_default',{ascending:false}).limit(1);
     savedAddr = data?.[0] || null;
   }
   const upi=CONFIG.store.upiEnabled!==false, cod=CONFIG.store.codEnabled!==false;

@@ -1,5 +1,15 @@
 const KEY='jayviStoreV14';
-const CONFIG_FALLBACK={store:{name:'Jayvi Foods',tagline:'Purely Traditional. Simply Delicious.',country:'IN',freeShippingThreshold:599,shippingFlat:49,deliveryMinDays:4,deliveryMaxDays:8,vacationMode:false,vacationMessage:'We are taking a short break. Orders will resume soon.',googleMapsApiKey:'',googleReviewsUrl:'https://www.google.com/search?q=Jayvi+Foods+reviews',whatsapp:'918861981003',instagram:'https://instagram.com/jayvifoods',razorpayKeyId:'',razorpayEnabled:false,upiEnabled:true,codEnabled:false,otpEnabled:false,upiId:'',upiName:'Jayvi Foods',upiQrImage:'',paymentNote:'Pay by UPI QR. Order moves to processing after payment verification.'},homepage:{heroAutoplay:true,heroSeconds:5},categories:[],products:[],combos:[],announcements:[],mealLabels:{idli:'Idli',dosa:'Dosa',chapati:'Chapati',rice:'Rice + Ghee'},
+const CONFIG_FALLBACK={store:{name:'Jayvi Foods',tagline:'Purely Traditional. Simply Delicious.',country:'IN',freeShippingThreshold:599,shippingFlat:49,deliveryMinDays:4,deliveryMaxDays:8,vacationMode:false,vacationMessage:'We are taking a short break. Orders will resume soon.',googleMapsApiKey:'',googleReviewsUrl:'https://www.google.com/search?q=Jayvi+Foods+reviews',whatsapp:'918861981003',instagram:'https://instagram.com/jayvifoods',razorpayKeyId:'',razorpayEnabled:false,upiEnabled:true,codEnabled:false,otpEnabled:false,upiId:'',upiName:'Jayvi Foods',upiQrImage:'',paymentNote:'Pay by UPI QR. Order moves to processing after payment verification.'},homepage:{heroAutoplay:true,heroSeconds:5},
+categories:[{id:'chutney',name:'Chutney Powders',enabled:true,order:1},{id:'pudi',name:'Pudi',enabled:true,order:2},{id:'snacks',name:'Snacks',enabled:true,order:3},{id:'combos',name:'Combos',enabled:true,order:4}],
+products:[
+  {id:'peanut',sku:'JF-TAR-CLS-PNT',name:'Peanut Chutney',short:'Rich, nutty and comforting.',category:'chutney',active:true,best:true,image:'images/products/peanut-chutney.webp',imageClass:'peanut',variants:[{id:'peanut-200',label:'200g',weight:'200g',price:155,mrp:199,sku:'JF-TAR-CLS-PNT-200',active:true},{id:'peanut-400',label:'400g',weight:'400g',price:249,mrp:299,sku:'JF-TAR-CLS-PNT-400',active:true}],mealTags:['idli','dosa','chapati','rice'],rating:4.8,reviewCount:18},
+  {id:'flaxseed',sku:'JF-TAR-CLS-FLX',name:'Flaxseed Chutney',short:'A distinctive traditional flavour.',category:'chutney',active:true,best:true,image:'images/hero/jayvi-products.webp',imageClass:'flaxseed',variants:[{id:'flaxseed-200',label:'200g',weight:'200g',price:155,mrp:199,sku:'JF-TAR-CLS-FLX-200',active:true},{id:'flaxseed-400',label:'400g',weight:'400g',price:249,mrp:299,sku:'JF-TAR-CLS-FLX-400',active:true}],mealTags:['idli','dosa','chapati','rice'],rating:4.8,reviewCount:12},
+  {id:'pudi',sku:'JF-TAR-CLS-IDP',name:'Idli Dosa Pudi',short:'Made for idli, dosa and everyday meals.',category:'pudi',active:true,best:true,image:'images/hero/jayvi-products.webp',imageClass:'pudi',variants:[{id:'pudi-200',label:'200g',weight:'200g',price:155,mrp:199,sku:'JF-TAR-CLS-IDP-200',active:true},{id:'pudi-400',label:'400g',weight:'400g',price:249,mrp:299,sku:'JF-TAR-CLS-IDP-400',active:true}],mealTags:['idli','dosa','chapati','rice'],rating:4.8,reviewCount:9},
+  {id:'puffora',sku:'JF-PUF',name:'Puffora',short:'Crunchy, puffy, made for anytime snacking.',category:'snacks',active:true,best:true,image:'images/hero/jayvi-products.webp',imageClass:'puffora',variants:[{id:'puffora-pack',label:'Pack',weight:'Pack',price:99,mrp:129,sku:'JF-PUF-200',active:true}],mealTags:[],rating:4.7,reviewCount:4}
+],
+combos:[{id:'duo',name:'Traditional Duo',short:'Peanut + Flaxseed. Two everyday favourites.',active:true,price:289,mrp:310,image:'images/hero/jayvi-products.webp',items:[{productId:'peanut',variantId:'peanut-200',qty:1},{productId:'flaxseed',variantId:'flaxseed-200',qty:1}]}],
+announcements:[{id:'h1',label:'BESTSELLER',title:'Peanut Chutney',em:'for every meal.',text:'Rich, nutty and comforting — the everyday favourite.',productId:'peanut',actionType:'product',actionTarget:'peanut',active:true,order:1},{id:'h2',label:'NEW',title:'Puffora',em:'crunch time.',text:'A crunchy Jayvi snack for anytime munching.',productId:'puffora',actionType:'product',actionTarget:'puffora',active:true,order:2},{id:'h3',label:'COMBO',title:'Traditional Duo',em:'one easy choice.',text:'Peanut + Flaxseed together at ₹289.',comboId:'duo',actionType:'combo',actionTarget:'duo',active:true,order:3}],
+mealLabels:{idli:'Idli',dosa:'Dosa',chapati:'Chapati',rice:'Rice + Ghee'},
 mealTags:[
 {id:'idli',name:'Idli',enabled:true,order:1},{id:'dosa',name:'Dosa',enabled:true,order:2},
 {id:'chapati',name:'Chapati',enabled:true,order:3},{id:'rice',name:'Rice + Ghee',enabled:true,order:4},
@@ -7,7 +17,7 @@ mealTags:[
 {id:'poori',name:'Poori',enabled:true,order:7},{id:'upma',name:'Upma',enabled:true,order:8},
 {id:'vada',name:'Vada',enabled:true,order:9},{id:'curd-rice',name:'Curd Rice',enabled:true,order:10}
 ],
-reviews:[],pendingReviews:[]};
+reviews:[]};
 
 /* ---------- Supabase admin session ---------- */
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -31,7 +41,7 @@ let data=loadData(),tab='dashboard';
 const app=document.getElementById('app'), title=document.getElementById('title');
 const money=n=>'₹'+Number(n||0).toLocaleString('en-IN');
 function loadData(){try{const x=JSON.parse(localStorage.getItem(KEY)||'null');return x?mergeDefaults(x):structuredClone(CONFIG_FALLBACK)}catch{return structuredClone(CONFIG_FALLBACK)}}
-function mergeDefaults(x){const d=structuredClone(CONFIG_FALLBACK);Object.keys(x||{}).forEach(k=>d[k]=x[k]);d.store={...CONFIG_FALLBACK.store,...(x.store||{})};d.homepage={...CONFIG_FALLBACK.homepage,...(x.homepage||{})};d.categories=x.categories||d.categories;d.products=x.products||d.products;d.combos=x.combos||d.combos;d.announcements=x.announcements||d.announcements;d.mealTags=x.mealTags||d.mealTags;d.mealLabels=Object.fromEntries((d.mealTags||[]).map(t=>[t.id,t.name]));d.reviews=x.reviews||d.reviews;d.pendingReviews=x.pendingReviews||[];return d}
+function mergeDefaults(x){const d=structuredClone(CONFIG_FALLBACK);Object.keys(x||{}).forEach(k=>d[k]=x[k]);d.store={...CONFIG_FALLBACK.store,...(x.store||{})};d.homepage={...CONFIG_FALLBACK.homepage,...(x.homepage||{})};d.categories=x.categories||d.categories;d.products=x.products||d.products;d.combos=x.combos||d.combos;d.announcements=x.announcements||d.announcements;d.mealTags=x.mealTags||d.mealTags;d.mealLabels=Object.fromEntries((d.mealTags||[]).map(t=>[t.id,t.name]));d.reviews=x.reviews||d.reviews;return d}
 function persist(){localStorage.setItem(KEY,JSON.stringify(data));toast('Catalogue/settings saved to this browser. Per the agreed architecture, catalogue and store configuration stay Git-managed — sync this out to your repo when ready.')}
 function toast(t){const x=document.getElementById('toast');x.textContent=t;x.classList.add('show');setTimeout(()=>x.classList.remove('show'),2300)}
 async function logout(){await sb.auth.signOut();location.href='admin-login.html'}
@@ -73,7 +83,7 @@ async function render(){title.textContent=tab==='variants'?'Variants & sizes':ta
  if(tab==='categories')h=categoriesPage();
  if(tab==='mealtags')h=mealTagsPage();
  if(tab==='homepage')h=homepagePage();
- if(tab==='reviews')h=reviewsPage();
+ if(tab==='reviews')h=await reviewsPage();
  if(tab==='settings')h=settingsPage();
  app.innerHTML=h;
 }
@@ -113,10 +123,37 @@ async function updateOrder(orderNumber, orderId){
   closeModal();toast('Order updated');render();
 }
 function manualWhatsApp(phone,orderNumber){if(!phone){toast('Customer mobile number is missing');return}const msg=`Jayvi Foods order ${orderNumber}: Your order status has been updated. Please contact us if you need help.`;window.open('https://wa.me/'+phone.replace(/\D/g,'')+'?text='+encodeURIComponent(msg),'_blank')}
+window._customerListCache = [];
 async function customersPage(){
   const cs=await fetchCustomers(), os=await fetchOrders();
-  return `<section class="panel"><div class="panelHead"><div><h2>Customers</h2><p>Registered customers from Supabase. Guest buyers (no account) appear in Orders by mobile number, not here.</p></div><span class="countPill">${cs.length} registered</span></div>${cs.length?`<div class="customerGrid">${cs.map(c=>{const count=os.filter(o=>o.customer_id===c.id).length;return `<article class="customerCard"><div><span class="typeTag">Registered</span><h3>${esc(c.name||'Customer')}</h3><p>${esc(c.phone||'')}</p></div><b>${count} order${count===1?'':'s'}</b></article>`}).join('')}</div>`:'<div class="empty">No registered customers yet.</div>'}</section>`;
+  // Registered customers: from Supabase profiles, order count matched by customer_id.
+  const registered = cs.map(c=>({
+    type:'Registered', name:c.name||'Customer', phone:c.phone||'',
+    orderCount: os.filter(o=>o.customer_id===c.id).length,
+    orders: os.filter(o=>o.customer_id===c.id)
+  }));
+  // Guest customers: no Supabase Auth account exists (and none is created here,
+  // by design) — grouped client-side from orders with no customer_id, keyed by
+  // phone number, so Admin gets a useful customer view without fabricating
+  // fake accounts for people who never registered.
+  const guestOrders = os.filter(o=>!o.customer_id);
+  const byPhone = {};
+  guestOrders.forEach(o=>{
+    const key = o.guest_phone||'unknown';
+    if(!byPhone[key]) byPhone[key] = {type:'Guest', name:o.guest_name||'Guest customer', phone:key, orderCount:0, orders:[]};
+    byPhone[key].orderCount++; byPhone[key].orders.push(o);
+    if(o.guest_name) byPhone[key].name = o.guest_name; // most recent name wins
+  });
+  const guests = Object.values(byPhone).sort((a,b)=>b.orderCount-a.orderCount);
+  const all = [...registered, ...guests].sort((a,b)=>b.orderCount-a.orderCount);
+  window._customerListCache = all;
+  return `<section class="panel"><div class="panelHead"><div><h2>Customers</h2><p>Registered customers (Supabase accounts) and guest buyers (identified by phone number from their orders — no account is created for them) shown together.</p></div><span class="countPill">${registered.length} registered · ${guests.length} guest</span></div>${all.length?`<div class="customerGrid">${all.map((c,i)=>`<article class="customerCard"><div><span class="typeTag">${c.type}</span><h3>${esc(c.name)}</h3><p>${esc(c.phone)}</p></div><b>${c.orderCount} order${c.orderCount===1?'':'s'}</b><button class="outline" style="margin-top:10px" onclick="customerOrderHistory(${i})">View orders</button></article>`).join('')}</div>`:'<div class="empty">No customers yet.</div>'}</section>`;
 }
+function customerOrderHistory(i){
+  const c = window._customerListCache[i]; if(!c) return;
+  openModal(`<div class="eyebrow">${c.type.toUpperCase()} CUSTOMER</div><h2>${esc(c.name)}</h2><p class="muted">${esc(c.phone)}</p><div class="orders" style="margin-top:16px">${c.orders.map(o=>`<button class="order" type="button" onclick="closeModal();orderView('${esc(o.order_number)}')"><b>${esc(o.order_number)}</b><span>${new Date(o.created_at).toLocaleDateString('en-IN')}</span><strong>${money(o.total)}</strong><small>${esc(o.status)}</small></button>`).join('')||'<div class="empty smallEmpty">No orders.</div>'}</div>`);
+}
+
 function productsPage(){return `<section class="panel"><div class="panelHead"><div><h2>Products</h2><p>Product catalogue, merchandising, multiple categories and media.</p></div><button class="gold" onclick="productForm()">+ Add product</button></div><div class="productAdminGrid">${data.products.map((p,i)=>`<article class="productAdminCard"><div class="thumb"><img src="${esc(p.image||'')}" alt=""></div><div class="productInfo"><span class="typeTag">${p.best?'BESTSELLER':'PRODUCT'}</span><h3>${esc(p.name)}</h3><p>${esc(p.short||'')}</p><small>${(p.categories||[p.category]).map(catName).join(' · ')} · ${p.variants?.length||0} variants</small><div class="cardActions"><button class="outline" onclick="productForm(${i})">Edit</button><button class="outline dangerBtn" onclick="deleteProduct(${i})">Delete</button></div></div></article>`).join('')}</div></section>`}
 function productForm(index=-1){
  const p=index>=0?data.products[index]:{id:'',sku:'',name:'',short:'',description:'',category:data.categories[0]?.id||'',categories:[],active:true,best:false,image:'',mediaFolder:'',media:[],mealTags:[],rating:0,reviewCount:0,variants:[]};
@@ -200,15 +237,61 @@ function homepagePage(){return `<section class="panel"><div class="panelHead"><d
 function announcementForm(index=-1){const s=index>=0?data.announcements[index]:{id:'',label:'',title:'',em:'',text:'',actionType:'product',actionTarget:'',active:true,order:data.announcements.length+1};openModal(`<div class="eyebrow">HOMEPAGE ANNOUNCEMENT</div><h2>${index<0?'Add announcement':'Edit announcement'}</h2><div class="formGrid"><label>Label<input id="aLabel" value="${esc(s.label)}"></label><label>Title<input id="aTitle" value="${esc(s.title)}"></label><label>Emphasis<input id="aEm" value="${esc(s.em)}"></label><label>Display position<input id="aOrder" type="number" value="${s.order||1}"></label><label class="fullLabel">Message<textarea id="aText" rows="3">${esc(s.text||'')}</textarea></label><label>Click action<select id="aAction" onchange="renderAnnouncementTarget()"><option value="product" ${s.actionType==='product'?'selected':''}>Open product</option><option value="combo" ${s.actionType==='combo'?'selected':''}>Open combo</option><option value="shop" ${s.actionType==='shop'?'selected':''}>Open Shop</option><option value="reviews" ${s.actionType==='reviews'?'selected':''}>Open Reviews</option><option value="url" ${s.actionType==='url'?'selected':''}>Open external link</option></select></label><div id="aTargetWrap"></div></div><label class="checkOnly"><input id="aActive" type="checkbox" ${s.active?'checked':''}> Active</label><button class="gold full" onclick="saveAnnouncement(${index})">Save announcement</button>`);window._announcementDraft=s;renderAnnouncementTarget()}
 function renderAnnouncementTarget(){const type=document.getElementById('aAction')?.value, s=window._announcementDraft||{};let h='';if(type==='product')h=`<label>Product<select id="aTarget">${data.products.map(p=>`<option value="${p.id}" ${(s.productId||s.actionTarget)===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>`;else if(type==='combo')h=`<label>Combo<select id="aTarget">${data.combos.map(c=>`<option value="${c.id}" ${(s.comboId||s.actionTarget)===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label>`;else if(type==='url')h=`<label>External URL<input id="aTarget" value="${esc(s.actionTarget||'')}" placeholder="https://..."></label>`;document.getElementById('aTargetWrap').innerHTML=h}
 function saveAnnouncement(i){const type=document.getElementById('aAction').value,target=document.getElementById('aTarget')?.value||'';const s={id:document.getElementById('aId')?.value||('ann-'+Date.now().toString(36)),label:document.getElementById('aLabel').value.trim(),title:document.getElementById('aTitle').value.trim(),em:document.getElementById('aEm').value.trim(),text:document.getElementById('aText').value.trim(),actionType:type,actionTarget:target,productId:type==='product'?target:'',comboId:type==='combo'?target:'',active:document.getElementById('aActive').checked,order:Number(document.getElementById('aOrder').value||1)};if(i<0)data.announcements.push(s);else data.announcements[i]=s;persist();closeModal();render()}
-function reviewsPage(){
- const pending=data.pendingReviews||[];
- return `<section class="panel"><div class="panelHead"><div><h2>Reviews</h2><p>Google reviews are added manually. Website customer reviews come here for approval; Admin does not need to re-enter approved customer text.</p></div><button class="gold" onclick="reviewForm()">+ Add Google review</button></div>
- <div class="reviewFilters"><span class="countPill">${data.reviews.length} published/managed</span><span class="countPill">${pending.length} awaiting approval</span></div>
- ${pending.length?`<div class="formSection"><h3>Customer reviews awaiting approval</h3><div class="reviewAdmin">${pending.map((r,i)=>`<article><div><span class="typeTag">CUSTOMER</span><span class="stars">${'★'.repeat(Number(r.rating||0))}</span><h3>${esc(r.name||'Customer')}</h3><p>“${esc(r.text||'')}”</p><small>Product: ${esc(product(r.productId)?.name||r.productId||'General')} · ${esc(r.date||'')}</small></div><div class="cardActions"><button class="gold" onclick="approvePendingReview(${i})">Approve</button><button class="outline dangerBtn" onclick="rejectPendingReview(${i})">Reject</button></div></article>`).join('')}</div></div>`:''}
- <div class="formSection"><h3>Published / managed reviews</h3><div class="reviewAdmin">${data.reviews.map((r,i)=>`<article><div><span class="typeTag">${esc(r.source||'Google')}</span><span class="stars">${'★'.repeat(Number(r.rating||0))}</span><h3>${esc(r.name||'Customer')}</h3><p>“${esc(r.text||'')}”</p><small>${r.verifiedPurchase?'Verified purchase · ':''}${r.active?'Published':'Hidden'}</small></div><div class="cardActions"><button class="outline" onclick="reviewForm(${i})">Edit</button><button class="outline" onclick="toggleReview(${i})">${r.active?'Hide':'Publish'}</button><button class="outline dangerBtn" onclick="deleteReview(${i})">Delete</button></div></article>`).join('')||'<div class="empty">No managed reviews yet.</div>'}</div></div></section>`;
+let _reviewsTab='pending', _reviewsSort='newest', _reviewsSearch='', _reviewsOffset=0;
+const REVIEWS_PAGE_SIZE=20;
+async function fetchWebsiteReviews(reset=true){
+  if(reset) _reviewsOffset=0;
+  let q = sb.from('website_reviews').select('*',{count:'exact'}).eq('status',_reviewsTab);
+  if(_reviewsSearch.trim()){
+    const term = _reviewsSearch.trim().replace(/[%,]/g,'');
+    q = q.or(`customer_name.ilike.%${term}%,review_text.ilike.%${term}%`);
+  }
+  const sortMap = {newest:['created_at',false], oldest:['created_at',true], ratingHigh:['rating',false], ratingLow:['rating',true]};
+  const [col,asc] = sortMap[_reviewsSort]||sortMap.newest;
+  q = q.order(col,{ascending:asc}).range(_reviewsOffset, _reviewsOffset+REVIEWS_PAGE_SIZE-1);
+  const {data:rows, error, count} = await q;
+  if(error){ toast('Could not load reviews: '+error.message); return {rows:[], count:0}; }
+  return {rows:rows||[], count:count||0};
 }
-function approvePendingReview(i){const r=(data.pendingReviews||[]).splice(i,1)[0];if(!r)return;r.active=true;r.verifiedPurchase=true;r.source='customer';data.reviews.unshift(r);persist();render();toast('Review approved and published')}
-function rejectPendingReview(i){if(confirm('Reject this customer review?')){data.pendingReviews.splice(i,1);persist();render()}}
+async function reviewsPage(){
+  const {rows, count} = await fetchWebsiteReviews(true);
+  const counts = {};
+  for(const s of ['pending','approved','rejected']){
+    const {count:c} = await sb.from('website_reviews').select('id',{count:'exact',head:true}).eq('status',s);
+    counts[s]=c||0;
+  }
+  window._websiteReviewsCache = rows;
+  return `<section class="panel"><div class="panelHead"><div><h2>Website reviews</h2><p>Customer-submitted reviews from the storefront. Separate workflow from Google reviews below — these are stored in Supabase, not localStorage, so this stays usable as volume grows.</p></div></div>
+  <div class="reviewFilters">
+    <button class="${_reviewsTab==='pending'?'gold':'outline'}" onclick="setReviewsTab('pending')">Pending (${counts.pending})</button>
+    <button class="${_reviewsTab==='approved'?'gold':'outline'}" onclick="setReviewsTab('approved')">Approved (${counts.approved})</button>
+    <button class="${_reviewsTab==='rejected'?'gold':'outline'}" onclick="setReviewsTab('rejected')">Rejected (${counts.rejected})</button>
+  </div>
+  <div class="formGrid" style="margin:14px 0">
+    <input placeholder="Search name or review text..." value="${esc(_reviewsSearch)}" onchange="setReviewsSearch(this.value)">
+    <select onchange="setReviewsSort(this.value)">
+      <option value="newest" ${_reviewsSort==='newest'?'selected':''}>Newest first</option>
+      <option value="oldest" ${_reviewsSort==='oldest'?'selected':''}>Oldest first</option>
+      <option value="ratingHigh" ${_reviewsSort==='ratingHigh'?'selected':''}>Highest rating</option>
+      <option value="ratingLow" ${_reviewsSort==='ratingLow'?'selected':''}>Lowest rating</option>
+    </select>
+  </div>
+  <div class="reviewAdmin">${rows.map((r,i)=>`<article><div><span class="typeTag">${esc(r.status.toUpperCase())}</span><span class="stars">${'★'.repeat(r.rating)}</span><h3>${esc(r.customer_name)}</h3><p>“${esc(r.review_text)}”</p><small>${r.product_id?'Product: '+esc(product(r.product_id)?.name||r.product_id)+' · ':''}${r.order_number?'Order: '+esc(r.order_number)+' · ':''}${new Date(r.created_at).toLocaleDateString('en-IN')}</small></div><div class="cardActions">${r.status!=='approved'?`<button class="gold" onclick="setReviewStatus('${r.id}','approved')">Approve</button>`:''}${r.status!=='rejected'?`<button class="outline dangerBtn" onclick="setReviewStatus('${r.id}','rejected')">Reject</button>`:''}${r.status!=='pending'?`<button class="outline" onclick="setReviewStatus('${r.id}','pending')">Move to pending</button>`:''}</div></article>`).join('')||'<div class="empty">No reviews in this tab.</div>'}</div>
+  ${count>REVIEWS_PAGE_SIZE?`<button class="outline full" onclick="loadMoreReviews()">Load more (${Math.max(0,count-_reviewsOffset-REVIEWS_PAGE_SIZE)} remaining)</button>`:''}
+  </section>
+  <section class="panel" style="margin-top:16px"><div class="panelHead"><div><h2>Google reviews</h2><p>Manually managed testimonial content shown alongside the "View Google reviews" link — separate from the customer-submitted reviews above.</p></div><button class="gold" onclick="reviewForm()">+ Add Google review</button></div>
+  <div class="reviewAdmin">${data.reviews.map((r,i)=>`<article><div><span class="typeTag">${esc(r.source||'Google')}</span><span class="stars">${'★'.repeat(Number(r.rating||0))}</span><h3>${esc(r.name||'Customer')}</h3><p>“${esc(r.text||'')}”</p><small>${r.verifiedPurchase?'Verified purchase · ':''}${r.active?'Published':'Hidden'}</small></div><div class="cardActions"><button class="outline" onclick="reviewForm(${i})">Edit</button><button class="outline" onclick="toggleReview(${i})">${r.active?'Hide':'Publish'}</button><button class="outline dangerBtn" onclick="deleteReview(${i})">Delete</button></div></article>`).join('')||'<div class="empty">No managed reviews yet.</div>'}</div></section>`;
+}
+function setReviewsTab(t){_reviewsTab=t;_reviewsOffset=0;render()}
+function setReviewsSearch(v){_reviewsSearch=v;_reviewsOffset=0;render()}
+function setReviewsSort(v){_reviewsSort=v;_reviewsOffset=0;render()}
+async function loadMoreReviews(){ _reviewsOffset+=REVIEWS_PAGE_SIZE; render(); }
+async function setReviewStatus(id,status){
+  const {error} = await sb.from('website_reviews').update({status, reviewed_at:new Date().toISOString(), reviewed_by:adminUser?.id||null}).eq('id',id);
+  if(error){ toast('Could not update review: '+error.message); return; }
+  toast('Review '+status);
+  render();
+}
 function reviewForm(i=-1){const r=i>=0?data.reviews[i]:{source:'Google',name:'',rating:5,text:'',active:true,verifiedPurchase:false};openModal(`<div class="eyebrow">REVIEW</div><h2>${i<0?'Add Google review':'Edit review'}</h2><div class="formGrid"><label>Source<select id="rSource"><option value="Google" ${r.source==='Google'?'selected':''}>Google</option><option value="customer" ${r.source==='customer'?'selected':''}>Customer</option></select></label><label>Customer name<input id="rName" value="${esc(r.name)}"></label><label>Rating<select id="rRating">${[1,2,3,4,5].map(n=>`<option ${n===Number(r.rating)?'selected':''}>${n}</option>`).join('')}</select></label><label>Product (optional)<select id="rProduct"><option value="">General review</option>${data.products.map(p=>`<option value="${p.id}" ${r.productId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label><label class="fullLabel">Review text<textarea id="rText" rows="5">${esc(r.text)}</textarea></label></div><label class="checkOnly"><input id="rActive" type="checkbox" ${r.active?'checked':''}> Published</label><label class="checkOnly"><input id="rVerified" type="checkbox" ${r.verifiedPurchase?'checked':''}> Verified purchase</label><button class="gold full" onclick="saveReview(${i})">Save review</button>`)}
 function saveReview(i){const r={source:document.getElementById('rSource').value,name:document.getElementById('rName').value.trim(),rating:Number(document.getElementById('rRating').value),text:document.getElementById('rText').value.trim(),productId:document.getElementById('rProduct').value,active:document.getElementById('rActive').checked,verifiedPurchase:document.getElementById('rVerified').checked};if(!r.name||!r.text){toast('Name and review text are required');return}if(i<0)data.reviews.push(r);else data.reviews[i]=r;persist();closeModal();render()}
 function toggleReview(i){data.reviews[i].active=!data.reviews[i].active;persist();render()}

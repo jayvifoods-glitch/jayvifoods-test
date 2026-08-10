@@ -115,7 +115,7 @@ header{
   border-bottom:1px solid var(--line-soft);
 }
 .nav{display:flex;align-items:center;gap:14px;height:var(--header-h)}
-.logo img{height:34px;width:auto;object-fit:contain}
+.logo img{height:46px;width:auto;object-fit:contain}
 header nav{display:none}
 .navActions{display:flex;align-items:center;gap:6px;margin-left:auto}
 .icon{
@@ -130,10 +130,10 @@ header nav{display:none}
 .mobileOnly.icon{margin-right:2px}
 
 /* Hamburger drawer: solid dark panel, slides in from the left, clearly opaque */
-.menuScrim{position:fixed;inset:0;background:rgba(20,14,10,.55);z-index:58;opacity:0;pointer-events:none;transition:opacity .22s var(--ease)}
+.menuScrim{position:fixed;inset:0;background:rgba(20,14,10,.55);z-index:61;opacity:0;pointer-events:none;transition:opacity .22s var(--ease)}
 .menuScrim.open{opacity:1;pointer-events:auto}
 #mobileMenu{
-  position:fixed;top:0;left:0;bottom:0;width:min(300px,84vw);z-index:59;
+  position:fixed;top:0;left:0;bottom:0;width:min(300px,84vw);z-index:62;
   background:var(--ink);color:#f4ece0;padding:20px 20px 26px;
   display:flex;flex-direction:column;gap:2px;
   transform:translateX(-100%);transition:transform .25s var(--ease);
@@ -141,7 +141,7 @@ header nav{display:none}
 }
 #mobileMenu.open{transform:none}
 #mobileMenu .menuTop{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
-#mobileMenu .menuTop img{height:26px;filter:brightness(0) invert(1)}
+#mobileMenu .menuTop img{height:40px}
 #mobileMenu .menuClose{width:36px;height:36px;border-radius:99px;background:#2a2018;border:0;color:#f4ece0;font-size:18px;display:grid;place-items:center}
 #mobileMenu a{padding:15px 8px;font-weight:700;font-size:16px;border-bottom:1px solid #362a20;color:#f4ece0;display:flex;align-items:center;gap:12px}
 #mobileMenu a i{width:20px;color:#e0be8a;font-size:15px}
@@ -242,8 +242,9 @@ header nav{display:none}
 .pcActions button:first-child{background:var(--surface-2);color:var(--ink)}
 .pcActions button:last-child{background:var(--brand);color:#fff}
 .pcActions.hasQty{gap:6px}
-.inlineQty{flex:1.4;display:flex;align-items:center;justify-content:space-between;background:var(--surface-2);border-radius:var(--radius-pill);padding:3px 4px;min-width:0}
-.inlineQty button{flex:0 0 26px;width:26px;height:26px;border-radius:99px;border:0;background:var(--surface);font-size:15px;font-weight:800;line-height:1;display:grid;place-items:center;color:var(--ink)}
+.inlineQty{flex:1.4;display:flex;align-items:center;justify-content:space-between;background:var(--surface-2);border-radius:var(--radius-pill);padding:3px;min-width:0;gap:2px}
+.inlineQty button{flex:0 0 28px;width:28px;height:28px;min-width:28px;min-height:28px;border-radius:50%;border:0;background:var(--surface);padding:0;box-sizing:border-box;display:flex;align-items:center;justify-content:center;color:var(--ink);box-shadow:0 1px 2px rgba(33,23,18,.12)}
+.inlineQty button i{font-size:11px;line-height:1;pointer-events:none}
 .inlineQty b{font-size:13px;padding:0 4px}
 .pcActions .viewCartBtn{flex:0 0 auto;width:38px;padding:0;display:grid;place-items:center;font-size:14px;background:var(--brand);color:#fff}
 
@@ -324,7 +325,7 @@ header nav{display:none}
 /* ---------- Footer ---------- */
 footer{background:var(--ink);color:#cbbca8;padding:40px 0 24px;border-top:1px solid #3a2d21}
 .footerGrid{display:grid;grid-template-columns:1fr;gap:26px}
-.footerBrand img{height:30px;filter:brightness(0) invert(1);margin-bottom:8px}
+.footerBrand img{height:52px;margin-bottom:8px}
 .footerBrand p{font-size:13px;color:#a3937e}
 footer b{display:block;color:#f4ece0;font-size:13px;margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em}
 footer a{display:block;font-size:13.5px;padding:5px 0;color:#cbbca8}
