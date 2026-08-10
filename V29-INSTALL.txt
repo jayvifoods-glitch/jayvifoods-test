@@ -1,0 +1,58 @@
+JAYVI FOODS — V29.0 INSTALL
+
+IMPORTANT:
+V29 is intended to be a CLEAN FRONTEND BASELINE. Do not mix V29 app.js/style.css
+with older frontend JavaScript/CSS.
+
+RECOMMENDED UPLOAD
+1. Keep the existing repository's images/ folder unchanged.
+2. Keep admin-login.html, admin.html, admin.css and admin.js unchanged.
+3. Replace these frontend files with V29:
+   - index.html
+   - app.js
+   - style.css
+   - legal.html
+4. Add/replace:
+   - VERSION.txt
+   - V29-INSTALL.txt
+
+GITHUB PAGES
+- Branch: main
+- Folder: / (root)
+- Wait for the Pages deployment to show successful before testing.
+
+CACHE
+V29 references:
+- style.css?v=29.0
+- app.js?v=29.0
+
+MOBILE
+V29 intentionally uses:
+- one responsive header
+- one compact announcement ticker
+- native horizontal product media scrolling
+- no product arrows/dots
+- a simple 1 / N media counter
+- fixed media frames
+- no scroll-capture hacks
+- one overlay/locking model
+
+PRODUCT IMAGES
+V29 expects the existing images/ folder to contain the current product assets.
+The product image filenames are defined near the top of app.js and can be mapped
+to the existing filenames without changing the gallery logic.
+
+DATA
+This version remains static. Cart and test order data are browser-local.
+Do not treat the browser-local order storage as production order storage.
+
+FSSAI / UDYAM
+Footer includes:
+FSSAI Lic No. 21226177001087
+UDYAM Registered MSME
+UDYAM-KR-03-0681597
+jayvifoods@gmail.com
+
+NEXT PHASE
+After V29 UI is accepted, data storage, Git-backed catalogue/order handling,
+Google Maps API and production security can be implemented separately.

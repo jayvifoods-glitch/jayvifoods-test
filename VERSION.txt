@@ -1,1 +1,16 @@
-28.0
+JAYVI FOODS
+VERSION: 29.0
+STATUS: STATIC FRONTEND CONSOLIDATION CANDIDATE
+DATE: 2026-08-10
+
+V29 is a clean frontend baseline focused on mobile stability, responsive UX,
+product galleries, cart/checkout UI, legal/footer information and desktop/mobile consistency.
+
+DATA:
+- Cart and test orders use browser localStorage only.
+- No database migration.
+- No Google Maps API.
+- No payment gateway.
+- No backend change.
+
+Keep the existing images/ folder and existing admin files from the current repository.
