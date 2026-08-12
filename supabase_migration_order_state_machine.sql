@@ -12,7 +12,19 @@
 -- ---------------------------------------------------------------------
 -- 1. Remap existing free-text status values to the canonical 14, then
 --    lock the column down with a CHECK constraint.
+--
+--    This UPDATE is a direct write to orders, run from a plain SQL
+--    session with no admin JWT context — without the line below, it
+--    is blocked by the existing prevent_direct_order_mutation()
+--    trigger (from Phase 1), exactly like the admin-bootstrap issue
+--    found earlier in this project. set_config(...,true) is
+--    transaction-scoped (like SET LOCAL): it authorizes only this
+--    migration's own statement and reverts automatically the moment
+--    this script's transaction ends — the trigger is never disabled,
+--    nothing to re-enable afterward, no manual step for you.
 -- ---------------------------------------------------------------------
+select set_config('jayvi.trusted_update', 'true', true);
+
 update public.orders set status = case
   when status ilike 'order received — cod' or status ilike 'order received - cod' then 'Order Confirmed'
   when status ilike 'order received' then 'Payment Pending'

@@ -10,7 +10,8 @@ rather than rounding up.
 ## Database migrations for this release (apply in this exact order)
 
 Assumes `supabase_schema_phase1_v3.sql`, `supabase_migration_reviews_v32_1.sql`,
-`supabase_migration_pincodes_schema.sql` + `supabase_seed_pincodes_data.sql`,
+`supabase_migration_pincodes_schema.sql` + `supabase_seed_pincodes_01_states.sql`
+through `supabase_seed_pincodes_21.sql`,
 `supabase_migration_notifications.sql`, and `supabase_migration_account_recovery.sql`
 are already applied from prior rounds.
 

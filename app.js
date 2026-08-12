@@ -1,5 +1,5 @@
 /* =========================================================
-   Jayvi Foods — v32.3 storefront logic
+   Jayvi Foods — v32.4 storefront logic
    Data model and localStorage keys are unchanged from v27/28
    so existing Admin-entered data keeps working after this
    upgrade. All UI/interaction code has been rewritten as a
@@ -480,11 +480,19 @@ function openTrackOrder(){
 function closeAccount(){$('accountOverlay').classList.remove('open');document.body.classList.remove('modalOpen')}
 function openAuth(m){$('accountContent').innerHTML=authView(m)}
 function authView(mode){
+  // Login accepts mobile number OR email (customers use phone, Admin
+  // uses email) — registration stays phone-only, customers don't
+  // register with email. The HTML pattern attribute previously forced
+  // 10-digit-numeric on this same shared field for both modes, which
+  // is what silently blocked an email address from even being typed.
+  const idField = mode==='login'
+    ? `<label>Mobile number or email *<input id="authId" required placeholder="10-digit mobile number or email"></label>`
+    : `<label>Mobile number *<input id="authId" inputmode="numeric" maxlength="10" pattern="[0-9]{10}" required placeholder="10-digit mobile number"></label>`;
   return `<div class="eyebrow">MY JAYVI</div><h2>${mode==='login'?'Welcome back.':'Create your Jayvi account.'}</h2>
-  <p class="muted">${mode==='login'?'Use your mobile number and password.':'Your mobile number is your Jayvi user ID.'}</p>
+  <p class="muted">${mode==='login'?'Use your mobile number or email, and password.':'Your mobile number is your Jayvi user ID.'}</p>
   <form onsubmit="${mode==='login'?'loginSubmit(event)':'registerSubmit(event)'}">
     ${mode==='register'?'<label>Name *<input id="authName" required></label>':''}
-    <label>Mobile number *<input id="authId" inputmode="numeric" maxlength="10" pattern="[0-9]{10}" required placeholder="10-digit mobile number"></label>
+    ${idField}
     <label>Password *<input id="authPass" type="password" minlength="6" required></label>
     ${mode==='register'?'<label>Confirm password *<input id="authPass2" type="password" minlength="6" required></label>':''}
     <button class="btn gold full">${mode==='login'?'Sign in':'Create account'} →</button>
@@ -568,27 +576,53 @@ async function registerSubmit(e){
 }
 async function loginSubmit(e){
   e.preventDefault();
-  const phone=$('authId').value.trim(), p=$('authPass').value;
-  const {data, error} = AUTH_MODE==='phone'
-    ? await sb.auth.signInWithPassword({ phone, password:p })
-    : await sb.auth.signInWithPassword({ email:phoneToAuthEmail(phone), password:p });
+  const identifier=$('authId').value.trim(), p=$('authPass').value;
+  // Routing only — decides which Supabase Auth call to make, grants
+  // nothing by itself. Actual access is decided after real
+  // authentication succeeds, by reading profiles.role from the
+  // database (see below) — never by which format was typed.
+  const looksLikeEmail = identifier.includes('@');
+  let result;
+  if(looksLikeEmail){
+    // Admin's account (or any other real-email account) — sign in
+    // directly with the typed email. No phone-mapping applied.
+    result = await sb.auth.signInWithPassword({ email: identifier, password:p });
+  } else {
+    if(!/^\d{10}$/.test(identifier)){
+      authErr('Enter a valid 10-digit mobile number or email address');
+      return;
+    }
+    result = AUTH_MODE==='phone'
+      ? await sb.auth.signInWithPassword({ phone: identifier, password:p })
+      : await sb.auth.signInWithPassword({ email: phoneToAuthEmail(identifier), password:p });
+  }
+  const {data, error} = result;
   if(error){
-    // R6: incorrect password (or unknown phone) — always offer the
-    // recovery path right where the error appears, not just an error.
-    $('authError').innerHTML = `Mobile number or password is incorrect. <button class="textBtn" onclick="openForgotPassword()" style="display:inline">Forgot password?</button>`;
+    // R6: incorrect password (or unknown identifier) — always offer
+    // the recovery path right where the error appears, not just an error.
+    $('authError').innerHTML = `Mobile number/email or password is incorrect. <button class="textBtn" onclick="openForgotPassword()" style="display:inline">Forgot password?</button>`;
     return;
   }
   currentUser = data.user;
+  // Role comes from profiles.role, read fresh from Supabase for this
+  // specific authenticated user's own id — never inferred from
+  // whether they typed an email or a phone number. A customer typing
+  // an arbitrary email cannot gain admin access this way: without the
+  // correct password for a real admin account, auth itself fails
+  // above; and even if someone's profile row were somehow inspected,
+  // it can't say role='admin' unless an actual admin set it that way
+  // (enforced by the prevent_privilege_escalation trigger — see
+  // supabase_schema_phase1_v3.sql). Every real admin data query in
+  // admin.js is separately gated by RLS checking public.is_admin() at
+  // the database level regardless of what this redirect does, so this
+  // check is a UX convenience, not the actual security boundary.
   await refreshProfile();
   showToast('Signed in');
-  // Item J: one normal login, role decides the destination — no
-  // separate admin-login page or public "Admin login" link anymore.
-  // Only redirects to the Admin panel when the visit specifically came
-  // from there (?returnTo=admin) AND the account is actually an admin;
-  // a plain visit to the storefront never force-redirects, it just
-  // shows the account view (which already tells an admin identity to
-  // use the Admin panel, from the earlier session-separation fix).
-  if(currentProfile?.role==='admin' && new URLSearchParams(location.search).get('returnTo')==='admin'){
+  // Item J / this fix: any successful login where the account is
+  // actually flagged admin goes straight to the Admin panel — no
+  // separate admin-login page, no public "Admin login" link, and this
+  // no longer depends on how the visit arrived (?returnTo=admin).
+  if(currentProfile?.role==='admin'){
     location.href='admin.html';
     return;
   }
