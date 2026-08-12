@@ -6,7 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="admin.css?v=32.1">
+<link rel="stylesheet" href="admin.css?v=32.3">
 </head>
 <body>
 <aside>
@@ -20,18 +20,19 @@
   <button class="nav" data-tab="categories">Categories</button>
   <button class="nav" data-tab="mealtags">Meal tags</button>
   <button class="nav" data-tab="homepage">Homepage</button>
+  <button class="nav" data-tab="pincodes">Delivery / Pincodes</button>
   <button class="nav" data-tab="reviews">Reviews</button>
   <button class="nav" data-tab="settings">Store settings</button>
   <a class="storeLink" href="index.html">← Storefront</a>
   <button class="logout" onclick="logout()">Sign out</button>
 </aside>
 <main>
-  <header><div><div class="eyebrow">JAYVI FOODS</div><h1 id="title">Dashboard</h1></div><div id="headerContext" class="headerContext"></div></header>
+  <header><div><div class="eyebrow">JAYVI FOODS</div><h1 id="title">Dashboard</h1></div><div style="display:flex;align-items:center;gap:12px"><button class="outline" onclick="openNotifications()" style="position:relative">🔔 Notifications<b id="notifCount" style="position:absolute;top:-6px;right:-6px;background:var(--danger);color:#fff;border-radius:99px;font-size:10px;min-width:16px;height:16px;place-items:center;padding:0 4px"></b></button><div id="headerContext" class="headerContext"></div></div></header>
   <div id="app"></div>
 </main>
 <div id="modal" class="modalWrap"><div class="modal"><button class="x" onclick="closeModal()">×</button><div id="modalBody"></div></div></div>
 <div id="toast" class="toast"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="supabase-config.js?v=32.1"></script>
-<script src="admin.js?v=32.1"></script>
+<script src="supabase-config.js?v=32.3"></script>
+<script src="admin.js?v=32.3"></script>
 </body></html>

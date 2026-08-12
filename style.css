@@ -1,5 +1,5 @@
 /* =========================================================
-   JAYVI FOODS — v31.0
+   JAYVI FOODS — v32.3
    Modern, mobile-first design system.
    Written mobile-first: base rules target small screens,
    larger breakpoints progressively enhance the layout.
@@ -102,7 +102,7 @@ h1,h2,h3{font-family:var(--font-display);font-weight:600;letter-spacing:-.01em;c
 /* ---------- Announcement top strip ---------- */
 .topbar{background:var(--ink);color:#f4ece0;height:var(--topbar-h);display:flex;align-items:center;overflow:hidden}
 .announcementViewport{width:100%;overflow:hidden;mask-image:linear-gradient(90deg,transparent,#000 6%,#000 94%,transparent)}
-.announcementTrack{display:flex;gap:36px;white-space:nowrap;width:max-content;animation:marquee 22s linear infinite}
+.announcementTrack{display:flex;gap:36px;white-space:nowrap;width:max-content;animation:marquee var(--marquee-duration,18s) linear infinite}
 .topbar:hover .announcementTrack,.topbar.paused .announcementTrack{animation-play-state:paused}
 .announcementTrack span{font-size:12px;font-weight:600;letter-spacing:.05em;padding:0 2px}
 @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
@@ -136,16 +136,18 @@ header nav{display:none}
   position:fixed;top:0;left:0;bottom:0;width:min(300px,84vw);z-index:62;
   background:var(--ink);color:#f4ece0;padding:20px 20px 26px;
   display:flex;flex-direction:column;gap:2px;
+  overflow-y:auto; /* independent scroll if content exceeds viewport height */
   transform:translateX(-100%);transition:transform .25s var(--ease);
   box-shadow:var(--shadow-lg);
 }
 #mobileMenu.open{transform:none}
-#mobileMenu .menuTop{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px}
+#mobileMenu .menuTop{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex:0 0 auto}
 #mobileMenu .menuTop img{height:40px}
 #mobileMenu .menuClose{width:36px;height:36px;border-radius:99px;background:#2a2018;border:0;color:#f4ece0;font-size:18px;display:grid;place-items:center}
+#mobileMenu .menuLinks{display:flex;flex-direction:column}
 #mobileMenu a{padding:15px 8px;font-weight:700;font-size:16px;border-bottom:1px solid #362a20;color:#f4ece0;display:flex;align-items:center;gap:12px}
 #mobileMenu a i{width:20px;color:#e0be8a;font-size:15px}
-#mobileMenu .menuFoot{margin-top:auto;padding-top:16px;font-size:12px;color:#a3937e}
+#mobileMenu .menuFoot{margin-top:auto;padding-top:16px;font-size:12px;color:#a3937e;flex:0 0 auto}
 #mobileMenu .menuFoot a{padding:0;border:0;font-size:13px;color:#e0be8a;display:inline;font-weight:700}
 
 /* ---------- Hero ---------- */
@@ -498,6 +500,8 @@ footer a:hover{color:#fff}
 .timelineStep i{width:22px;height:22px;border-radius:99px;background:var(--surface-2);display:grid;place-items:center;font-size:11px;font-style:normal;font-weight:800;flex:0 0 22px}
 .timelineStep.current{color:var(--ink);font-weight:700}
 .timelineStep.current i{background:var(--brand);color:#fff}
+.timelineStep.done{color:var(--ink-soft)}
+.timelineStep.done i{background:var(--success-soft);color:var(--success)}
 
 /* Toast */
 .toast{
@@ -506,6 +510,8 @@ footer a:hover{color:#fff}
   opacity:0;pointer-events:none;transition:.22s var(--ease);z-index:200;box-shadow:var(--shadow-lg);max-width:88vw;text-align:center;
 }
 .toast.show{opacity:1;transform:translate(-50%,0)}
+.toastRow{display:flex;align-items:center;gap:14px}
+.toastRow button{flex:0 0 auto;background:var(--brand);color:#fff;border:0;border-radius:99px;padding:8px 14px;font-weight:800;font-size:12px}
 
 body.modalOpen{overflow:hidden}
 

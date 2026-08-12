@@ -1,254 +1,342 @@
-# Jayvi Foods v32.1 — Stabilization + Admin completion
+# Jayvi Foods v32.3 — A–AA implementation pass
 
-This release fixes every item from the V32.0 testing report. Same
-visual design as v31.0/v32.0 throughout — no redesign, per instruction.
-Two database migrations apply to this release; see "Database changes"
-below before deploying.
+This release works through the complete approved A–AA specification, not
+just B/K/R. Per the explicit instruction accompanying this request, I am
+distinguishing **"implemented in code"** from **"verified end-to-end"**
+throughout — several items below are code-complete but need your live
+testing before being called production-ready, and I say so plainly
+rather than rounding up.
 
-## Database changes for this release (apply in this order)
+## Database migrations for this release (apply in this exact order)
 
-1. `supabase_schema_phase1_v3.sql` — unchanged, already applied if
-   you're on V32.0. Skip if already run.
-2. **`supabase_migration_reviews_v32_1.sql` — NEW, run this now.**
-   Adds the `website_reviews` table + RLS for the new customer review
-   workflow (item 15/16 below). Additive only — does not touch any
-   existing table, policy, or function.
-3. **`cleanup_test_orders.sql` — review, then run yourself.** I have no
-   live database connection (per the ongoing "offline work" constraint),
-   so I cannot execute or verify this. It's a two-step SELECT-then-DELETE
-   targeting only `TEST-%`/`HACK-%` order numbers — read the comments in
-   the file, and reply with the exact order numbers it found so there's
-   a real confirmed record, not just my assertion that it worked.
+Assumes `supabase_schema_phase1_v3.sql`, `supabase_migration_reviews_v32_1.sql`,
+`supabase_migration_pincodes_schema.sql` + `supabase_seed_pincodes_data.sql`,
+`supabase_migration_notifications.sql`, and `supabase_migration_account_recovery.sql`
+are already applied from prior rounds.
 
-## A. Storefront UI fixes
+1. **`supabase_migration_order_state_machine.sql`** — the big one. Adds
+   the 14-status enum, transition rules + enforcement trigger,
+   `cancel_order()`, expanded payment statuses, reference/dispatch/ETA
+   columns, and **fixes `place_order()`/`submit_payment_proof()`/
+   `track_guest_order()` to use the new canonical strings** — this last
+   part is not optional cleanup, the site would break on the next order
+   placed without it. Existing order rows are safely remapped to the
+   new enum before the constraint is added.
+2. **`supabase_migration_reviews_featured.sql`** — one column, purely
+   additive, doesn't touch the frozen reviews migration.
 
-1. **Hamburger menu transparency** — real bug, not cosmetic: the
-   drawer's `z-index` (59) was lower than the sticky header's (60), so
-   the semi-transparent blurred header rendered on top of the drawer
-   near the top of the screen. Raised the drawer/scrim z-index above
-   the header's.
-2. **Logo appearing blank/white (menu)** and **6. same issue (footer)**
-   — found the actual cause by inspecting the image file directly:
-   your logo is a detailed, full-color circular badge (portrait, gold
-   filigree, red background, white script text) — not a simple
-   monochrome mark. The CSS (`filter:brightness(0) invert(1)`) was
-   designed for wordmark-style logos and was flattening the entire
-   opaque circle to solid white, erasing all detail. Removed that
-   filter from both locations; the real logo now displays, and I sized
-   both up slightly (26px→40px in the menu, 30px→52px in the footer)
-   since the detail is illegible any smaller.
-3. **Header logo too small next to icons** — 34px→46px.
-4. **+/- cart controls not contained in circles** — switched from text
-   glyphs (`−`/`+`, prone to inconsistent font-metric centering) to
-   Font Awesome icons inside a fixed 28×28px flex-centered circle.
-5. **Dead "Our Story" link** — confirmed by inspection: it was a
-   literal self-link (`href="#about"` sitting inside `id="about"`) —
-   clicking it did nothing because it was already the current section.
-   Expanded the About copy with an actual short story paragraph and
-   pointed the link to Reviews instead.
-7. **Announcement text** — updated to "Purely Traditional · Simply
-   Delicious" in both the visible and the `aria-hidden` marquee-loop
-   copy (the ticker duplicates its content for a seamless scroll).
+No other database changes this round.
 
-## B. Admin login wording
+## A — Hamburger menu: re-verified, root cause found and fixed
 
-8. Removed the real admin email from both the visible copy ("Sign in
-   to Jayvi Foods Admin" — no address named) and the email field's
-   `placeholder` attribute, which was also silently exposing it (fixed
-   even though not explicitly flagged). Authentication mechanism itself
-   is completely unchanged — still Supabase Auth + `profiles.role`
-   check, no hardcoded credential anywhere.
+You were right that it was still broken. My earlier z-index fix
+addressed paint *order* but not the actual mechanism: `#mobileMenu` and
+`.menuScrim` were nested **inside** `<header>`, and `<header>` has
+`backdrop-filter`. `position:fixed` descendants of a `backdrop-filter`
+ancestor are a documented category of rendering bug, especially on
+WebKit/Safari — exactly matching your report of it looking transparent
+regardless of the CSS declaring a solid background. Fixed by moving
+both elements to be siblings of `<header>`, not children of it. Also
+added the previously-missing independent scroll (`overflow-y:auto`)
+for content taller than the viewport.
+**I still cannot open a real mobile Safari/Chrome session from here —
+please verify this specific fix visually before considering it closed.**
 
-## D/E/F/G/H. Catalogue, variants, combos, categories, guest customers
+## B — Pincode/delivery: checkout integration completed
 
-**Root cause, confirmed by inspection:** `admin.js` and `app.js` each
-had their own independent hardcoded fallback dataset. `app.js`'s
-`EMBEDDED_CONFIG` had the real 4 products/variants, 1 combo, and 4
-categories baked in; `admin.js`'s `CONFIG_FALLBACK` had empty arrays
-for all three. Two unrelated sources of truth, exactly as suspected —
-this is why Admin showed nothing while the storefront showed
-everything, and why the existing (already-functional) variant/combo/
-category management UI in `admin.js` appeared broken — it was working
-correctly against data that simply didn't exist yet.
+The exact gap from last round — `pincodes.delivery_charge` was
+displayed but not charged — is fixed. `verifyPincode()` now stores the
+matched PIN's charge/ETA in one shared object (`checkoutPinInfo`), and
+both the **displayed** summary total and the **actual value sent to**
+`place_order()` read from that same object via one `effectiveShipping()`
+helper — they cannot diverge because they're now the same code path,
+not two independent calculations that happened to agree. Verified by
+re-reading `placeOrder()` after editing it.
 
-**Fix:** mirrored the real dataset from `app.js` into `admin.js`'s
-fallback. One data fix resolves items 11, 12, 13, and 14 simultaneously
-— no new Admin UI code was needed; `productsPage()`, `variantsPage()`,
-`combosPage()`, `categoriesPage()`, and their forms already existed and
-work correctly once given real data.
+Fail-open behavior for unmatched PINs is unchanged, per your explicit
+instruction to keep it for now. State disable/individual PIN
+serviceability logic is unchanged from last round (already verified
+correct then).
 
-**Architecture confirmation (explicitly requested, not changing
-silently):** catalogue/variants/combos/categories/store settings
-**remain Git/Admin-JSON-managed, exactly as already agreed.** Nothing
-in this release moves any of that to Supabase. Only `website_reviews`
-(item 15 below) is new Supabase surface, and that was your own explicit
-architecture decision in this request, not one I made.
+## C — Google location search: wording fixed, still needs your API key
 
-**Guest customers (item 10):** now shown in Admin's Customers page,
-grouped client-side from existing orders where `customer_id is null`,
-keyed by phone number — no Supabase Auth account is created for them,
-per your explicit requirement. Each entry shows name (from their most
-recent order), phone, order count, and a "View orders" button opening
-their order history. Registered and guest customers are shown together,
-sorted by order count, with a type tag distinguishing them.
+Changed the field label from the technical "Google Maps ready" to
+"Search your Google location," per spec. The integration code itself
+was already correct last round (never uses Maps for pricing) and is
+unchanged. **Still inactive until you supply a Google Maps API key** —
+see below for exactly which APIs to enable.
 
-## I. Customer review workflow (items 15, 16)
+**Required for you to configure, not something I can do:**
+- Enable **Maps JavaScript API** and **Places API (New)** in Google
+  Cloud Console (confirmed exact requirement from reading the actual
+  code — the older/classic Places API will not work with the
+  `PlaceAutocompleteElement` this code uses).
+- Restrict the key by HTTP referrer to your production domain(s) once
+  live — do this in Cloud Console, not in code.
+- Set it in Admin → Store Settings → Google Maps API key. No code
+  change needed once you have the key; the existing `initPlaces()`
+  function activates automatically.
+- To test locally before going live, add `localhost`/your dev domain
+  to the key's allowed referrers temporarily.
 
-New, complete, and — per your explicit architecture decision in this
-request — Supabase-backed rather than localStorage:
+## D/U/V — Central order state machine: built
 
-- **Storefront:** a "Write a review" card in the Reviews section opens
-  a form (name, star rating, optional product, optional order number,
-  review text) inside the existing account-modal chrome — no new
-  overlay/page, reusing what's already there. Submissions insert
-  directly into `website_reviews` with `status='pending'`, enforced
-  server-side (a client cannot submit as anything but pending — see
-  the migration's RLS policy).
-- **Storefront display:** the Reviews section now shows three
-  independent things side by side without mixing their management
-  workflows: curated Google-linked testimonials (unchanged, still
-  Admin-JSON), live approved customer reviews (new, fetched from
-  Supabase), and the "View Google reviews" link (unchanged). Approving
-  a review in Admin makes it appear here automatically — no redeploy.
-- **Admin:** a new "Website reviews" panel with Pending/Approved/
-  Rejected tabs (with live counts), a search box (name or review text),
-  a sort dropdown (newest/oldest/highest/lowest rating), and Approve/
-  Reject/Move-to-pending actions. Built to stay usable at volume: every
-  query is server-side filtered and paginated (20 per page, "Load more"
-  rather than fetching everything at once) — not a full-table fetch
-  that gets slower as reviews accumulate.
-- **Google Reviews management is completely untouched** — same
-  `reviewForm`/`saveReview`/`toggleReview`/`deleteReview` functions,
-  same `data.reviews` Admin-JSON storage, rendered in its own separate
-  panel below the new website-reviews panel. Never sharing a workflow,
-  exactly as instructed.
+- 14 canonical statuses, enforced by a real `CHECK` constraint (was
+  free text).
+- `status_transitions` table is the single source of truth for valid
+  transitions, enforced by a **database trigger** — not just hidden
+  Admin dropdown options. An invalid transition is rejected even if
+  something bypasses the UI entirely.
+- Admin's order editor now only offers the statuses the transition
+  table actually allows from the order's current status.
+- Existing order rows were remapped to the new canonical values before
+  the constraint went on — nothing was silently dropped or left broken.
 
-## J. Admin session leaking into the storefront's "My Orders"
+## E — Customer cancellation: built, including the UI (a real gap I
+caught while wiring this)
 
-**This was real, and worth explaining precisely rather than just
-patching.** The storefront's order/address queries (`renderOrdersTab`,
-`renderAddressTab`, and the checkout's saved-address lookup) had no
-explicit filter — they relied entirely on RLS to narrow results to
-"the signed-in user's own rows." For a regular customer, RLS does
-exactly that correctly. For an admin account, RLS's own admin policy
-*correctly* allows reading every order at the database level — that's
-by design and is not a security bug. The actual bug was one layer up:
-the storefront UI didn't distinguish "what the database permits this
-identity to read" from "what this specific UI is asking for," so it
-displayed whatever came back, which for an admin session was
-everything.
+`cancel_order()` enforces the Order Confirmed/Preparing-only window
+**server-side**, via the same transition table — I initially only
+built the RPC and forgot the actual customer-facing button, caught
+this before finishing and added it: a "Cancel order" button now
+appears in both the guest tracking view and the signed-in customer's
+order view (they share the same rendering function), shown only when
+the order's current status permits it, with the exact "already
+shipped" message when it doesn't. Refund business days is now a Store
+Setting (`refundBusinessDays`, default 4), read by the cancellation
+toast — not hard-coded.
 
-**Approach taken (frontend-only, RLS completely untouched, as
-instructed):** every one of those queries now has an explicit
-`.eq('customer_id', currentUser.id)` — regardless of whether a
-customer or an admin is signed in, "My Orders"/"My Addresses" now only
-ever asks the database for rows matching that literal signed-in user's
-own ID, never leaning on RLS's broader (and correct) admin allowance to
-narrow things implicitly. On top of that, if the signed-in identity has
-`profiles.role = 'admin'`, the account view now shows a small notice —
-"You're signed in with an Admin account... use the Admin panel" — so
-it's not just silently empty-looking, it's explained. Net effect: an
-admin who opens the storefront and taps Account sees only their own
-personal order history (correctly, almost always empty) plus a link to
-the actual Admin panel — never every customer's orders.
+## F — Payment status: expanded
 
-## K. Guest Track Order entry point
+`payment_status` now supports `failed`/`refund_pending`/`refunded` in
+addition to the original three. Admin's order editor has a payment
+status dropdown to set these. Customer clicking "I have paid" still
+never sets anything beyond `proof_submitted` — verified unchanged.
 
-Confirmed by inspection: the tracking backend and logic already
-existed and worked (verified in the RLS testing), but there was
-genuinely no way for a logged-out visitor to reach it — the only
-"Track order" button lived inside the signed-in account view, which a
-guest never sees (they see the login form instead). Added a reachable
-entry point in four places: desktop header nav, mobile hamburger menu,
-footer, and a line on the guest login screen itself ("Already placed
-an order? Track it here"). All four call the same existing
-`track_guest_order()` RPC — minimal fields only (no address, UTR, or
-customer ID), exactly as verified in the RLS work; nothing about that
-backend or its guarantees changed.
+## G — UPI payment UX: intent link added, fallback preserved
 
-## L. Admin verification — still your call, not mine
+On mobile, a "Pay with UPI app" button using a standard `upi://pay`
+deep link now appears above the QR. Desktop shows QR only, per spec
+("Desktop → QR + manual reference fallback"). The UTR/reference field
+is **always** still required either way — this does not claim
+automatic payment confirmation, which the current architecture
+genuinely cannot do without a real payment gateway.
 
-You noted Admin hasn't been smoke-tested yet on your side. I did fix
-what was reported and re-verified each fix against the actual code (not
-from memory) — every item above was confirmed by direct inspection
-before I touched it. But "the code is correct" and "it behaves
-correctly when you click through it live" are different claims, same
-distinction as every other release in this project. Checklist below.
+## H — Dynamic order-specific ETA: real dates, not frozen text
 
-## Verification checklist
+`place_order()` now stores actual `eta_min_days`/`eta_max_days`
+numerically (not just a frozen string), plus a new `dispatch_date`
+field Admin sets when marking an order shipped. The customer-facing
+tracking view (`formatDynamicEta()`) now shows a genuinely different
+message per stage: generic range before shipping, a calculated date
+range once `dispatch_date` is set, "Expected today" when out for
+delivery, "Delivered" once delivered — instead of always re-showing
+the same 4–8 days regardless of progress.
 
-**Storefront (re-test after this release)**
-1. Open the site on mobile width. Tap the hamburger menu — background
-   should be solid dark, logo should show the full-color badge clearly,
-   text should be easily readable.
-2. Check the footer logo — same full-color badge, not a white blob.
-3. Compare header logo size to the Search/Account/Cart icons — logo
-   should read as clearly more prominent now.
-4. Add a product to cart from a product card — the −/qty/+ pill should
-   look like two clean filled circles with centered icons, not
-   misaligned glyphs.
-5. Scroll to About Jayvi → click "See what customers say" — should
-   jump to the Reviews section, not do nothing.
-6. Check the top announcement ticker reads "Purely Traditional · Simply
-   Delicious."
-7. Log out (or use an incognito window) → click "Track Order" in the
-   header nav, footer, or mobile menu → enter an order number + phone
-   → confirm it works and shows no address/UTR.
-8. Go to Reviews section → click "Write a review" → submit one →
-   confirm it does NOT appear on the site yet (still pending).
+## I — Delivery partner + tracking + reference number
 
-**Admin (full pass, not yet done on your side)**
-9. Log in at `admin-login.html` — heading should say "Sign in to Jayvi
-   Foods Admin," no email shown anywhere, including the empty field's
-   placeholder text.
-10. Dashboard — confirm KPIs load without error.
-11. Products — confirm all 4 products now appear (Peanut, Flaxseed,
-    Idli Dosa Pudi, Puffora), each with variants.
-12. Variants & sizes — confirm 200g/400g (and Puffora's single "Pack"
-    size) are visible and editable.
-13. Combos — confirm "Traditional Duo" appears with its two items.
-14. Categories — confirm 4 categories appear (Chutney Powders, Pudi,
-    Snacks, Combos).
-15. Make a small edit to a product (e.g. change its short description)
-    and save — then check the *storefront* in a fresh/incognito browser
-    that never had this Admin session's localStorage. **Expected: the
-    storefront will NOT show your change** — this is the known,
-    already-documented catalogue-sync limitation (Admin writes only to
-    this browser's localStorage; nothing pushes it to Git/the deployed
-    site automatically). Confirming this still applies, not a new bug.
-16. Customers — confirm both registered and guest customers appear,
-    with correct order counts, and "View orders" opens their history.
-17. Orders — open an order, change status/delivery partner/tracking
-    number/tracking URL, save, confirm it persists on reopen.
-18. Website reviews — approve the test review from storefront step 8
-    → refresh the storefront's Reviews section → confirm it now
-    appears there.
-19. Reject a review → confirm it moves to the Rejected tab and does
-    NOT appear on the storefront.
-20. Search/sort in the reviews panel — confirm both narrow the list.
-21. **Sign in to Admin, then open the storefront (same browser, same
-    session) and tap Account** → confirm you see the "signed in as
-    Admin" notice and an empty/near-empty personal order list — NOT
-    every customer's orders. This is the item J fix; test it
-    specifically before considering this resolved.
-22. Store configuration — spot-check that vacation mode, UPI/COD
-    toggles, and delivery settings still save correctly (unchanged in
-    this release, but worth confirming nothing else broke them).
+Added a distinct `reference_number` column (was conflated with
+tracking number). Admin's order editor has separate fields for both.
+**The confirmed gap from last round — tracking number wasn't actually
+rendered in the customer tracking view despite being fetched — is
+fixed**: tracking number, reference number, delivery partner, and
+tracking link now all render as distinct visible lines.
 
-If anything in this checklist doesn't match, tell me exactly which
-numbered step and what happened instead — same process as every
-previous round in this project.
+## J — Unified login: `admin-login.html` removed entirely
 
-## Carried forward, unchanged in this release
+No more separate admin login page or public "Admin login" footer link.
+One normal login (`app.js`'s existing customer form); after signing in,
+the code checks `profiles.role`. Visiting Admin without a session now
+redirects to the storefront's normal login with a `?returnTo=admin`
+marker, and successful sign-in as an admin from that path redirects
+straight to `admin.html`. A plain storefront visit never force-redirects
+an admin account — it shows the account view with the existing "you're
+signed in as Admin, use the panel" notice from the prior round. Security
+mechanism is unchanged (Supabase Auth + role check) — this was purely a
+UX/architecture change, not a security change.
 
-- Supabase remains the source of truth for auth, profiles, addresses,
-  orders, order items, order status history (Phase 1, frozen).
-- `website_reviews` is the one addition, explicitly authorized by you
-  in this request's architecture list.
-- No `service_role` or any secret key anywhere in the frontend/Git —
-  confirmed again by inspection, nothing in this release changes how
-  Supabase is authenticated to.
-- Catalogue/variants/combos/categories/store settings stay
-  Git/Admin-JSON-managed — not moved to Supabase, not silently changed.
-- AUTH_MODE remains `'email-map'` (set in the previous round after
-  live-testing showed native phone auth needs an SMS provider).
+## K — Admin notifications: dashboard unchanged (already verified
+working), email still needs your setup
+
+No code changes needed here this round — dashboard notifications were
+already correct. Email still requires deploying
+`send-order-notification` and configuring a **real** Resend sender
+domain — confirming again, per your reminder: the file still
+contains the literal placeholder `notifications@yourdomain.example`,
+which will fail if deployed as-is. Not touching that placeholder was
+intentional — I can't invent a real domain for you.
+
+## L — Customer status notifications: architecture, not a new provider
+
+Per your instruction not to invent a provider, this round's concrete
+delivery mechanism for "customer receives a message about their order"
+remains M (WhatsApp, admin-triggered). What "architecture ready to
+connect to email/WhatsApp/SMS later" concretely means here: the
+per-status message templates are defined once
+(`WHATSAPP_STATUS_TEMPLATES` in `admin.js`), independent of *how* they
+get sent — swapping in an automated email/SMS channel later means
+pointing a new sender at that same template map, not rebuilding the
+message content logic.
+
+## M — WhatsApp templates: built, phone bug fixed
+
+Every status now has its own message (order confirmed, preparing,
+packed & shipped with live tracking number/ETA, delivered, cancelled
+with the configurable refund days, refund pending/completed, payment
+failed, delivery failed, etc.) — no more one generic message. Also
+fixed the confirmed `wa.me` bug: the customer's bare 10-digit number is
+now prefixed with the country code before building the link.
+
+## N — Customer timeline: branches per status category
+
+Rewritten to render three distinct tracks — normal, cancelled, and
+delivery-failed — instead of one happy-path list that rendered blank
+for a cancelled order (the confirmed gap from last round).
+
+## O — Reviews: Featured flag + homepage summary + dedicated view
+
+Added `featured` (new, additive-only migration) with an Admin
+Feature/Unfeature action; featured reviews sort first everywhere.
+Homepage was already showing a small curated set, not hundreds — the
+actual missing piece was a genuine "View all reviews" destination,
+which now exists as a paginated, approved-only list (10 at a time,
+"Load more"), reusing the existing account-modal chrome rather than a
+new page. Google Reviews management (`data.reviews`, Admin-JSON) is
+completely untouched, still a fully separate workflow.
+
+## P — Brand positioning: copy updated
+
+Page title, meta description, and the About section's copy were the
+three places actually framing Jayvi around chutneys specifically —
+reworded to lead with "traditional Indian flavours"/"everyday modern
+eating" framing, while staying honest that chutney powders and podi
+are the current real product range. Checked `help.html`/`legal.html`
+directly — no equivalent phrasing there needing a change.
+
+## Q — Product validation: the confirmed live bug, fixed at both ends
+
+**Admin side:** `saveProduct()` now blocks on missing core fields (ID,
+name, category, description, main image), named individually. Variants
+are handled differently, deliberately: a brand-new product can't have
+one yet (they're added afterward via Variants & sizes), so instead of
+blocking creation entirely, a product with no sellable variant is
+silently forced hidden (`active:false`) regardless of the checkbox,
+with a clear message explaining why — this is what actually prevents
+the crash, not just a validation message.
+
+**Storefront side (defense in depth, in case bad data reaches it some
+other way):** `sync()` now filters out any product missing an id, name,
+image, or sellable variant before it ever reaches rendering — traced
+the exact failure path from last round's audit
+(`getVariant()` → `undefined.mrp` → crash) and closed it at the single
+choke point every product list goes through, plus added explicit
+guards in `productCard()`/`openProduct()` directly as extra hardening
+on the two highest-traffic render paths.
+
+## R — Forgot password: re-verified
+
+Logic re-checked against the same code, unchanged from last round
+(existing-account routing, WhatsApp-assisted identity flow, Admin
+reset button). **Still genuinely blocked on live end-to-end testing**
+until you deploy `admin-reset-password` — same status as last round,
+repeating it here rather than letting it look resolved.
+
+## S — Add to cart: fixed
+
+Confirmed regression, now fixed: `addToCart()` no longer calls
+`openCart()`. Toast shows "✓ [Product] added to your bag" with a "View
+Cart" action; cart state updates correctly regardless of whether the
+drawer is open, so adding multiple products in sequence works exactly
+as specified.
+
+## T — Announcement speed: configurable
+
+Was a hardcoded `22s`. Now a CSS variable set from a new Store Setting
+(`announcementSpeed`: slow/normal/fast → 26s/18s/11s), defaulting to
+Normal, which is deliberately faster than the old fixed value per
+spec. The topbar already had a fixed height (`--topbar-h`), so no
+layout-shift issue existed there.
+
+## X — Central configuration: remaining items closed
+
+Added as real Store Settings this round: `refundBusinessDays`,
+`announcementSpeed`, `homepageReviewCount` (was a hardcoded
+`.limit(6)`). Combined with everything already configurable from
+prior rounds (payment toggles, PIN serviceability, courier details per
+order, announcement text), the specific items your spec listed are now
+all configuration rather than scattered constants — checked each one
+individually rather than assuming.
+
+## W — Audit trail: retained and strengthened
+
+Unchanged structurally (`order_status_history`, already verified
+solid last round) — this round added an `actor` column
+(`system`/`customer`/`admin`) recording *who* made each change, per
+the spec's example format, which wasn't captured before.
+
+## Y — Release discipline: I cannot do this part myself
+
+I have no git access to this repository. Creating a `v32.1-stable` tag
+and controlling the deploy sequence is something you need to do
+directly:
+```bash
+git tag v32.1-stable <commit-hash-of-your-last-known-good-deploy>
+git push origin v32.1-stable
+```
+Everything else in this file assumes that discipline on your end; I
+can't verify or enforce it from here.
+
+## Verification checklist (test actual workflows, not just that the code exists)
+
+**Storefront**
+1. Hamburger menu on an actual phone (not just resized desktop
+   browser) — solid background, readable text.
+2. Add three different products to cart without the drawer opening;
+   confirm all three are present when you do open it.
+3. Checkout with a serviceable PIN that has a configured
+   `delivery_charge` in Admin → confirm the summary total and the
+   order actually created in Supabase show the *same* shipping amount.
+4. Checkout with a PIN in a disabled state → confirm generic rejection
+   message, no internal detail leaked.
+5. Place a UPI order on an actual phone → confirm the "Pay with UPI
+   app" button appears and attempts to hand off to an installed app.
+6. Track an order through several Admin-driven status changes →
+   confirm the timeline and ETA text change appropriately at each
+   stage, and that a normal-flow order never shows the cancelled/failed
+   track.
+7. Cancel an order while it's "Order Confirmed" → confirm success and
+   the refund-days message. Try cancelling one already "Packed &
+   Shipped" → confirm it's correctly blocked (button shouldn't even
+   appear).
+8. Submit a review, approve it in Admin, refresh homepage → confirm it
+   appears; feature it → confirm it sorts first.
+9. Visit the site while a signed-in admin, tap Account → confirm you
+   see the admin notice and your own (near-empty) order history, not
+   every customer's orders — this was previously verified fixed, worth
+   re-confirming after this round's other changes.
+
+**Admin**
+10. Try creating a product with no image → confirm it's blocked with a
+    specific message. Create one with no variant → confirm it saves
+    but stays hidden, with an explanation, and does **not** appear on
+    the storefront.
+11. Open an order's status dropdown → confirm only valid next-statuses
+    appear, never every status.
+12. Try forcing an invalid transition directly via the database (as a
+    sanity check on the trigger, not just the UI) — see the migration
+    file's own verification comment for the exact test query.
+13. Change an order's status → click WhatsApp Customer → confirm the
+    message matches that specific status, and the link number has the
+    country code.
+14. Visit `/admin.html` in a fresh browser with no session → confirm
+    it lands on the storefront login, not a 404 or a separate admin
+    login page.
+
+**Regression**
+15. Full guest and signed-in checkout, both payment methods, still
+    complete successfully end to end.
+16. Existing approved reviews, existing orders, existing customers
+    from before this round are all still visible and correct in Admin.
+
+If anything above doesn't match, tell me exactly which numbered item —
+same process as every round in this project.

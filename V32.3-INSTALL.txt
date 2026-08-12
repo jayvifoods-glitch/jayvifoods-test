@@ -1,0 +1,31 @@
+JAYVI FOODS — V32.3 WEBSITE RELEASE (Complete A-AA implementation pass)
+
+Full changelog, the A-AA re-verification summary, migration order, and
+a workflow-level verification checklist are all in DEPLOY.md — read it
+before deploying. This is the largest release in the project so far.
+
+BEFORE DEPLOYING:
+1. supabase-config.js — unchanged, already configured from prior rounds.
+2. Run these 2 NEW SQL files in SQL Editor, in this exact order (after
+   everything from prior rounds is already applied):
+     supabase_migration_order_state_machine.sql
+     supabase_migration_reviews_featured.sql
+3. admin-login.html has been REMOVED — if your web server or CDN caches
+   old pages, purge that URL specifically so it 404s cleanly rather
+   than serving a stale page.
+4. Google Maps API key still not configured (needs your action) — see
+   DEPLOY.md's "C" section for exact API names to enable.
+5. Edge Functions (email notifications, admin password reset) still
+   need deploying — same as last round, commands unchanged, see
+   DEPLOY.md.
+6. Read DEPLOY.md's verification checklist in full before considering
+   this production-ready — several items are code-complete but not yet
+   live-tested from this side.
+
+UPLOAD RULE:
+Replace the complete repository contents with this package. Do not mix
+older v15-v32.2 files. Keep the entire images/ folder.
+
+GitHub Pages:
+- Branch: main
+- Folder: / (root)

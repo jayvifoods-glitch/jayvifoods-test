@@ -41,3 +41,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_Ywh8mxQHi7-LpUu7bkdisQ_GmVFlVTO';
 */
 const AUTH_MODE = 'email-map'; // 'phone' | 'email-map'
 const EMAIL_MAP_DOMAIN = 'customers.jayvifoods.internal';
+
+// Base URL for calling Edge Functions (admin-reset-password, etc).
+// Standard Supabase pattern: <project-url>/functions/v1/<function-name>
+const EDGE_FUNCTIONS_URL = SUPABASE_URL.replace('.supabase.co', '.supabase.co/functions/v1');

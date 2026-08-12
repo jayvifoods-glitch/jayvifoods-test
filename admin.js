@@ -1,5 +1,5 @@
 const KEY='jayviStoreV14';
-const CONFIG_FALLBACK={store:{name:'Jayvi Foods',tagline:'Purely Traditional. Simply Delicious.',country:'IN',freeShippingThreshold:599,shippingFlat:49,deliveryMinDays:4,deliveryMaxDays:8,vacationMode:false,vacationMessage:'We are taking a short break. Orders will resume soon.',googleMapsApiKey:'',googleReviewsUrl:'https://www.google.com/search?q=Jayvi+Foods+reviews',whatsapp:'918861981003',instagram:'https://instagram.com/jayvifoods',razorpayKeyId:'',razorpayEnabled:false,upiEnabled:true,codEnabled:false,otpEnabled:false,upiId:'',upiName:'Jayvi Foods',upiQrImage:'',paymentNote:'Pay by UPI QR. Order moves to processing after payment verification.'},homepage:{heroAutoplay:true,heroSeconds:5},
+const CONFIG_FALLBACK={store:{name:'Jayvi Foods',tagline:'Purely Traditional. Simply Delicious.',country:'IN',freeShippingThreshold:599,shippingFlat:49,deliveryMinDays:4,deliveryMaxDays:8,vacationMode:false,vacationMessage:'We are taking a short break. Orders will resume soon.',googleMapsApiKey:'',googleReviewsUrl:'https://www.google.com/search?q=Jayvi+Foods+reviews',whatsapp:'918861981003',instagram:'https://instagram.com/jayvifoods',razorpayKeyId:'',razorpayEnabled:false,upiEnabled:true,codEnabled:false,otpEnabled:false,upiId:'',upiName:'Jayvi Foods',upiQrImage:'',paymentNote:'Pay by UPI QR. Order moves to processing after payment verification.',refundBusinessDays:4,announcementSpeed:'normal',homepageReviewCount:6},homepage:{heroAutoplay:true,heroSeconds:5},
 categories:[{id:'chutney',name:'Chutney Powders',enabled:true,order:1},{id:'pudi',name:'Pudi',enabled:true,order:2},{id:'snacks',name:'Snacks',enabled:true,order:3},{id:'combos',name:'Combos',enabled:true,order:4}],
 products:[
   {id:'peanut',sku:'JF-TAR-CLS-PNT',name:'Peanut Chutney',short:'Rich, nutty and comforting.',category:'chutney',active:true,best:true,image:'images/products/peanut-chutney.webp',imageClass:'peanut',variants:[{id:'peanut-200',label:'200g',weight:'200g',price:155,mrp:199,sku:'JF-TAR-CLS-PNT-200',active:true},{id:'peanut-400',label:'400g',weight:'400g',price:249,mrp:299,sku:'JF-TAR-CLS-PNT-400',active:true}],mealTags:['idli','dosa','chapati','rice'],rating:4.8,reviewCount:18},
@@ -26,11 +26,11 @@ let adminUser = null, adminProfile = null;
 async function requireAdminSession(){
   const {data} = await sb.auth.getSession();
   const user = data?.session?.user;
-  if(!user){ location.href='admin-login.html'; return false; }
+  if(!user){ location.href='index.html?returnTo=admin'; return false; }
   const {data:profile, error} = await sb.from('profiles').select('*').eq('id', user.id).single();
   if(error || profile?.role !== 'admin'){
     await sb.auth.signOut();
-    location.href='admin-login.html';
+    location.href='index.html?returnTo=admin';
     return false;
   }
   adminUser = user; adminProfile = profile;
@@ -44,7 +44,7 @@ function loadData(){try{const x=JSON.parse(localStorage.getItem(KEY)||'null');re
 function mergeDefaults(x){const d=structuredClone(CONFIG_FALLBACK);Object.keys(x||{}).forEach(k=>d[k]=x[k]);d.store={...CONFIG_FALLBACK.store,...(x.store||{})};d.homepage={...CONFIG_FALLBACK.homepage,...(x.homepage||{})};d.categories=x.categories||d.categories;d.products=x.products||d.products;d.combos=x.combos||d.combos;d.announcements=x.announcements||d.announcements;d.mealTags=x.mealTags||d.mealTags;d.mealLabels=Object.fromEntries((d.mealTags||[]).map(t=>[t.id,t.name]));d.reviews=x.reviews||d.reviews;return d}
 function persist(){localStorage.setItem(KEY,JSON.stringify(data));toast('Catalogue/settings saved to this browser. Per the agreed architecture, catalogue and store configuration stay Git-managed — sync this out to your repo when ready.')}
 function toast(t){const x=document.getElementById('toast');x.textContent=t;x.classList.add('show');setTimeout(()=>x.classList.remove('show'),2300)}
-async function logout(){await sb.auth.signOut();location.href='admin-login.html'}
+async function logout(){await sb.auth.signOut();location.href='index.html'}
 
 /* ---------- Orders & customers now come from Supabase, not localStorage ---------- */
 async function fetchOrders(){
@@ -71,7 +71,33 @@ function variant(pid,vid){return product(pid)?.variants?.find(v=>v.id===vid)}
 function esc(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
 function setTab(t){tab=t;document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));render()}
 document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
-async function render(){title.textContent=tab==='variants'?'Variants & sizes':tab==='mealtags'?'Meal tags':tab==='settings'?'Store settings':tab[0].toUpperCase()+tab.slice(1);document.getElementById('headerContext').innerHTML=tab==='dashboard'?'<span class="livePill">Connected to Supabase</span>':'';
+async function refreshNotifBadge(){
+  const {count} = await sb.from('notification_events').select('id',{count:'exact',head:true}).eq('dashboard_read', false);
+  const el = document.getElementById('notifCount');
+  if(!el) return;
+  if(count && count>0){ el.textContent = count>99?'99+':count; el.style.display='grid'; }
+  else { el.style.display='none'; }
+}
+async function openNotifications(){
+  const {data, error} = await sb.from('notification_events').select('*').order('created_at',{ascending:false}).limit(30);
+  if(error){ toast('Could not load notifications: '+error.message); return; }
+  const EVENT_LABELS = {new_order:'New order', payment_verification:'Payment verification needed', payment_failed:'Payment failed', order_confirmed:'Order confirmed', preparing:'Preparing', packed_shipped:'Packed & shipped', out_for_delivery:'Out for delivery', delivered:'Delivered', cancelled:'Cancelled', refund_pending:'Refund pending', refunded:'Refunded', delivery_failed:'Delivery failed', manual_review:'Needs manual review'};
+  openModal(`<div class="eyebrow">NOTIFICATIONS</div><h2>Recent activity</h2>
+    <div class="orders" style="margin-top:14px">${(data||[]).map(n=>`<button class="order" type="button" style="${n.dashboard_read?'opacity:.55':''}" onclick="closeModal();markNotificationRead('${n.id}');orderView('${esc(n.order_number||'')}')"><b>${esc(EVENT_LABELS[n.event_type]||n.event_type)}</b><span>${new Date(n.created_at).toLocaleString('en-IN')}</span><strong>${esc(n.order_number||'')}</strong><small>${n.dashboard_read?'Read':'Unread'}${n.email_sent?' · Emailed':n.email_error?' · Email failed':''}</small></button>`).join('')||'<div class="empty smallEmpty">No notifications yet.</div>'}</div>
+    ${(data||[]).some(n=>!n.dashboard_read)?'<button class="outline full" style="margin-top:12px" onclick="markAllNotificationsRead()">Mark all as read</button>':''}`);
+}
+async function markNotificationRead(id){
+  if(!id) return;
+  await sb.rpc('mark_notification_read', {p_id:id});
+  refreshNotifBadge();
+}
+async function markAllNotificationsRead(){
+  await sb.from('notification_events').update({dashboard_read:true}).eq('dashboard_read', false);
+  closeModal(); refreshNotifBadge(); toast('All notifications marked read');
+}
+
+async function render(){title.textContent=tab==='variants'?'Variants & sizes':tab==='mealtags'?'Meal tags':tab==='settings'?'Store settings':tab==='pincodes'?'Delivery / Pincodes':tab[0].toUpperCase()+tab.slice(1);document.getElementById('headerContext').innerHTML=tab==='dashboard'?'<span class="livePill">Connected to Supabase</span>':'';
+ refreshNotifBadge();
  app.innerHTML = '<div class="empty">Loading…</div>';
  let h='';
  if(tab==='dashboard')h=await dashboard();
@@ -83,6 +109,7 @@ async function render(){title.textContent=tab==='variants'?'Variants & sizes':ta
  if(tab==='categories')h=categoriesPage();
  if(tab==='mealtags')h=mealTagsPage();
  if(tab==='homepage')h=homepagePage();
+ if(tab==='pincodes')h=await pincodesPage();
  if(tab==='reviews')h=await reviewsPage();
  if(tab==='settings')h=settingsPage();
  app.innerHTML=h;
@@ -106,23 +133,62 @@ async function ordersPage(){
 async function orderView(orderNumber){
   const o = await fetchOrder(orderNumber);
   if(!o){ toast('Order not found'); return; }
-  const timeline=(o.history||[]).map(t=>`<div class="timelineItem"><b>${esc(t.status)}</b><small>${new Date(t.created_at).toLocaleString('en-IN')}</small>${t.note?` — ${esc(t.note)}`:''}</div>`).join('');
-  openModal(`<div class="eyebrow">ORDER</div><h2>${esc(o.order_number)}</h2><div class="detailColumns"><div><h3>Customer</h3><p><b>${esc(o.guest_name||'Guest')}</b><br>${esc(o.guest_phone||'')}</p><h3>Delivery</h3><p>${esc(o.address_line1||'')}<br>${esc(o.address_city||'')}, ${esc(o.address_state||'')} ${esc(o.address_pincode||'')}</p></div><div><h3>Payment</h3><p>${esc(o.payment_method||'')}<br>Status: <b>${esc(o.payment_status||'')}</b><br>UTR: ${esc(o.utr||'Not provided')}</p><h3>Items</h3>${(o.order_items||[]).map(i=>`<div class="miniLine"><span>${esc(i.name)} ${i.variant_label?'· '+esc(i.variant_label):''} × ${i.qty}</span><b>${money(i.line_total)}</b></div>`).join('')}<div class="miniLine total"><span>Total</span><b>${money(o.total)}</b></div></div></div><div class="statusEditor"><label>Order status<select id="orderStatus"><option>Order received</option><option>Order received — COD</option><option>Payment verification pending</option><option>Payment verified</option><option>Preparing</option><option>Packed</option><option>Shipped</option><option>Out for delivery</option><option>Delivered</option><option>Cancelled</option></select></label><label>Delivery partner<input id="deliveryPartner" value="${esc(o.delivery_partner||'')}"></label><label>Tracking number<input id="trackingNumber" value="${esc(o.tracking_number||'')}"></label><label>Tracking URL<input id="trackingUrl" value="${esc(o.tracking_url||'')}"></label><button class="gold full" onclick="updateOrder('${esc(o.order_number)}','${o.id}')">Update order</button></div><div class="timeline"><h3>Order timeline</h3>${timeline||'<div class="empty smallEmpty">No timeline yet.</div>'}</div><div class="notificationBox"><b>Customer update</b><p>Automated WhatsApp delivery will be connected later through WhatsApp Business messaging.</p><button class="outline" onclick="manualWhatsApp('${esc(o.guest_phone||'')}','${esc(o.order_number)}')">Open WhatsApp update</button></div>`);
-  document.getElementById('orderStatus').value=o.status||'Order received';
+  const timeline=(o.history||[]).map(t=>`<div class="timelineItem"><b>${esc(t.status)}</b><small>${new Date(t.created_at).toLocaleString('en-IN')} · ${esc(t.actor||'system')}</small>${t.note?` — ${esc(t.note)}`:''}</div>`).join('');
+  // V: only offer statuses the transition table actually allows from
+  // this order's current status — never show an option that would be
+  // rejected on save. The database trigger enforces this regardless;
+  // this is the UI half of "don't allow selection then reject after
+  // submission."
+  const {data: allowed} = await sb.from('status_transitions').select('to_status').eq('from_status', o.status);
+  const nextOptions = (allowed||[]).map(a=>a.to_status);
+  const statusOptions = [o.status, ...nextOptions].map(s=>`<option value="${esc(s)}" ${s===o.status?'selected':''}>${esc(s)}${s===o.status?' (current)':''}</option>`).join('');
+  openModal(`<div class="eyebrow">ORDER</div><h2>${esc(o.order_number)}</h2><div class="detailColumns"><div><h3>Customer</h3><p><b>${esc(o.guest_name||'Guest')}</b><br>${esc(o.guest_phone||'')}</p><h3>Delivery</h3><p>${esc(o.address_line1||'')}<br>${esc(o.address_city||'')}, ${esc(o.address_state||'')} ${esc(o.address_pincode||'')}</p><h3>Delivery estimate</h3><p>${esc(o.estimated_delivery||'—')}${o.dispatch_date?'<br>Dispatched: '+esc(o.dispatch_date):''}</p></div><div><h3>Payment</h3><p>${esc(o.payment_method||'')}<br>UTR: ${esc(o.utr||'Not provided')}</p><label>Payment status<select id="paymentStatus"><option value="pending" ${o.payment_status==='pending'?'selected':''}>Pending</option><option value="proof_submitted" ${o.payment_status==='proof_submitted'?'selected':''}>Proof submitted / verification</option><option value="verified" ${o.payment_status==='verified'?'selected':''}>Verified</option><option value="failed" ${o.payment_status==='failed'?'selected':''}>Failed</option><option value="refund_pending" ${o.payment_status==='refund_pending'?'selected':''}>Refund pending</option><option value="refunded" ${o.payment_status==='refunded'?'selected':''}>Refunded</option></select></label><h3>Items</h3>${(o.order_items||[]).map(i=>`<div class="miniLine"><span>${esc(i.name)} ${i.variant_label?'· '+esc(i.variant_label):''} × ${i.qty}</span><b>${money(i.line_total)}</b></div>`).join('')}<div class="miniLine total"><span>Total</span><b>${money(o.total)}</b></div></div></div><div class="statusEditor"><label>Order status <small class="v22-admin-help">Only valid next statuses are shown, per the approved transition rules.</small><select id="orderStatus">${statusOptions}</select></label><label>Delivery partner<input id="deliveryPartner" value="${esc(o.delivery_partner||'')}"></label><div class="two"><label>Tracking number<input id="trackingNumber" value="${esc(o.tracking_number||'')}"></label><label>Reference number<input id="referenceNumber" value="${esc(o.reference_number||'')}"></label></div><label>Tracking URL<input id="trackingUrl" value="${esc(o.tracking_url||'')}"></label><label>Dispatch date<input id="dispatchDate" type="date" value="${esc(o.dispatch_date||'')}"></label><button class="gold full" onclick="updateOrder('${esc(o.order_number)}','${o.id}')">Update order</button></div><div class="timeline"><h3>Order timeline</h3>${timeline||'<div class="empty smallEmpty">No timeline yet.</div>'}</div><div class="notificationBox"><b>Customer update</b><p>Message is generated automatically from the current order status — see WhatsApp Customer.</p><button class="outline" onclick="manualWhatsApp('${esc(o.guest_phone||'')}','${esc(o.order_number)}','${esc(o.status)}','${esc(o.tracking_number||'')}','${esc(o.estimated_delivery||'')}')">WhatsApp Customer</button></div>`);
 }
 async function updateOrder(orderNumber, orderId){
   const ns=document.getElementById('orderStatus').value;
+  const ps=document.getElementById('paymentStatus').value;
   const deliveryPartner=document.getElementById('deliveryPartner').value.trim();
   const trackingNumber=document.getElementById('trackingNumber').value.trim();
+  const referenceNumber=document.getElementById('referenceNumber').value.trim();
   const trackingUrl=document.getElementById('trackingUrl').value.trim();
+  const dispatchDate=document.getElementById('dispatchDate').value||null;
   const {error} = await sb.from('orders').update({
-    status: ns, delivery_partner: deliveryPartner||null, tracking_number: trackingNumber||null, tracking_url: trackingUrl||null
+    status: ns, payment_status: ps,
+    delivery_partner: deliveryPartner||null, tracking_number: trackingNumber||null,
+    reference_number: referenceNumber||null, tracking_url: trackingUrl||null,
+    dispatch_date: dispatchDate
   }).eq('order_number', orderNumber);
   if(error){ toast('Could not update order: '+error.message); return; }
-  await sb.from('order_status_history').insert({ order_id: orderId, status: ns });
+  await sb.from('order_status_history').insert({ order_id: orderId, status: ns, actor: 'admin' });
   closeModal();toast('Order updated');render();
 }
-function manualWhatsApp(phone,orderNumber){if(!phone){toast('Customer mobile number is missing');return}const msg=`Jayvi Foods order ${orderNumber}: Your order status has been updated. Please contact us if you need help.`;window.open('https://wa.me/'+phone.replace(/\D/g,'')+'?text='+encodeURIComponent(msg),'_blank')}
+const WHATSAPP_STATUS_TEMPLATES = {
+  'Order Confirmed': (o)=>`Your Jayvi Foods order ${o.orderNumber} has been confirmed. We have received your order and will start preparing it shortly.`,
+  'Preparing': (o)=>`Your Jayvi Foods order ${o.orderNumber} is now being prepared.`,
+  'Packed & Shipped': (o)=>`Your Jayvi Foods order ${o.orderNumber} has been packed and shipped. Tracking number: ${o.trackingNumber||'to be shared shortly'}. Expected delivery: ${o.estimatedDelivery||'soon'}.`,
+  'Out for Delivery': (o)=>`Your Jayvi Foods order ${o.orderNumber} is out for delivery today.`,
+  'Delivered': (o)=>`Your Jayvi Foods order ${o.orderNumber} has been delivered. We hope you enjoy it!`,
+  'Cancelled': (o)=>`Your Jayvi Foods order ${o.orderNumber} has been cancelled. If payment was made, your refund will be credited within ${data.store.refundBusinessDays||4} business days.`,
+  'Refund Pending': (o)=>`Your refund for Jayvi Foods order ${o.orderNumber} has been initiated and is being processed.`,
+  'Refunded': (o)=>`Your refund for Jayvi Foods order ${o.orderNumber} has been completed.`,
+  'Payment Failed': (o)=>`Payment for your Jayvi Foods order ${o.orderNumber} was not completed. Please retry the payment to confirm your order.`,
+  'Payment Pending': (o)=>`Your Jayvi Foods order ${o.orderNumber} has been received. Please complete payment to confirm it.`,
+  'Payment Verification': (o)=>`We've received your payment details for Jayvi Foods order ${o.orderNumber} and are verifying them now.`,
+  'Delivery Failed': (o)=>`We were unable to complete delivery of your Jayvi Foods order ${o.orderNumber}. Our team will contact you regarding the next step.`,
+  'Returned': (o)=>`Your Jayvi Foods order ${o.orderNumber} has been returned to us. Our team will contact you regarding the next step.`,
+  'On Hold / Manual Review': (o)=>`Your Jayvi Foods order ${o.orderNumber} needs a quick manual check on our end. We'll update you shortly.`
+};
+function manualWhatsApp(phone,orderNumber,status,trackingNumber,estimatedDelivery){
+  if(!phone){toast('Customer mobile number is missing');return}
+  const tmpl = WHATSAPP_STATUS_TEMPLATES[status];
+  const msg = tmpl ? tmpl({orderNumber,trackingNumber,estimatedDelivery}) : `Jayvi Foods order ${orderNumber}: Your order status has been updated. Please contact us if you need help.`;
+  // Fixed: wa.me requires the full international number — the bare
+  // 10-digit customer phone alone (with no country code) was a
+  // confirmed bug in the previous version of this function.
+  const digits = phone.replace(/\D/g,'');
+  const withCountryCode = digits.length===10 ? '91'+digits : digits;
+  window.open('https://wa.me/'+withCountryCode+'?text='+encodeURIComponent(msg),'_blank');
+}
 window._customerListCache = [];
 async function customersPage(){
   const cs=await fetchCustomers(), os=await fetchOrders();
@@ -151,7 +217,28 @@ async function customersPage(){
 }
 function customerOrderHistory(i){
   const c = window._customerListCache[i]; if(!c) return;
-  openModal(`<div class="eyebrow">${c.type.toUpperCase()} CUSTOMER</div><h2>${esc(c.name)}</h2><p class="muted">${esc(c.phone)}</p><div class="orders" style="margin-top:16px">${c.orders.map(o=>`<button class="order" type="button" onclick="closeModal();orderView('${esc(o.order_number)}')"><b>${esc(o.order_number)}</b><span>${new Date(o.created_at).toLocaleDateString('en-IN')}</span><strong>${money(o.total)}</strong><small>${esc(o.status)}</small></button>`).join('')||'<div class="empty smallEmpty">No orders.</div>'}</div>`);
+  const resetBtn = c.type==='Registered'
+    ? `<button class="outline" style="margin-top:14px" onclick="promptResetPassword('${esc(c.phone)}')">Reset password (R4)</button>`
+    : '';
+  openModal(`<div class="eyebrow">${c.type.toUpperCase()} CUSTOMER</div><h2>${esc(c.name)}</h2><p class="muted">${esc(c.phone)}</p>${resetBtn}<div class="orders" style="margin-top:16px">${c.orders.map(o=>`<button class="order" type="button" onclick="closeModal();orderView('${esc(o.order_number)}')"><b>${esc(o.order_number)}</b><span>${new Date(o.created_at).toLocaleDateString('en-IN')}</span><strong>${money(o.total)}</strong><small>${esc(o.status)}</small></button>`).join('')||'<div class="empty smallEmpty">No orders.</div>'}</div>`);
+}
+async function promptResetPassword(phone){
+  const newPassword = prompt(`Set a new password for ${phone} (at least 6 characters).\nGive this to the customer via WhatsApp after resetting — it is not shown anywhere else.`);
+  if(!newPassword) return;
+  if(newPassword.length < 6){ toast('Password must be at least 6 characters'); return; }
+  const {data:session} = await sb.auth.getSession();
+  try{
+    const res = await fetch(EDGE_FUNCTIONS_URL + '/admin-reset-password', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + session.session.access_token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, newPassword })
+    });
+    if(!res.ok){ const t = await res.text(); toast('Reset failed: '+t); return; }
+    toast('Password reset. Send the new password to the customer via WhatsApp now.');
+    window.open('https://wa.me/91'+phone+'?text='+encodeURIComponent('Your Jayvi Foods password has been reset. You can now log in using your registered mobile number and the new password provided here by our team.'), '_blank');
+  }catch(e){
+    toast('Reset failed: '+e.message+' (is admin-reset-password deployed? See DEPLOY.md)');
+  }
 }
 
 function productsPage(){return `<section class="panel"><div class="panelHead"><div><h2>Products</h2><p>Product catalogue, merchandising, multiple categories and media.</p></div><button class="gold" onclick="productForm()">+ Add product</button></div><div class="productAdminGrid">${data.products.map((p,i)=>`<article class="productAdminCard"><div class="thumb"><img src="${esc(p.image||'')}" alt=""></div><div class="productInfo"><span class="typeTag">${p.best?'BESTSELLER':'PRODUCT'}</span><h3>${esc(p.name)}</h3><p>${esc(p.short||'')}</p><small>${(p.categories||[p.category]).map(catName).join(' · ')} · ${p.variants?.length||0} variants</small><div class="cardActions"><button class="outline" onclick="productForm(${i})">Edit</button><button class="outline dangerBtn" onclick="deleteProduct(${i})">Delete</button></div></div></article>`).join('')}</div></section>`}
@@ -206,7 +293,30 @@ function saveProduct(index){
  active:document.getElementById('pActive').checked,best:document.getElementById('pBest').checked,
  variants:index>=0?data.products[index].variants:[],rating:index>=0?data.products[index].rating:0,
  reviewCount:index>=0?data.products[index].reviewCount:0};
- if(!p.id||!p.name){toast('Product ID and name are required');return}
+
+ // Item Q — required-field validation before publish. Missing core
+ // fields block the save outright, named individually. Variants are a
+ // special case: a brand-new product can't have one yet (they're
+ // added via Variants & sizes *after* the product exists), so instead
+ // of blocking creation, an incomplete product is silently forced
+ // inactive (hidden from the storefront) regardless of the checkbox —
+ // this is the actual fix for the confirmed crash (a product with zero
+ // active variants reaching the customer UI). The admin is told why.
+ const missing = [];
+ if(!p.id) missing.push('Product ID');
+ if(!p.name) missing.push('Product name');
+ if(!p.category) missing.push('Category');
+ if(!p.short && !p.description) missing.push('Description');
+ if(!media.some(m=>m.type==='hero')) missing.push('Main image');
+ if(missing.length){
+   toast(`${missing.length} required field${missing.length===1?'':'s'} missing: ${missing.join(', ')}`);
+   return;
+ }
+ const hasSellableVariant = (p.variants||[]).some(v=>v.active && v.price>0 && v.mrp>0);
+ if(p.active && !hasSellableVariant){
+   p.active = false;
+   toast('Saved as hidden: add at least one variant with a price and MRP (Variants & sizes) before making this visible on the storefront.');
+ }
  if(index<0)data.products.push(p);else data.products[index]=p;
  persist();closeModal();render();
 }
@@ -276,7 +386,7 @@ async function reviewsPage(){
       <option value="ratingLow" ${_reviewsSort==='ratingLow'?'selected':''}>Lowest rating</option>
     </select>
   </div>
-  <div class="reviewAdmin">${rows.map((r,i)=>`<article><div><span class="typeTag">${esc(r.status.toUpperCase())}</span><span class="stars">${'★'.repeat(r.rating)}</span><h3>${esc(r.customer_name)}</h3><p>“${esc(r.review_text)}”</p><small>${r.product_id?'Product: '+esc(product(r.product_id)?.name||r.product_id)+' · ':''}${r.order_number?'Order: '+esc(r.order_number)+' · ':''}${new Date(r.created_at).toLocaleDateString('en-IN')}</small></div><div class="cardActions">${r.status!=='approved'?`<button class="gold" onclick="setReviewStatus('${r.id}','approved')">Approve</button>`:''}${r.status!=='rejected'?`<button class="outline dangerBtn" onclick="setReviewStatus('${r.id}','rejected')">Reject</button>`:''}${r.status!=='pending'?`<button class="outline" onclick="setReviewStatus('${r.id}','pending')">Move to pending</button>`:''}</div></article>`).join('')||'<div class="empty">No reviews in this tab.</div>'}</div>
+  <div class="reviewAdmin">${rows.map((r,i)=>`<article><div><span class="typeTag">${esc(r.status.toUpperCase())}${r.featured?' · FEATURED':''}</span><span class="stars">${'★'.repeat(r.rating)}</span><h3>${esc(r.customer_name)}</h3><p>“${esc(r.review_text)}”</p><small>${r.product_id?'Product: '+esc(product(r.product_id)?.name||r.product_id)+' · ':''}${r.order_number?'Order: '+esc(r.order_number)+' · ':''}${new Date(r.created_at).toLocaleDateString('en-IN')}</small></div><div class="cardActions">${r.status!=='approved'?`<button class="gold" onclick="setReviewStatus('${r.id}','approved')">Approve</button>`:''}${r.status!=='rejected'?`<button class="outline dangerBtn" onclick="setReviewStatus('${r.id}','rejected')">Reject</button>`:''}${r.status!=='pending'?`<button class="outline" onclick="setReviewStatus('${r.id}','pending')">Move to pending</button>`:''}${r.status==='approved'?`<button class="outline" onclick="toggleReviewFeatured('${r.id}',${!r.featured})">${r.featured?'Unfeature':'Feature'}</button>`:''}</div></article>`).join('')||'<div class="empty">No reviews in this tab.</div>'}</div>
   ${count>REVIEWS_PAGE_SIZE?`<button class="outline full" onclick="loadMoreReviews()">Load more (${Math.max(0,count-_reviewsOffset-REVIEWS_PAGE_SIZE)} remaining)</button>`:''}
   </section>
   <section class="panel" style="margin-top:16px"><div class="panelHead"><div><h2>Google reviews</h2><p>Manually managed testimonial content shown alongside the "View Google reviews" link — separate from the customer-submitted reviews above.</p></div><button class="gold" onclick="reviewForm()">+ Add Google review</button></div>
@@ -292,10 +402,211 @@ async function setReviewStatus(id,status){
   toast('Review '+status);
   render();
 }
+async function toggleReviewFeatured(id,featured){
+  const {error} = await sb.from('website_reviews').update({featured}).eq('id',id);
+  if(error){ toast('Could not update review: '+error.message); return; }
+  toast(featured?'Marked as featured':'Removed from featured');
+  render();
+}
 function reviewForm(i=-1){const r=i>=0?data.reviews[i]:{source:'Google',name:'',rating:5,text:'',active:true,verifiedPurchase:false};openModal(`<div class="eyebrow">REVIEW</div><h2>${i<0?'Add Google review':'Edit review'}</h2><div class="formGrid"><label>Source<select id="rSource"><option value="Google" ${r.source==='Google'?'selected':''}>Google</option><option value="customer" ${r.source==='customer'?'selected':''}>Customer</option></select></label><label>Customer name<input id="rName" value="${esc(r.name)}"></label><label>Rating<select id="rRating">${[1,2,3,4,5].map(n=>`<option ${n===Number(r.rating)?'selected':''}>${n}</option>`).join('')}</select></label><label>Product (optional)<select id="rProduct"><option value="">General review</option>${data.products.map(p=>`<option value="${p.id}" ${r.productId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label><label class="fullLabel">Review text<textarea id="rText" rows="5">${esc(r.text)}</textarea></label></div><label class="checkOnly"><input id="rActive" type="checkbox" ${r.active?'checked':''}> Published</label><label class="checkOnly"><input id="rVerified" type="checkbox" ${r.verifiedPurchase?'checked':''}> Verified purchase</label><button class="gold full" onclick="saveReview(${i})">Save review</button>`)}
 function saveReview(i){const r={source:document.getElementById('rSource').value,name:document.getElementById('rName').value.trim(),rating:Number(document.getElementById('rRating').value),text:document.getElementById('rText').value.trim(),productId:document.getElementById('rProduct').value,active:document.getElementById('rActive').checked,verifiedPurchase:document.getElementById('rVerified').checked};if(!r.name||!r.text){toast('Name and review text are required');return}if(i<0)data.reviews.push(r);else data.reviews[i]=r;persist();closeModal();render()}
 function toggleReview(i){data.reviews[i].active=!data.reviews[i].active;persist();render()}
 function deleteReview(i){if(confirm('Delete this review?')){data.reviews.splice(i,1);persist();render()}}
+/* ---------- Delivery / Pincode management (item B) ---------- */
+let _expandedState = null, _pincodeSearch = '', _pincodeOffset = 0;
+const PINCODE_PAGE_SIZE = 100;
+
+async function pincodesPage(){
+  const {data: states, error} = await sb.from('delivery_states').select('*').order('state');
+  if(error) return `<section class="panel"><div class="empty">Could not load delivery states: ${esc(error.message)}. Has supabase_migration_pincodes_schema.sql been run?</div></section>`;
+  // One lightweight count query per state (only 25 states, cheap) rather
+  // than pulling all ~19,300 pincode rows into the browser to count them.
+  const counts = await Promise.all(states.map(s => sb.from('pincodes').select('pincode',{count:'exact',head:true}).eq('state', s.state)));
+  const withCounts = states.map((s,i)=>({...s, count: counts[i].count||0}));
+  window._pincodeStatesCache = withCounts;
+
+  let expandedHtml = '';
+  if(_expandedState){
+    const {rows, count} = await fetchPincodesForState(_expandedState, true);
+    window._pincodeRowsCache = rows;
+    expandedHtml = `<div class="formSection">
+      <div class="panelHead"><h3>${esc(_expandedState)} — ${count} PIN code${count===1?'':'s'}</h3><button class="outline" onclick="_expandedState=null;render()">Collapse</button></div>
+      <input placeholder="Search PIN code..." value="${esc(_pincodeSearch)}" onchange="setPincodeSearch(this.value)" style="margin-bottom:10px">
+      <div class="categoryTable">
+        <div class="categoryRow" style="font-weight:800;font-size:10.5px;color:var(--ink-faint);text-transform:uppercase"><span>PIN code</span><span>District/City</span><span>Serviceable</span><span></span></div>
+        ${rows.map(p=>`<div class="categoryRow"><b>${esc(p.pincode)}</b><small>${esc(p.district||p.city||'—')}</small><label class="checkOnly" style="margin:0!important"><input type="checkbox" ${p.serviceable?'checked':''} onchange="togglePincodeServiceable('${esc(p.pincode)}',this.checked)"> ${p.serviceable?'Yes':'No'}</label><button class="outline dangerBtn" style="padding:6px 12px" onclick="deletePincode('${esc(p.pincode)}')">Remove</button></div>`).join('')||'<div class="empty smallEmpty">No PIN codes match.</div>'}
+      </div>
+      ${count>_pincodeOffset+PINCODE_PAGE_SIZE?`<button class="outline full" onclick="loadMorePincodes()">Load more (${count-_pincodeOffset-PINCODE_PAGE_SIZE} remaining)</button>`:''}
+      <button class="gold full" style="margin-top:12px" onclick="pincodeForm('${esc(_expandedState)}')">+ Add PIN code to ${esc(_expandedState)}</button>
+    </div>`;
+  }
+
+  return `<section class="panel"><div class="panelHead"><div><h2>Delivery / Pincode management</h2><p>Customer delivery calculation is always Pincode → Serviceability → Delivery Rule. State grouping below is an admin convenience — disabling a state overrides serviceability for every PIN in it without changing any individual PIN's own setting; re-enabling the state restores exactly what each PIN had before.</p></div>
+    <div class="cardActions"><button class="outline" onclick="exportPincodes()">Export CSV</button><label class="outline" style="cursor:pointer;display:inline-flex;align-items:center;padding:10px 16px;border-radius:99px">Import CSV<input type="file" accept=".csv" style="display:none" onchange="importPincodesFile(this.files[0])"></label></div>
+  </div>
+  <div class="categoryTable">
+    <div class="categoryRow" style="font-weight:800;font-size:10.5px;color:var(--ink-faint);text-transform:uppercase"><span>State / circle</span><span>PIN codes</span><span>Serviceable</span><span></span></div>
+    ${withCounts.map(s=>`<div class="categoryRow"><b>${esc(s.state)}</b><small>${s.count} PIN codes</small><label class="checkOnly" style="margin:0!important"><input type="checkbox" ${s.enabled?'checked':''} onchange="toggleStateEnabled('${esc(s.state)}',this.checked)"> ${s.enabled?'ON':'OFF'}</label><button class="outline" onclick="_expandedState='${esc(s.state)}';_pincodeOffset=0;_pincodeSearch='';render()">${_expandedState===s.state?'Collapse':'Expand'}</button></div>`).join('')}
+  </div>
+  ${expandedHtml}
+  <div id="importPreview"></div>
+  </section>`;
+}
+async function fetchPincodesForState(state, reset){
+  if(reset) _pincodeOffset = 0;
+  let q = sb.from('pincodes').select('*',{count:'exact'}).eq('state', state);
+  if(_pincodeSearch.trim()) q = q.ilike('pincode', _pincodeSearch.trim()+'%');
+  q = q.order('pincode').range(_pincodeOffset, _pincodeOffset+PINCODE_PAGE_SIZE-1);
+  const {data, error, count} = await q;
+  if(error){ toast('Could not load PIN codes: '+error.message); return {rows:[], count:0}; }
+  return {rows:data||[], count:count||0};
+}
+function setPincodeSearch(v){_pincodeSearch=v;_pincodeOffset=0;render()}
+function loadMorePincodes(){_pincodeOffset+=PINCODE_PAGE_SIZE;render()}
+async function toggleStateEnabled(state, enabled){
+  const {error} = await sb.from('delivery_states').update({enabled, updated_at:new Date().toISOString()}).eq('state', state);
+  if(error){ toast('Could not update state: '+error.message); return; }
+  toast(`${state} delivery is now ${enabled?'ON':'OFF'}`);
+  render();
+}
+async function togglePincodeServiceable(pincode, serviceable){
+  const {error} = await sb.from('pincodes').update({serviceable, updated_at:new Date().toISOString(), source:'admin_edited'}).eq('pincode', pincode);
+  if(error){ toast('Could not update PIN: '+error.message); return; }
+  toast(`${pincode} marked ${serviceable?'serviceable':'not serviceable'}`);
+}
+function pincodeForm(state){
+  openModal(`<div class="eyebrow">ADD PIN CODE</div><h2>Add to ${esc(state)}</h2>
+    <div class="formGrid">
+      <label>PIN code * <input id="pfPincode" maxlength="6" pattern="[0-9]{6}"></label>
+      <label>District/City<input id="pfCity"></label>
+      <label>Delivery charge (₹, optional)<input id="pfCharge" type="number" min="0" step="1"></label>
+      <label>Min ETA days (optional)<input id="pfMin" type="number" min="1"></label>
+      <label>Max ETA days (optional)<input id="pfMax" type="number" min="1"></label>
+      <label>Courier/partner (optional)<input id="pfCourier"></label>
+    </div>
+    <label class="checkOnly"><input id="pfServiceable" type="checkbox" checked> Serviceable</label>
+    <button class="gold full" onclick="savePincode('${esc(state)}')">Add PIN code</button>`);
+}
+async function savePincode(state){
+  const pincode = document.getElementById('pfPincode').value.trim();
+  if(!/^\d{6}$/.test(pincode)){ toast('Enter a valid 6-digit PIN code'); return; }
+  const row = {
+    pincode, state,
+    city: document.getElementById('pfCity').value.trim()||null,
+    delivery_charge: document.getElementById('pfCharge').value ? Number(document.getElementById('pfCharge').value) : null,
+    min_eta_days: document.getElementById('pfMin').value ? Number(document.getElementById('pfMin').value) : null,
+    max_eta_days: document.getElementById('pfMax').value ? Number(document.getElementById('pfMax').value) : null,
+    courier_partner: document.getElementById('pfCourier').value.trim()||null,
+    serviceable: document.getElementById('pfServiceable').checked,
+    source: 'admin_added'
+  };
+  const {error} = await sb.from('pincodes').insert(row);
+  if(error){ toast('Could not add PIN code: '+error.message); return; }
+  toast('PIN code added');
+  closeModal(); render();
+}
+async function deletePincode(pincode){
+  if(!confirm(`Remove PIN code ${pincode}? This does not affect any past orders.`)) return;
+  const {error} = await sb.from('pincodes').delete().eq('pincode', pincode);
+  if(error){ toast('Could not remove PIN: '+error.message); return; }
+  toast('PIN code removed'); render();
+}
+async function exportPincodes(){
+  toast('Preparing export — this may take a moment for the full list...');
+  let all = [], from = 0, pageSize = 1000, more = true;
+  while(more){
+    const {data, error} = await sb.from('pincodes').select('pincode,state,district,city,serviceable,delivery_zone,delivery_charge,min_eta_days,max_eta_days,courier_partner,cod_available,active').range(from, from+pageSize-1).order('pincode');
+    if(error){ toast('Export failed: '+error.message); return; }
+    all = all.concat(data||[]);
+    more = (data||[]).length===pageSize;
+    from += pageSize;
+  }
+  const headers = ['pincode','state','district','city','serviceable','delivery_zone','delivery_charge','min_eta_days','max_eta_days','courier_partner','cod_available','active'];
+  const csv = [headers.join(',')].concat(all.map(r=>headers.map(h=>{
+    const v = r[h]; return v==null?'':String(v).includes(',')?`"${v}"`:v;
+  }).join(','))).join('\n');
+  const blob = new Blob([csv],{type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = `jayvi-pincodes-export-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast(`Exported ${all.length} PIN codes`);
+}
+function parseCsvLine(line){
+  // Minimal CSV parser handling quoted fields with commas — sufficient
+  // for the fixed export format above, not a general-purpose parser.
+  const out=[]; let cur=''; let inQ=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(inQ){ if(c==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else inQ=false; } else cur+=c; }
+    else { if(c==='"') inQ=true; else if(c===','){out.push(cur);cur='';} else cur+=c; }
+  }
+  out.push(cur);
+  return out;
+}
+async function importPincodesFile(file){
+  if(!file) return;
+  const text = await file.text();
+  const lines = text.split(/\r?\n/).filter(l=>l.trim().length);
+  if(!lines.length){ toast('Empty file'); return; }
+  const headers = parseCsvLine(lines[0]).map(h=>h.trim());
+  const required = ['pincode','state'];
+  const missing = required.filter(h=>!headers.includes(h));
+  if(missing.length){ toast('Missing required column(s): '+missing.join(', ')); return; }
+
+  const knownStates = new Set((window._pincodeStatesCache||[]).map(s=>s.state));
+  const seen = new Set();
+  const valid = [], invalid = [], duplicates = [];
+  for(let i=1;i<lines.length;i++){
+    const cells = parseCsvLine(lines[i]);
+    const row = {}; headers.forEach((h,idx)=>row[h]=(cells[idx]||'').trim());
+    const errors = [];
+    if(!/^\d{6}$/.test(row.pincode)) errors.push('PIN must be exactly 6 digits');
+    if(!row.state) errors.push('state is required');
+    else if(!knownStates.has(row.state)) errors.push(`unknown state "${row.state}" — add it as a state first`);
+    if(row.serviceable && !['true','false','True','False','1','0',''].includes(row.serviceable)) errors.push('serviceable must be true/false');
+    if(seen.has(row.pincode)) duplicates.push(row.pincode);
+    seen.add(row.pincode);
+    if(errors.length) invalid.push({row: i+1, pincode:row.pincode, errors});
+    else valid.push({
+      pincode: row.pincode, state: row.state,
+      district: row.district||null, city: row.city||null,
+      serviceable: row.serviceable ? ['true','1'].includes(row.serviceable.toLowerCase()) : true,
+      delivery_zone: row.delivery_zone||null,
+      delivery_charge: row.delivery_charge?Number(row.delivery_charge):null,
+      min_eta_days: row.min_eta_days?Number(row.min_eta_days):null,
+      max_eta_days: row.max_eta_days?Number(row.max_eta_days):null,
+      courier_partner: row.courier_partner||null,
+      cod_available: ['true','1'].includes((row.cod_available||'').toLowerCase()),
+      active: row.active ? ['true','1'].includes(row.active.toLowerCase()) : true,
+      source: 'admin_import'
+    });
+  }
+  window._pendingImport = valid;
+  document.getElementById('importPreview').innerHTML = `<div class="infoBox" style="margin-top:16px">
+    <b>Import validation complete</b>
+    Total rows: ${lines.length-1}<br>Valid: ${valid.length}<br>Invalid: ${invalid.length}<br>Duplicate PINs in file: ${duplicates.length}
+    ${invalid.length?`<details style="margin-top:8px"><summary>View errors (${invalid.length})</summary>${invalid.slice(0,50).map(e=>`Row ${e.row} (${esc(e.pincode)}): ${esc(e.errors.join('; '))}`).join('<br>')}${invalid.length>50?'<br>…and '+(invalid.length-50)+' more':''}</details>`:''}
+    <div class="cardActions" style="margin-top:10px">
+      <button class="gold" onclick="confirmImportPincodes()">Import ${valid.length} valid record${valid.length===1?'':'s'}</button>
+      <button class="outline" onclick="document.getElementById('importPreview').innerHTML='';window._pendingImport=null">Cancel</button>
+    </div>
+  </div>`;
+}
+async function confirmImportPincodes(){
+  const rows = window._pendingImport||[];
+  if(!rows.length){ toast('Nothing to import'); return; }
+  toast('Importing '+rows.length+' records...');
+  const CHUNK=500;
+  for(let i=0;i<rows.length;i+=CHUNK){
+    const {error} = await sb.from('pincodes').upsert(rows.slice(i,i+CHUNK), {onConflict:'pincode'});
+    if(error){ toast('Import failed partway ('+i+' of '+rows.length+'): '+error.message); return; }
+  }
+  toast('Import complete: '+rows.length+' records');
+  window._pendingImport = null;
+  document.getElementById('importPreview').innerHTML='';
+  render();
+}
+
 function settingsPage(){
  const s=data.store;
  return `<section class="settingsGrid">
@@ -304,6 +615,9 @@ function settingsPage(){
  <label>Vacation message<textarea id="setVacationMsg" rows="3">${esc(s.vacationMessage||'')}</textarea></label>
  <div class="two"><label>Delivery minimum days<input id="setMin" type="number" min="1" value="${s.deliveryMinDays||4}"></label><label>Delivery maximum days<input id="setMax" type="number" min="1" value="${s.deliveryMaxDays||8}"></label></div>
  <div class="two"><label>Free shipping above<input id="setFree" type="number" value="${s.freeShippingThreshold||599}"></label><label>Shipping charge<input id="setShip" type="number" value="${s.shippingFlat||49}"></label></div>
+ <label>Refund processing time (business days) <small class="v22-admin-help">Used in cancellation/refund messages to customers — item E/X, not hard-coded.</small><input id="setRefundDays" type="number" min="1" value="${s.refundBusinessDays||4}"></label>
+ <label>Announcement scroll speed<select id="setAnnouncementSpeed"><option value="slow" ${s.announcementSpeed==='slow'?'selected':''}>Slow</option><option value="normal" ${!s.announcementSpeed||s.announcementSpeed==='normal'?'selected':''}>Normal</option><option value="fast" ${s.announcementSpeed==='fast'?'selected':''}>Fast</option></select></label>
+ <label>Homepage review count <small class="v22-admin-help">How many customer-submitted reviews show on the homepage before "View all."</small><input id="setReviewCount" type="number" min="1" max="12" value="${s.homepageReviewCount||6}"></label>
  <button class="gold full" onclick="saveStoreOperations()">Save operations</button></article>
  <article class="settingCard"><span class="typeTag">PAYMENT</span><h2>Payment methods</h2>
  <label class="toggleRow"><span>UPI QR<small>Primary payment method.</small></span><input id="setUpi" type="checkbox" ${s.upiEnabled!==false?'checked':''}></label>
@@ -325,7 +639,7 @@ function settingsPage(){
  <label>WhatsApp number<input id="setWhatsApp" value="${esc(s.whatsapp||'')}"></label><label>Instagram URL<input id="setInstagram" value="${esc(s.instagram||'')}"></label><button class="gold full" onclick="saveContactSettings()">Save contact settings</button></article>
  </section>`;
 }
-function saveStoreOperations(){data.store.vacationMode=document.getElementById('setVacation').checked;data.store.vacationMessage=document.getElementById('setVacationMsg').value.trim();data.store.deliveryMinDays=Number(document.getElementById('setMin').value||4);data.store.deliveryMaxDays=Number(document.getElementById('setMax').value||8);data.store.freeShippingThreshold=Number(document.getElementById('setFree').value||599);data.store.shippingFlat=Number(document.getElementById('setShip').value||49);persist();render()}
+function saveStoreOperations(){data.store.vacationMode=document.getElementById('setVacation').checked;data.store.vacationMessage=document.getElementById('setVacationMsg').value.trim();data.store.deliveryMinDays=Number(document.getElementById('setMin').value||4);data.store.deliveryMaxDays=Number(document.getElementById('setMax').value||8);data.store.freeShippingThreshold=Number(document.getElementById('setFree').value||599);data.store.shippingFlat=Number(document.getElementById('setShip').value||49);data.store.refundBusinessDays=Number(document.getElementById('setRefundDays').value||4);data.store.announcementSpeed=document.getElementById('setAnnouncementSpeed').value;data.store.homepageReviewCount=Number(document.getElementById('setReviewCount').value||6);persist();render()}
 function savePayments(){data.store.upiEnabled=document.getElementById('setUpi').checked;data.store.codEnabled=document.getElementById('setCod').checked;data.store.razorpayEnabled=document.getElementById('setRazor').checked;data.store.upiId=document.getElementById('setUpiId').value.trim();data.store.upiName=document.getElementById('setUpiName').value.trim();data.store.upiQrImage=document.getElementById('setQr').value.trim();data.store.razorpayKeyId=document.getElementById('setRzp').value.trim();persist();render()}
 function saveAuth(){data.store.otpEnabled=document.getElementById('setOtp').checked;data.store.otpProvider=document.getElementById('setOtpProvider').value.trim()||'Not configured';persist();render()}
 function saveLocationSettings(){data.store.googleMapsApiKey=document.getElementById('setMaps').value.trim();data.store.googleReviewsUrl=document.getElementById('setGoogleReviews').value.trim();persist();render()}

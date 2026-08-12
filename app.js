@@ -1,5 +1,5 @@
 /* =========================================================
-   Jayvi Foods — v31.0 storefront logic
+   Jayvi Foods — v32.3 storefront logic
    Data model and localStorage keys are unchanged from v27/28
    so existing Admin-entered data keeps working after this
    upgrade. All UI/interaction code has been rewritten as a
@@ -7,7 +7,7 @@
    ========================================================= */
 
 const EMBEDDED_CONFIG = {
-  "store":{"name":"Jayvi Foods","tagline":"Purely Traditional. Simply Delicious.","country":"IN","freeShippingThreshold":599,"shippingFlat":49,"deliveryMode":"india","googleMapsApiKey":"","googleReviewsUrl":"https://www.google.com/search?q=Jayvi+Foods+reviews","whatsapp":"918861981003","instagram":"https://instagram.com/jayvifoods","razorpayKeyId":"","paymentMode":"upi_manual","upiEnabled":true,"codEnabled":false,"upiId":"","upiName":"Jayvi Foods","upiQrImage":"","paymentNote":"Pay by UPI QR. Order moves to processing after payment verification.","vacationMode":false,"vacationMessage":"We are taking a short break. Orders will resume soon.","deliveryMinDays":4,"deliveryMaxDays":8,"otpEnabled":false,"otpProvider":"","razorpayEnabled":false},
+  "store":{"name":"Jayvi Foods","tagline":"Purely Traditional. Simply Delicious.","country":"IN","freeShippingThreshold":599,"shippingFlat":49,"deliveryMode":"india","googleMapsApiKey":"","googleReviewsUrl":"https://www.google.com/search?q=Jayvi+Foods+reviews","whatsapp":"918861981003","instagram":"https://instagram.com/jayvifoods","razorpayKeyId":"","paymentMode":"upi_manual","upiEnabled":true,"codEnabled":false,"upiId":"","upiName":"Jayvi Foods","upiQrImage":"","paymentNote":"Pay by UPI QR. Order moves to processing after payment verification.","vacationMode":false,"vacationMessage":"We are taking a short break. Orders will resume soon.","deliveryMinDays":4,"deliveryMaxDays":8,"otpEnabled":false,"otpProvider":"","razorpayEnabled":false,"refundBusinessDays":4,"announcementSpeed":"normal","homepageReviewCount":6},
   "homepage":{"heroAutoplay":true,"heroSeconds":5},
   "categories":[{"id":"chutney","name":"Chutney Powders","enabled":true,"order":1},{"id":"pudi","name":"Pudi","enabled":true,"order":2},{"id":"snacks","name":"Snacks","enabled":true,"order":3},{"id":"combos","name":"Combos","enabled":true,"order":4}],
   "products":[
@@ -63,14 +63,34 @@ function loadConfig(){
   }catch{ return structuredClone(EMBEDDED_CONFIG); }
 }
 function sync(){
-  products=(CONFIG.products||[]).filter(p=>p.active).map(p=>({...p,media:p.media?.length?p.media:(DEFAULT_PRODUCT_MEDIA[p.id]||[{type:'image',path:p.image}])}));
+  // Item T: announcement speed is Admin-configurable (was a hardcoded
+  // 22s) — 'normal' is intentionally a bit faster than the old fixed
+  // value, per the approved spec ("slightly faster than current").
+  const speedMap = {slow:26, normal:18, fast:11};
+  const speed = speedMap[CONFIG.store.announcementSpeed] || speedMap.normal;
+  document.documentElement.style.setProperty('--marquee-duration', speed+'s');
+  // Item Q, defensive half: even if a fundamentally incomplete product
+  // (no id, no name, no image, or zero sellable variants) somehow ends
+  // up in the data, it's filtered out here — never reaches
+  // productCard()/openProduct(), which would otherwise crash on
+  // getVariant() returning undefined. Every other valid product keeps
+  // rendering normally; nothing here can take down the whole grid.
+  const isSellable = p => p && p.id && p.name && p.image &&
+    (p.variants||[]).some(v=>v && v.active && Number(v.price)>0 && Number(v.mrp)>0);
+  products=(CONFIG.products||[]).filter(p=>p.active && isSellable(p))
+    .map(p=>({...p,media:p.media?.length?p.media:(DEFAULT_PRODUCT_MEDIA[p.id]||[{type:'image',path:p.image}])}));
   categories=(CONFIG.categories||[]).filter(c=>c.enabled).sort((a,b)=>a.order-b.order);
   mealTagList=(CONFIG.mealTags||[]).filter(t=>t.enabled).sort((a,b)=>a.order-b.order);
   if($('topShipping')) $('topShipping').textContent=`FREE SHIPPING ABOVE ${money(CONFIG.store.freeShippingThreshold)}`;
 }
 function getProduct(id){return products.find(p=>p.id===id)}
 function getCombo(id){return (CONFIG.combos||[]).find(c=>c.id===id&&c.active)}
-function getVariant(p,vid){return (p?.variants||[]).find(v=>v.id===vid&&v.active)||(p?.variants||[]).find(v=>v.active)}
+function getVariant(p,vid){
+  if(!p) return null;
+  return (p.variants||[]).find(v=>v && v.id===vid && v.active && Number(v.price)>0)
+    || (p.variants||[]).find(v=>v && v.active && Number(v.price)>0)
+    || null;
+}
 function catName(id){return categories.find(c=>c.id===id)?.name||id}
 function variantKey(id){return selectedVariants[id]||getVariant(getProduct(id))?.id}
 function setVariant(id,vid){selectedVariants[id]=vid;refreshProductViews()}
@@ -154,7 +174,9 @@ function setGalleryImage(path,btn){
 
 /* ---------- Product card / grids ---------- */
 function productCard(p){
-  const v=getVariant(p,variantKey(p.id)),off=v.mrp-v.price,q=cartQtyFor(p.id,v.id);
+  const v=getVariant(p,variantKey(p.id));
+  if(!v) return ''; // defensive: should never happen post-sync(), but never crash the grid if it does
+  const off=v.mrp-v.price,q=cartQtyFor(p.id,v.id);
   const actions=q
     ?`<div class="pcActions hasQty"><div class="inlineQty"><button onclick="changeProductQty('${p.id}','${v.id}',-1)" aria-label="Decrease quantity"><i class="fa-solid fa-minus"></i></button><b>${q}</b><button onclick="changeProductQty('${p.id}','${v.id}',1)" aria-label="Increase quantity"><i class="fa-solid fa-plus"></i></button></div><button class="viewCartBtn" onclick="openCart()" aria-label="View cart"><i class="fa-solid fa-bag-shopping"></i></button></div>`
     :`<div class="pcActions"><button onclick="addToCart('${p.id}','${v.id}')">Add to cart</button><button onclick="buyNow('${p.id}','${v.id}')">Buy now</button></div>`;
@@ -236,18 +258,38 @@ async function renderReviews(){
   // live customer-submitted reviews (Supabase, approved only). They are
   // never mixed into one workflow — Admin manages Google Reviews content
   // as before, and approves/rejects website reviews separately.
+  // Item O: homepage shows a small curated/recent set only, with a
+  // dedicated "View all reviews" action for the full paginated list —
+  // never renders the whole review table directly here.
   const curated=(CONFIG.reviews||[]).filter(r=>r.active&&r.source==='customer').slice(0,3);
-  let live=[];
+  let live=[], liveCount=0;
   try{
-    const {data} = await sb.from('website_reviews').select('customer_name,rating,review_text,created_at').eq('status','approved').order('created_at',{ascending:false}).limit(6);
-    live = data||[];
+    const {data, count} = await sb.from('website_reviews').select('customer_name,rating,review_text,created_at,featured',{count:'exact'}).eq('status','approved').order('featured',{ascending:false}).order('created_at',{ascending:false}).limit(CONFIG.store.homepageReviewCount||6);
+    live = data||[]; liveCount = count||0;
   }catch{}
   const curatedCards = curated.map(r=>`<article><div class="stars">${'★'.repeat(r.rating)}</div><p>“${escapeHtml(r.text)}”</p><b>${escapeHtml(r.name)}</b><small>Customer review</small></article>`).join('');
-  const liveCards = live.map(r=>`<article><div class="stars">${'★'.repeat(r.rating)}</div><p>“${escapeHtml(r.review_text)}”</p><b>${escapeHtml(r.customer_name)}</b><small>Verified Jayvi customer</small></article>`).join('');
+  const liveCards = live.map(r=>`<article>${r.featured?'<span class="typeTag" style="background:var(--gold-soft);color:#8a6a1a">FEATURED</span>':''}<div class="stars">${'★'.repeat(r.rating)}</div><p>“${escapeHtml(r.review_text)}”</p><b>${escapeHtml(r.customer_name)}</b><small>Verified Jayvi customer</small></article>`).join('');
   const writeReviewCard = `<article class="googleCard" style="background:var(--brand-soft)!important"><i class="fa-regular fa-pen-to-square"></i><h3>Bought something recently?</h3><p>Tell other customers what you thought.</p><a href="#" onclick="openReviewForm();return false">Write a review →</a></article>`;
-  $('reviewGrid').innerHTML = curatedCards + liveCards + writeReviewCard +
+  const viewAllCard = liveCount>live.length ? `<article class="googleCard"><i class="fa-solid fa-list"></i><h3>${liveCount} customer reviews</h3><p>See every approved review from Jayvi customers.</p><a href="#" onclick="openAllReviews();return false">View all reviews →</a></article>` : '';
+  $('reviewGrid').innerHTML = curatedCards + liveCards + writeReviewCard + viewAllCard +
     `<article class="googleCard"><i class="fa-brands fa-google"></i><h3>More reviews on Google</h3><p>See the latest customer feedback directly on Google.</p><a href="${CONFIG.store.googleReviewsUrl}" target="_blank">View Google reviews →</a></article>`;
   if($('googleReviewsTop'))$('googleReviewsTop').href=CONFIG.store.googleReviewsUrl;
+}
+let _allReviewsOffset = 0;
+const ALL_REVIEWS_PAGE_SIZE = 10;
+async function openAllReviews(reset=true){
+  if(reset) _allReviewsOffset = 0;
+  $('accountOverlay').classList.add('open');document.body.classList.add('modalOpen');
+  const {data, count, error} = await sb.from('website_reviews')
+    .select('customer_name,rating,review_text,created_at,featured',{count:'exact'})
+    .eq('status','approved')
+    .order('featured',{ascending:false}).order('created_at',{ascending:false})
+    .range(_allReviewsOffset, _allReviewsOffset+ALL_REVIEWS_PAGE_SIZE-1);
+  if(error){ showToast('Could not load reviews'); return; }
+  const rows = data||[];
+  $('accountContent').innerHTML = `<div class="eyebrow">CUSTOMER REVIEWS</div><h2>${count||0} reviews</h2>
+    <div class="reviewGrid" style="grid-template-columns:1fr;margin-top:14px">${rows.map(r=>`<article>${r.featured?'<span class="typeTag" style="background:var(--gold-soft);color:#8a6a1a">FEATURED</span>':''}<div class="stars">${'★'.repeat(r.rating)}</div><p>“${escapeHtml(r.review_text)}”</p><b>${escapeHtml(r.customer_name)}</b><small>${new Date(r.created_at).toLocaleDateString('en-IN')}</small></article>`).join('')||'<div class="empty">No reviews yet.</div>'}</div>
+    ${count>_allReviewsOffset+ALL_REVIEWS_PAGE_SIZE?`<button class="btn light full" style="margin-top:14px" onclick="_allReviewsOffset+=${ALL_REVIEWS_PAGE_SIZE};openAllReviews(false)">Load more</button>`:''}`;
 }
 function openReviewForm(){
   $('accountOverlay').classList.add('open');document.body.classList.add('modalOpen');
@@ -335,7 +377,12 @@ function addToCart(pid,vid){
   const p=getProduct(pid),v=getVariant(p,vid); if(!p||!v)return;
   const key='product:'+pid+':'+v.id, x=cart.find(i=>i.key===key);
   if(x)x.qty++; else cart.push({key,type:'product',productId:pid,variantId:v.id,qty:1});
-  saveCart();renderCart();refreshProductViews();openCart();
+  saveCart();renderCart();refreshProductViews();
+  // Item S (approved spec): Add to Cart must NOT open the cart drawer —
+  // customers adding several items shouldn't be bounced to the cart
+  // after each one. Confirmation toast with an explicit "View cart"
+  // action instead; only that action (or the cart icon) opens it.
+  showCartAddedToast(p.name);
 }
 function changeProductQty(pid,vid,d){
   const key='product:'+pid+':'+vid; let x=cart.find(i=>i.key===key);
@@ -444,10 +491,38 @@ function authView(mode){
   </form>
   <div id="authError" class="tiny" style="color:var(--danger)"></div>
   <div class="authSwitch">${mode==='login'?`New here? <button onclick="openAuth('register')">Create account</button>`:`Already have an account? <button onclick="openAuth('login')">Sign in</button>`}</div>
-  ${mode==='login'?'<button class="textBtn" onclick="showOtpUnavailable()">Use OTP instead</button>':''}
+  ${mode==='login'?'<button class="textBtn" onclick="openForgotPassword()">Forgot password?</button>':''}
   <div class="guestNote">You can always <button onclick="closeAccount();openCheckout()">continue as guest</button> without creating an account. Already placed an order? <button onclick="trackOrderPrompt()">Track it here</button>.</div>`;
 }
-function showOtpUnavailable(){showToast('OTP login is not available yet. Password login is currently enabled.')}
+function openForgotPassword(){
+  $('accountContent').innerHTML = `<div class="eyebrow">FORGOT PASSWORD</div><h2>Let's find your account.</h2>
+    <p class="muted">Enter the mobile number your account is registered with.</p>
+    <label>Mobile number *<input id="fpPhone" inputmode="numeric" maxlength="10" pattern="[0-9]{10}" required placeholder="10-digit mobile number"></label>
+    <button class="btn gold full" onclick="checkForgotPasswordPhone()">Continue →</button>
+    <div class="authSwitch"><button onclick="openAuth('login')">← Back to sign in</button></div>`;
+}
+async function checkForgotPasswordPhone(){
+  const phone = $('fpPhone').value.trim();
+  if(!/^\d{10}$/.test(phone)){ showToast('Enter a valid 10-digit mobile number'); return; }
+  const {data:exists} = await sb.rpc('check_phone_registered', {p_phone:phone});
+  if(!exists){
+    $('accountContent').innerHTML = `<div class="eyebrow">FORGOT PASSWORD</div><h2>No account found.</h2>
+      <p class="muted">We couldn't find a Jayvi account with that mobile number.</p>
+      <button class="btn gold full" onclick="openAuth('register')">Create an account instead →</button>
+      <div class="authSwitch"><button onclick="openAuth('login')">← Back to sign in</button></div>`;
+    return;
+  }
+  // Phase 1 (R2/R3): no automated OTP/email verification yet — identity
+  // is confirmed by Jayvi's team via WhatsApp, then Admin resets the
+  // password. Architecture leaves room to swap this for self-service
+  // OTP/email later without changing the account system itself.
+  const waMsg = encodeURIComponent(`Hello Jayvi Foods, I need help resetting the password for my account registered with ${phone}.`);
+  $('accountContent').innerHTML = `<div class="eyebrow">FORGOT PASSWORD</div><h2>We found your account.</h2>
+    <p class="muted">We can't automatically verify your identity yet. Please contact Jayvi Foods to reset your password.</p>
+    <a class="btn gold full" href="https://wa.me/${CONFIG.store.whatsapp}?text=${waMsg}" target="_blank">WhatsApp Jayvi Foods →</a>
+    <button class="btn light full" style="margin-top:10px" onclick="closeAccount();openCheckout()">Continue as guest</button>
+    <div class="authSwitch"><button onclick="openAuth('login')">← Back to sign in</button></div>`;
+}
 function authErr(msg){ const el=$('authError'); if(el) el.textContent=msg; else showToast(msg); }
 
 async function registerSubmit(e){
@@ -464,7 +539,16 @@ async function registerSubmit(e){
   }
   const {data, error} = signUpResult;
   if(error){
-    authErr(/already|exists|registered/i.test(error.message) ? 'An account already exists with this mobile number' : error.message);
+    if(/already|exists|registered/i.test(error.message)){
+      // R1: existing account — offer Log in / Forgot password rather
+      // than just an error with no way forward.
+      $('accountContent').innerHTML = `<div class="eyebrow">MY JAYVI</div><h2>Account already exists.</h2>
+        <p class="muted">An account already exists with this mobile number.</p>
+        <button class="btn gold full" onclick="openAuth('login')">Log in →</button>
+        <button class="btn light full" style="margin-top:10px" onclick="openForgotPassword()">Forgot password?</button>`;
+    } else {
+      authErr(error.message);
+    }
     return;
   }
   currentUser = data.user;
@@ -488,10 +572,26 @@ async function loginSubmit(e){
   const {data, error} = AUTH_MODE==='phone'
     ? await sb.auth.signInWithPassword({ phone, password:p })
     : await sb.auth.signInWithPassword({ email:phoneToAuthEmail(phone), password:p });
-  if(error){ authErr('Mobile number or password is incorrect'); return; }
+  if(error){
+    // R6: incorrect password (or unknown phone) — always offer the
+    // recovery path right where the error appears, not just an error.
+    $('authError').innerHTML = `Mobile number or password is incorrect. <button class="textBtn" onclick="openForgotPassword()" style="display:inline">Forgot password?</button>`;
+    return;
+  }
   currentUser = data.user;
   await refreshProfile();
   showToast('Signed in');
+  // Item J: one normal login, role decides the destination — no
+  // separate admin-login page or public "Admin login" link anymore.
+  // Only redirects to the Admin panel when the visit specifically came
+  // from there (?returnTo=admin) AND the account is actually an admin;
+  // a plain visit to the storefront never force-redirects, it just
+  // shows the account view (which already tells an admin identity to
+  // use the Admin panel, from the earlier session-separation fix).
+  if(currentProfile?.role==='admin' && new URLSearchParams(location.search).get('returnTo')==='admin'){
+    location.href='admin.html';
+    return;
+  }
   renderAccountView();
 }
 async function signOut(){
@@ -574,10 +674,29 @@ async function deleteAddress(id){
 }
 
 /* ---------- Checkout ---------- */
+let checkoutPinInfo = null; // set by verifyPincode() once a PIN is confirmed serviceable; drives both displayed AND charged shipping (item B) and the dynamic ETA shown (item H) — never two different numbers for the same thing.
+
+function effectiveShipping(t){
+  return checkoutPinInfo?.charge != null ? Number(checkoutPinInfo.charge) : t.ship;
+}
+function updateCheckoutSummary(){
+  const t = cartTotals();
+  const ship = effectiveShipping(t);
+  const total = t.sub + ship;
+  const shipEl = $('checkoutShipLine'), totalEl = $('checkoutTotalLine'), estEl = $('checkoutEstimate');
+  if(shipEl) shipEl.textContent = ship ? money(ship) : 'FREE';
+  if(totalEl) totalEl.textContent = money(total);
+  if(estEl){
+    const min = checkoutPinInfo?.min ?? CONFIG.store.deliveryMinDays ?? 4;
+    const max = checkoutPinInfo?.max ?? CONFIG.store.deliveryMaxDays ?? 8;
+    estEl.innerHTML = `<b>Estimated delivery: ${min}–${max} days</b><span>${checkoutPinInfo?.pinChecked?'Based on your PIN code.':'Delivery time varies by location and PIN code.'}</span>`;
+  }
+}
 async function openCheckout(){
   if(CONFIG.store.vacationMode){showToast(CONFIG.store.vacationMessage||'Ordering is temporarily paused.');return}
   if(!cart.length){showToast('Your cart is empty');return}
   closeCart();
+  checkoutPinInfo = null;
   const t=cartTotals();
   const u = currentUser ? currentProfile : null;
   let savedAddr = null;
@@ -590,12 +709,12 @@ async function openCheckout(){
     <div>
       <div class="eyebrow">CHECKOUT</div><h2>Delivery details.</h2>
       <p class="muted">Choose how you want to pay. You can order as a guest or sign in.</p>
-      <div class="deliveryEstimate"><b>Estimated delivery: ${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days</b><span>Delivery time varies by location and PIN code.</span></div>
+      <div class="deliveryEstimate" id="checkoutEstimate"><b>Estimated delivery: ${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days</b><span>Delivery time varies by location and PIN code.</span></div>
       <div class="guestChoice"><b>Checkout as ${u?'signed-in customer':'guest'}</b>${u?`<button onclick="signOut().then(openCheckout)">Use guest</button>`:'<button onclick="closeCheckout();openAccount()">Sign in / register</button>'}</div>
       <form id="checkoutForm" onsubmit="placeOrder(event)">
         <label>Full name *<input id="coName" value="${escapeHtml(u?.name||'')}" required></label>
         <label>Mobile *<input id="coPhone" value="${escapeHtml(u?.phone||'')}" required pattern="[0-9]{10}" maxlength="10"></label>
-        <label>Search delivery location <span class="tiny">Google Maps ready</span><div id="placeBox"></div></label>
+        <label>Search your Google location <span class="tiny">${CONFIG.store.googleMapsApiKey?'':'not yet configured'}</span><div id="placeBox"></div></label>
         <label>Address *<textarea id="coAddress" required rows="3" placeholder="House / flat, street, landmark">${escapeHtml(savedAddr?.line1||'')}</textarea></label>
         <div class="two"><label>City *<input id="coCity" required value="${escapeHtml(savedAddr?.city||'')}"></label><label>State *<input id="coState" required value="${escapeHtml(savedAddr?.state||'')}"></label></div>
         <div class="pinRow"><label>PIN code *<input id="coPin" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" value="${escapeHtml(savedAddr?.pincode||'')}"></label><button type="button" class="btn outline" onclick="verifyPincode()">Verify PIN</button></div>
@@ -612,8 +731,8 @@ async function openCheckout(){
     <aside class="summary"><h3>Your order</h3>
       ${cart.map(x=>{const d=cartItemDetails(x);return `<div class="line"><span>${escapeHtml(d.name)} · ${escapeHtml(d.label)} × ${x.qty}</span><b>${money(d.price*x.qty)}</b></div>`}).join('')}
       <div class="line"><span>Subtotal</span><b>${money(t.sub)}</b></div>
-      <div class="line"><span>Delivery</span><b>${t.ship?money(t.ship):'FREE'}</b></div>
-      <div class="line total"><span>Total</span><b>${money(t.total)}</b></div>
+      <div class="line"><span>Delivery</span><b id="checkoutShipLine">${t.ship?money(t.ship):'FREE'}</b></div>
+      <div class="line total"><span>Total</span><b id="checkoutTotalLine">${money(t.total)}</b></div>
     </aside></div>`;
   $('checkoutOverlay').classList.add('open');document.body.classList.add('modalOpen');
   initPlaces();
@@ -628,9 +747,50 @@ async function verifyPincode(){
   const pin=$('coPin').value.trim(), status=$('pinStatus');
   if(!/^\d{6}$/.test(pin)){status.className='pinStatus bad';status.textContent='Enter a 6-digit Indian PIN code.';return}
   if(CONFIG.store.deliveryMode!=='india'){status.className='pinStatus bad';status.textContent='Delivery is currently disabled.';return}
-  const blocked=(CONFIG.store.blockedPincodes||[]).map(String);
-  if(blocked.includes(pin)){status.className='pinStatus bad';status.textContent='Sorry, this PIN is currently not serviceable.';return}
-  status.className='pinStatus good';status.textContent='PIN accepted for India delivery. Final address validation will run in the production backend.';
+  status.className='pinStatus';status.textContent='Checking delivery availability…';
+  checkoutPinInfo = null;
+  const {data, error} = await sb.rpc('check_pincode', {p_pincode:pin});
+  const row = data?.[0];
+  if(error){
+    // Master lookup failed (network/etc) — fail open to the existing
+    // generic estimate rather than blocking checkout on an
+    // infrastructure hiccup.
+    status.className='pinStatus good';
+    status.textContent=`Estimated delivery: ${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days.`;
+    updateCheckoutSummary();
+    return;
+  }
+  if(!row || !row.found){
+    // PIN not yet in the master (India-wide coverage is large but not
+    // guaranteed complete). Judgment call, flagged rather than made
+    // silently, and kept as fail-open for V32.2/V32.3 per explicit
+    // instruction: fail open with the generic estimate instead of
+    // blocking a legitimate customer over a data gap.
+    status.className='pinStatus good';
+    status.textContent=`Estimated delivery: ${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days.`;
+    updateCheckoutSummary();
+    return;
+  }
+  if(!row.effective_serviceable){
+    // Never explains *why* (state disabled vs. individual PIN disabled
+    // vs. inactive) — internal admin rules aren't exposed to customers.
+    status.className='pinStatus bad';
+    status.textContent="Sorry, we currently don't deliver to this PIN code.";
+    updateCheckoutSummary();
+    return;
+  }
+  const min = row.min_eta_days || CONFIG.store.deliveryMinDays || 4;
+  const max = row.max_eta_days || CONFIG.store.deliveryMaxDays || 8;
+  // This is the actual fix for the flagged gap: the same numbers used
+  // in the status message below are stored here and are what
+  // updateCheckoutSummary()/placeOrder() actually use — the displayed
+  // amount and the charged amount can no longer diverge.
+  checkoutPinInfo = { charge: row.delivery_charge, min, max, pinChecked: true };
+  status.className='pinStatus good';
+  status.textContent = row.delivery_charge!=null
+    ? `Delivery available. Estimated delivery: ${min}–${max} days. Delivery charge for this PIN: ${row.delivery_charge>0?money(row.delivery_charge):'FREE'}.`
+    : `Delivery available. Estimated delivery: ${min}–${max} days.`;
+  updateCheckoutSummary();
 }
 async function initPlaces(){
   const box=$('placeBox'); if(!box)return;
@@ -671,6 +831,10 @@ async function placeOrder(e){
   const pin=$('coPin').value.trim();
   if(!/^\d{6}$/.test(pin)){verifyPincode();showToast('Please verify your 6-digit PIN');return}
   const t=cartTotals();
+  const ship = effectiveShipping(t); // same value the summary just displayed — never a second, different number
+  const total = t.sub + ship;
+  const min = checkoutPinInfo?.min ?? CONFIG.store.deliveryMinDays ?? 4;
+  const max = checkoutPinInfo?.max ?? CONFIG.store.deliveryMaxDays ?? 8;
   const method=document.querySelector('input[name=paymentMethod]:checked')?.value||'upi';
   const items = cart.map(x=>{
     const d=cartItemDetails(x);
@@ -692,10 +856,11 @@ async function placeOrder(e){
       p_address_city: $('coCity').value.trim(),
       p_address_state: $('coState').value.trim(),
       p_address_pincode: pin,
-      p_subtotal: t.sub, p_shipping: t.ship, p_total: t.total,
+      p_subtotal: t.sub, p_shipping: ship, p_total: total,
       p_payment_method: method,
-      p_estimated_delivery: `${CONFIG.store.deliveryMinDays||4}-${CONFIG.store.deliveryMaxDays||8} days`,
-      p_items: items
+      p_estimated_delivery: `${min}-${max} days`,
+      p_items: items,
+      p_eta_min_days: min, p_eta_max_days: max
     });
     if(!result.error || result.error.code !== '23505') break; // 23505 = unique_violation, retry with a new number
     orderNumber = makeOrderNumber(); attempt++;
@@ -713,8 +878,24 @@ async function placeOrder(e){
 }
 function showUpiPayment(o){
   const qr=CONFIG.store.upiQrImage?`<img class="upiQr" src="${CONFIG.store.upiQrImage}" alt="Jayvi Foods UPI QR">`:`<div class="upiQr placeholder"><b>UPI QR</b><span>Upload your Jayvi QR from Admin</span></div>`;
+  // Item G: on mobile, a "Pay with UPI app" deep link is offered above
+  // the QR — tapping it hands off to whichever UPI app the customer
+  // has installed via the standard upi://pay intent. On desktop there's
+  // no UPI app to hand off to, so only the QR + manual reference is
+  // shown, exactly as specified ("Desktop → QR + manual reference
+  // fallback"). Neither path can auto-confirm the payment — the UTR
+  // field below is always required either way; this is explicitly NOT
+  // claiming automatic reference retrieval, which the current
+  // architecture cannot do without a real payment gateway.
+  const upiLink = CONFIG.store.upiId
+    ? `upi://pay?pa=${encodeURIComponent(CONFIG.store.upiId)}&pn=${encodeURIComponent(CONFIG.store.upiName||'Jayvi Foods')}&am=${encodeURIComponent(o.total)}&tn=${encodeURIComponent(o.order_number)}&cu=INR`
+    : null;
+  const intentButton = (isMobile() && upiLink)
+    ? `<a class="btn gold full" href="${upiLink}">Pay with UPI app →</a><p class="tiny" style="text-align:center;margin:8px 0">or scan the QR below</p>`
+    : '';
   $('accountContent').innerHTML=`<div class="paymentSuccess"><div class="eyebrow">PAYMENT</div><h2>Pay ${money(o.total)}</h2>
-    <p class="muted">Scan this QR with any UPI app. Your order will move to processing after we verify the payment.</p>${qr}
+    <p class="muted">${isMobile()?'Pay with your UPI app, or scan the QR.':'Scan this QR with any UPI app.'} Your order will move to processing after we verify the payment.</p>
+    ${intentButton}${qr}
     <div class="upiMeta"><b>${escapeHtml(CONFIG.store.upiName||'Jayvi Foods')}</b>${CONFIG.store.upiId?`<span>UPI ID: ${escapeHtml(CONFIG.store.upiId)}</span>`:''}</div>
     <label>UPI transaction / UTR reference *<input id="utrInput" placeholder="Enter the reference after payment"></label>
     <button class="btn gold full" onclick="submitUpiProof('${escapeHtml(o.order_number)}','${escapeHtml(o.phone)}')">I have paid →</button>
@@ -737,9 +918,24 @@ function showOrderSuccess(o){
   $('accountOverlay').classList.add('open');document.body.classList.add('modalOpen');
 }
 function renderTimeline(o){
-  const steps=['Order received','Payment verified','Preparing','Packed','Shipped','Out for delivery','Delivered'];
-  const current=o.status||'';
-  return `<div class="timeline">${steps.map((s,i)=>`<div class="timelineStep ${current.toLowerCase().includes(s.toLowerCase())?'current':''}"><i>${i+1}</i><span>${s}</span></div>`).join('')}</div>`;
+  const status = o.status||'';
+  // Item N: a cancelled or delivery-failed order must NOT render the
+  // normal happy-path timeline — each gets its own track, per the
+  // approved spec's exact examples.
+  const NORMAL = ['Order Confirmed','Preparing','Packed & Shipped','Out for Delivery','Delivered'];
+  const CANCELLED = ['Order Confirmed','Preparing','Cancelled','Refund Pending','Refunded'];
+  const FAILED = ['Packed & Shipped','Out for Delivery','Delivery Failed','Returned'];
+
+  let steps;
+  if(['Cancelled','Refund Pending','Refunded'].includes(status)) steps = CANCELLED;
+  else if(['Delivery Failed','Returned'].includes(status)) steps = FAILED;
+  else steps = NORMAL;
+
+  const idx = steps.indexOf(status);
+  return `<div class="timeline">${steps.map((s,i)=>{
+    const cls = i===idx ? 'current' : (idx>=0 && i<idx ? 'done' : '');
+    return `<div class="timelineStep ${cls}"><i>${i<idx?'✓':i+1}</i><span>${s}</span></div>`;
+  }).join('')}</div>`;
 }
 function trackOrderPrompt(){
   openAccount();
@@ -748,14 +944,42 @@ function trackOrderPrompt(){
     <label>Mobile<input id="trackPhone" maxlength="10"></label>
     <button class="btn gold full" onclick="trackOrder()">Track order →</button>`;
 }
+const CANCELLABLE_STATUSES = ['Order Confirmed','Preparing']; // mirrors status_transitions exactly — server enforces the real rule regardless, this only decides whether to show the button
 async function trackKnownOrder(orderNumber, phone){
   const {data, error} = await sb.rpc('track_guest_order', {p_order_number:orderNumber, p_phone:phone});
   const o = data?.[0];
   if(error || !o){showToast('Order could not be found for this mobile number.');return}
+  const canCancel = CANCELLABLE_STATUSES.includes(o.status);
   $('accountContent').innerHTML=`<div class="eyebrow">ORDER ${escapeHtml(o.order_number)}</div><h2>${escapeHtml(o.status||'Order received')}</h2>
     <p class="muted">${money(o.total)}</p>${renderTimeline(o)}
-    <div class="orderTrackNote">${o.tracking_url?`Tracking: <a href="${escapeHtml(o.tracking_url)}" target="_blank">Open courier tracking →</a><br>`:''}${o.delivery_partner?`Courier: ${escapeHtml(o.delivery_partner)}<br>`:''}Estimated delivery: ${escapeHtml(o.estimated_delivery||'4–8 days')}.</div>`;
+    <div class="orderTrackNote">
+      ${o.tracking_url?`Tracking: <a href="${escapeHtml(o.tracking_url)}" target="_blank">Open courier tracking →</a><br>`:''}
+      ${o.tracking_number?`Tracking number: <b>${escapeHtml(o.tracking_number)}</b><br>`:''}
+      ${o.reference_number?`Reference number: <b>${escapeHtml(o.reference_number)}</b><br>`:''}
+      ${o.delivery_partner?`Delivery partner: ${escapeHtml(o.delivery_partner)}<br>`:''}
+      ${formatDynamicEta(o)}
+    </div>
+    ${canCancel?`<button class="btn light full" style="margin-top:14px" onclick="confirmCancelOrder('${escapeHtml(o.order_number)}','${escapeHtml(phone)}')">Cancel order</button>`
+      : (o.status==='Packed & Shipped'||o.status==='Out for Delivery' ? `<p class="tiny" style="margin-top:10px">Cancellation is no longer available because your order has already been shipped.</p>` : '')}`;
   $('accountOverlay').classList.add('open');document.body.classList.add('modalOpen');
+}
+function formatDynamicEta(o){
+  // Item H: reflects the order's OWN stored estimate, and firms up as
+  // status progresses — never just re-shows the generic 4–8 days after
+  // the order has moved on.
+  if(o.status==='Delivered') return `Delivered.`;
+  if(o.dispatch_date && ['Packed & Shipped','Out for Delivery'].includes(o.status)){
+    return `Shipped. Expected delivery: ${new Date(o.dispatch_date).toLocaleDateString('en-IN',{day:'numeric',month:'short'})}${o.eta_max_days?' – '+new Date(new Date(o.dispatch_date).getTime()+o.eta_max_days*86400000).toLocaleDateString('en-IN',{day:'numeric',month:'short'}):''}.`;
+  }
+  if(o.status==='Out for Delivery') return `Expected today.`;
+  return `Estimated delivery: ${o.estimated_delivery||'4–8 days'}.`;
+}
+async function confirmCancelOrder(orderNumber, phone){
+  if(!confirm(`Cancel order ${orderNumber}? This can't be undone.`)) return;
+  const {error} = await sb.rpc('cancel_order', {p_order_number:orderNumber, p_phone:phone});
+  if(error){ showToast('Could not cancel: '+error.message); return; }
+  showToast(`Order ${orderNumber} cancelled. If payment was made, your refund will be credited within ${CONFIG.store.refundBusinessDays||4} business days.`);
+  trackKnownOrder(orderNumber, phone);
 }
 function trackOrder(){
   const id=$('trackId').value.trim(), phone=$('trackPhone').value.trim();
@@ -771,6 +995,7 @@ function openProduct(id){
     card?.scrollIntoView({behavior:'smooth',block:'start'});
   }
   const v=getVariant(p,variantKey(id));
+  if(!v){ showToast('This product is currently unavailable.'); return; } // defensive, same reasoning as productCard()
   const paused=!!CONFIG.store.vacationMode;
   const addAction=paused?"showToast('Ordering is paused while Jayvi Foods is on vacation.')":`addToCart('${p.id}','${v.id}')`;
   const buyAction=paused?"showToast('Ordering is paused while Jayvi Foods is on vacation.')":`buyNow('${p.id}','${v.id}')`;
@@ -814,6 +1039,13 @@ function showToast(t){
   el.classList.add('show');
   toastTimer=setTimeout(()=>el.classList.remove('show'),2800);
 }
+function showCartAddedToast(productName){
+  clearTimeout(toastTimer);
+  const el=$('toast');
+  el.innerHTML = `<span class="toastRow"><strong>✓ ${escapeHtml(productName)} added to your bag</strong><button onclick="openCart()">View Cart</button></span>`;
+  el.classList.add('show');
+  toastTimer=setTimeout(()=>el.classList.remove('show'),3600);
+}
 function applyVacation(){
   const banner=$('vacationBanner');
   if(CONFIG.store?.vacationMode){
@@ -855,5 +1087,13 @@ async function init(){
     currentUser = session?.user || null;
     if(!currentUser) currentProfile = null;
   });
+
+  // Item J: arriving from Admin's own redirect (no session yet) opens
+  // straight to login, or straight to the Admin panel if already
+  // signed in as an admin — either way, no separate admin-login page.
+  if(new URLSearchParams(location.search).get('returnTo')==='admin'){
+    if(currentUser && currentProfile?.role==='admin') location.href='admin.html';
+    else openAccount();
+  }
 }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true}); else init();
