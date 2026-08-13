@@ -34,12 +34,42 @@ const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 // synthetic email.
 const EMAIL_MAP_DOMAIN = 'customers.jayvifoods.internal';
 
+// ---------------------------------------------------------------------
+// V32.5 fix (Priority 1, item 3): this is the actual cause of the
+// reported "Failed to fetch". admin.js calls this function from the
+// browser with a custom Authorization header and Content-Type: application/
+// json — that combination makes the browser send a CORS preflight
+// (OPTIONS) request before the real POST. This function never answered
+// OPTIONS and never sent an Access-Control-Allow-Origin header on any
+// response, so the browser blocked the request entirely and fetch()
+// threw a network-level TypeError ("Failed to fetch") before the POST
+// ever reached this code — Admin never even got as far as a real
+// success/failure response.
+//
+// This does NOT remove the separate deployment dependency: this fix
+// only matters once the function is actually deployed
+// (`supabase functions deploy admin-reset-password`). If it has not
+// been deployed yet, the request will still fail the same way, because
+// there is no function at that URL to answer it at all.
+// ---------------------------------------------------------------------
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+function corsResponse(body: string, init: ResponseInit = {}) {
+  return new Response(body, { ...init, headers: { ...CORS_HEADERS, ...(init.headers || {}) } });
+}
+
 Deno.serve(async (req) => {
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
+  // Preflight — must be answered with the CORS headers above, or the
+  // browser never sends the actual POST at all.
+  if (req.method === 'OPTIONS') return corsResponse('ok', { status: 200 });
+  if (req.method !== 'POST') return corsResponse('Method not allowed', { status: 405 });
 
   const authHeader = req.headers.get('Authorization') || '';
   const callerToken = authHeader.replace('Bearer ', '');
-  if (!callerToken) return new Response('Missing Authorization header', { status: 401 });
+  if (!callerToken) return corsResponse('Missing Authorization header', { status: 401 });
 
   // Verify the CALLER (using their own token, not service_role) is a
   // real, currently-valid session, then check their admin flag with
@@ -47,21 +77,27 @@ Deno.serve(async (req) => {
   // alone is not enough; profiles.role must say 'admin'.
   const callerClient = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
   const { data: callerUser, error: callerErr } = await callerClient.auth.getUser(callerToken);
-  if (callerErr || !callerUser?.user) return new Response('Invalid session', { status: 401 });
+  if (callerErr || !callerUser?.user) return corsResponse('Invalid session', { status: 401 });
 
   const { data: profile } = await callerClient.from('profiles').select('role').eq('id', callerUser.user.id).single();
-  if (profile?.role !== 'admin') return new Response('Not authorized — admin role required', { status: 403 });
+  if (profile?.role !== 'admin') return corsResponse('Not authorized — admin role required', { status: 403 });
 
-  const { phone, newPassword } = await req.json();
-  if (!phone || !/^\d{10}$/.test(phone)) return new Response('Valid 10-digit phone required', { status: 400 });
-  if (!newPassword || newPassword.length < 6) return new Response('New password must be at least 6 characters', { status: 400 });
+  let phone: string | undefined, newPassword: string | undefined;
+  try {
+    const body = await req.json();
+    phone = body.phone; newPassword = body.newPassword;
+  } catch {
+    return corsResponse('Request body must be valid JSON', { status: 400 });
+  }
+  if (!phone || !/^\d{10}$/.test(phone)) return corsResponse('Valid 10-digit phone required', { status: 400 });
+  if (!newPassword || newPassword.length < 6) return corsResponse('New password must be at least 6 characters', { status: 400 });
 
   // Find the target customer's profile by phone, then their auth user.
   const { data: targetProfile, error: targetErr } = await callerClient.from('profiles').select('id').eq('phone', phone).single();
-  if (targetErr || !targetProfile) return new Response('No customer found with that phone number', { status: 404 });
+  if (targetErr || !targetProfile) return corsResponse('No customer found with that phone number', { status: 404 });
 
   const { error: updateErr } = await callerClient.auth.admin.updateUserById(targetProfile.id, { password: newPassword });
-  if (updateErr) return new Response('Could not reset password: ' + updateErr.message, { status: 500 });
+  if (updateErr) return corsResponse('Could not reset password: ' + updateErr.message, { status: 500 });
 
-  return new Response(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  return corsResponse(JSON.stringify({ success: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 });

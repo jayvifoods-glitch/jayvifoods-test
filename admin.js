@@ -1,5 +1,20 @@
 const KEY='jayviStoreV14';
-const CONFIG_FALLBACK={store:{name:'Jayvi Foods',tagline:'Purely Traditional. Simply Delicious.',country:'IN',freeShippingThreshold:599,shippingFlat:49,deliveryMinDays:4,deliveryMaxDays:8,vacationMode:false,vacationMessage:'We are taking a short break. Orders will resume soon.',googleMapsApiKey:'',googleReviewsUrl:'https://www.google.com/search?q=Jayvi+Foods+reviews',whatsapp:'918861981003',instagram:'https://instagram.com/jayvifoods',razorpayKeyId:'',razorpayEnabled:false,upiEnabled:true,codEnabled:false,otpEnabled:false,upiId:'',upiName:'Jayvi Foods',upiQrImage:'',paymentNote:'Pay by UPI QR. Order moves to processing after payment verification.',refundBusinessDays:4,announcementSpeed:'normal',homepageReviewCount:6},homepage:{heroAutoplay:true,heroSeconds:5},
+const CONFIG_FALLBACK={store:{name:'Jayvi Foods',tagline:'Purely Traditional. Simply Delicious.',country:'IN',freeShippingThreshold:599,shippingFlat:49,deliveryMinDays:4,deliveryMaxDays:8,vacationMode:false,vacationMessage:'We are taking a short break. Orders will resume soon.',googleMapsApiKey:'',googleReviewsUrl:'https://www.google.com/search?q=Jayvi+Foods+reviews',whatsapp:'918861981003',instagram:'https://instagram.com/jayvifoods',razorpayKeyId:'',razorpayEnabled:false,upiEnabled:true,codEnabled:false,otpEnabled:false,upiId:'',upiName:'Jayvi Foods',upiQrImage:'',paymentNote:'Pay by UPI QR. Order moves to processing after payment verification.',refundBusinessDays:4,announcementSpeed:'normal',homepageReviewCount:6,
+// V32.5 (config-schema parity fix): these three existed ONLY in app.js's
+// EMBEDDED_CONFIG.store before this fix — CONFIG_FALLBACK never declared
+// them, so they were invisible to Admin and would have been silently
+// dropped by a wholesale "Copy Full Catalogue JSON" replace.
+// deliveryMode is genuinely load-bearing (verifyPincode() in app.js blocks
+// ALL delivery unless this is exactly 'india') and now has a real Admin
+// toggle below (see settingsPage()/saveStoreOperations()). paymentMode is
+// currently unused by any runtime logic (upiEnabled/codEnabled/
+// razorpayEnabled are the actual active toggles) — kept here only for
+// schema parity, not wired to new behavior, per "don't change working
+// flows unnecessarily." otpProvider already had a working Admin field
+// (setOtpProvider/saveAuth()) — it was just missing from this literal's
+// defaults.
+deliveryMode:'india',paymentMode:'upi_manual',otpProvider:''
+},homepage:{heroAutoplay:true,heroSeconds:5},
 categories:[{id:'chutney',name:'Chutney Powders',enabled:true,order:1},{id:'pudi',name:'Pudi',enabled:true,order:2},{id:'snacks',name:'Snacks',enabled:true,order:3},{id:'combos',name:'Combos',enabled:true,order:4}],
 products:[
   {id:'peanut',sku:'JF-TAR-CLS-PNT',name:'Peanut Chutney',short:'Rich, nutty and comforting.',category:'chutney',active:true,best:true,image:'images/products/peanut-chutney.webp',imageClass:'peanut',variants:[{id:'peanut-200',label:'200g',weight:'200g',price:155,mrp:199,sku:'JF-TAR-CLS-PNT-200',active:true},{id:'peanut-400',label:'400g',weight:'400g',price:249,mrp:299,sku:'JF-TAR-CLS-PNT-400',active:true}],mealTags:['idli','dosa','chapati','rice'],rating:4.8,reviewCount:18},
@@ -9,7 +24,17 @@ products:[
 ],
 combos:[{id:'duo',name:'Traditional Duo',short:'Peanut + Flaxseed. Two everyday favourites.',active:true,price:289,mrp:310,image:'images/hero/jayvi-products.webp',items:[{productId:'peanut',variantId:'peanut-200',qty:1},{productId:'flaxseed',variantId:'flaxseed-200',qty:1}]}],
 announcements:[{id:'h1',label:'BESTSELLER',title:'Peanut Chutney',em:'for every meal.',text:'Rich, nutty and comforting — the everyday favourite.',productId:'peanut',actionType:'product',actionTarget:'peanut',active:true,order:1},{id:'h2',label:'NEW',title:'Puffora',em:'crunch time.',text:'A crunchy Jayvi snack for anytime munching.',productId:'puffora',actionType:'product',actionTarget:'puffora',active:true,order:2},{id:'h3',label:'COMBO',title:'Traditional Duo',em:'one easy choice.',text:'Peanut + Flaxseed together at ₹289.',comboId:'duo',actionType:'combo',actionTarget:'duo',active:true,order:3}],
-mealLabels:{idli:'Idli',dosa:'Dosa',chapati:'Chapati',rice:'Rice + Ghee'},
+// V32.5 (config-schema parity fix): mealLabels intentionally has NO
+// static field here — it's derived from mealTags every time via
+// loadData()/mergeDefaults() below, exactly matching how app.js's
+// loadConfig() always recomputes it too. A static literal here would be
+// redundant at best and could silently drift out of sync with mealTags
+// at worst (edit one, forget the other). This was also the one
+// structural difference from EMBEDDED_CONFIG that, on inspection, never
+// actually risked breaking a wholesale copy — app.js unconditionally
+// overwrites CONFIG.mealLabels from mealTags regardless of what's pasted
+// into EMBEDDED_CONFIG — but removing it here keeps both sides honestly
+// documented as "derived, not stored."
 mealTags:[
 {id:'idli',name:'Idli',enabled:true,order:1},{id:'dosa',name:'Dosa',enabled:true,order:2},
 {id:'chapati',name:'Chapati',enabled:true,order:3},{id:'rice',name:'Rice + Ghee',enabled:true,order:4},
@@ -40,9 +65,24 @@ async function requireAdminSession(){
 let data=loadData(),tab='dashboard';
 const app=document.getElementById('app'), title=document.getElementById('title');
 const money=n=>'₹'+Number(n||0).toLocaleString('en-IN');
-function loadData(){try{const x=JSON.parse(localStorage.getItem(KEY)||'null');return x?mergeDefaults(x):structuredClone(CONFIG_FALLBACK)}catch{return structuredClone(CONFIG_FALLBACK)}}
+// V32.5 (config-schema parity fix): always route through mergeDefaults(),
+// even on a completely fresh browser with no localStorage at all — this
+// guarantees mealLabels (and any future derived field) is always computed
+// fresh from mealTags, rather than a truly-first-load browser getting a
+// raw CONFIG_FALLBACK clone that skipped derivation entirely.
+function loadData(){try{const x=JSON.parse(localStorage.getItem(KEY)||'null');return mergeDefaults(x||{})}catch{return mergeDefaults({})}}
 function mergeDefaults(x){const d=structuredClone(CONFIG_FALLBACK);Object.keys(x||{}).forEach(k=>d[k]=x[k]);d.store={...CONFIG_FALLBACK.store,...(x.store||{})};d.homepage={...CONFIG_FALLBACK.homepage,...(x.homepage||{})};d.categories=x.categories||d.categories;d.products=x.products||d.products;d.combos=x.combos||d.combos;d.announcements=x.announcements||d.announcements;d.mealTags=x.mealTags||d.mealTags;d.mealLabels=Object.fromEntries((d.mealTags||[]).map(t=>[t.id,t.name]));d.reviews=x.reviews||d.reviews;return d}
 function persist(){localStorage.setItem(KEY,JSON.stringify(data));toast('Catalogue/settings saved to this browser. Per the agreed architecture, catalogue and store configuration stay Git-managed — sync this out to your repo when ready.')}
+// V32.5 (catalogue architecture clarification): a persistent, always-visible
+// banner — not a toast that fades — so Admin can't mistake "Save" on this
+// page for "published to the live storefront." Nothing about the
+// underlying architecture changes here: this only makes the existing
+// limitation impossible to miss. See FUTURE_product_catalog_migration.md
+// for the actual planned fix (a real central Supabase Product Master) —
+// deliberately not a localStorage sync workaround.
+function localCatalogWarning(){
+  return `<div class="catalogWarning"><b>⚠️ Not live for customers until synced to your repo</b><p>Saving here only writes to <b>this browser's</b> local storage. It does <b>not</b> automatically reach the live storefront, any customer, or even this same Admin panel open in a different browser or device — those all keep showing whatever is baked into the currently deployed <code>app.js</code>/<code>admin.js</code>. To publish, the entire saved configuration gets copied wholesale into both <code>EMBEDDED_CONFIG</code> (<code>app.js</code>) and <code>CONFIG_FALLBACK</code> (<code>admin.js</code>) and redeployed — see the "PRODUCTION PROCEDURE" section at the very top of <code>DEPLOY.md</code> for the exact, safe steps. Only clear this browser's saved data <b>after</b> that wholesale copy is deployed — clearing it first, or only partially updating <code>app.js</code>, risks losing settings that were never copied over.</p><button class="outline" style="margin-top:10px" onclick="copyFullCatalogueJSON()">📋 Copy Full Catalogue JSON</button></div>`;
+}
 function toast(t){const x=document.getElementById('toast');x.textContent=t;x.classList.add('show');setTimeout(()=>x.classList.remove('show'),2300)}
 async function logout(){await sb.auth.signOut();location.href='index.html'}
 
@@ -142,7 +182,7 @@ async function orderView(orderNumber){
   const {data: allowed} = await sb.from('status_transitions').select('to_status').eq('from_status', o.status);
   const nextOptions = (allowed||[]).map(a=>a.to_status);
   const statusOptions = [o.status, ...nextOptions].map(s=>`<option value="${esc(s)}" ${s===o.status?'selected':''}>${esc(s)}${s===o.status?' (current)':''}</option>`).join('');
-  openModal(`<div class="eyebrow">ORDER</div><h2>${esc(o.order_number)}</h2><div class="detailColumns"><div><h3>Customer</h3><p><b>${esc(o.guest_name||'Guest')}</b><br>${esc(o.guest_phone||'')}</p><h3>Delivery</h3><p>${esc(o.address_line1||'')}<br>${esc(o.address_city||'')}, ${esc(o.address_state||'')} ${esc(o.address_pincode||'')}</p><h3>Delivery estimate</h3><p>${esc(o.estimated_delivery||'—')}${o.dispatch_date?'<br>Dispatched: '+esc(o.dispatch_date):''}</p></div><div><h3>Payment</h3><p>${esc(o.payment_method||'')}<br>UTR: ${esc(o.utr||'Not provided')}</p><label>Payment status<select id="paymentStatus"><option value="pending" ${o.payment_status==='pending'?'selected':''}>Pending</option><option value="proof_submitted" ${o.payment_status==='proof_submitted'?'selected':''}>Proof submitted / verification</option><option value="verified" ${o.payment_status==='verified'?'selected':''}>Verified</option><option value="failed" ${o.payment_status==='failed'?'selected':''}>Failed</option><option value="refund_pending" ${o.payment_status==='refund_pending'?'selected':''}>Refund pending</option><option value="refunded" ${o.payment_status==='refunded'?'selected':''}>Refunded</option></select></label><h3>Items</h3>${(o.order_items||[]).map(i=>`<div class="miniLine"><span>${esc(i.name)} ${i.variant_label?'· '+esc(i.variant_label):''} × ${i.qty}</span><b>${money(i.line_total)}</b></div>`).join('')}<div class="miniLine total"><span>Total</span><b>${money(o.total)}</b></div></div></div><div class="statusEditor"><label>Order status <small class="v22-admin-help">Only valid next statuses are shown, per the approved transition rules.</small><select id="orderStatus">${statusOptions}</select></label><label>Delivery partner<input id="deliveryPartner" value="${esc(o.delivery_partner||'')}"></label><div class="two"><label>Tracking number<input id="trackingNumber" value="${esc(o.tracking_number||'')}"></label><label>Reference number<input id="referenceNumber" value="${esc(o.reference_number||'')}"></label></div><label>Tracking URL<input id="trackingUrl" value="${esc(o.tracking_url||'')}"></label><label>Dispatch date<input id="dispatchDate" type="date" value="${esc(o.dispatch_date||'')}"></label><button class="gold full" onclick="updateOrder('${esc(o.order_number)}','${o.id}')">Update order</button></div><div class="timeline"><h3>Order timeline</h3>${timeline||'<div class="empty smallEmpty">No timeline yet.</div>'}</div><div class="notificationBox"><b>Customer update</b><p>Message is generated automatically from the current order status — see WhatsApp Customer.</p><button class="outline" onclick="manualWhatsApp('${esc(o.guest_phone||'')}','${esc(o.order_number)}','${esc(o.status)}','${esc(o.tracking_number||'')}','${esc(o.estimated_delivery||'')}')">WhatsApp Customer</button></div>`);
+  openModal(`<div class="eyebrow">ORDER</div><h2>${esc(o.order_number)}</h2><div class="detailColumns"><div><h3>Customer</h3><p><b>${esc(o.guest_name||'Guest')}</b><br>${esc(o.guest_phone||'')}</p><h3>Delivery</h3><p>${esc(o.address_line1||'')}<br>${esc(o.address_city||'')}, ${esc(o.address_state||'')} ${esc(o.address_pincode||'')}</p><h3>Delivery estimate</h3><p>${esc(o.estimated_delivery||'—')}${o.dispatch_date?'<br>Dispatched: '+esc(o.dispatch_date):''}</p></div><div><h3>Payment</h3><p>${esc(o.payment_method||'')}<br>UTR: ${esc(o.utr||'Not provided')}</p><label>Payment status<select id="paymentStatus"><option value="pending" ${o.payment_status==='pending'?'selected':''}>Pending</option><option value="proof_submitted" ${o.payment_status==='proof_submitted'?'selected':''}>Proof submitted / verification</option><option value="verified" ${o.payment_status==='verified'?'selected':''}>Verified</option><option value="failed" ${o.payment_status==='failed'?'selected':''}>Failed</option><option value="refund_pending" ${o.payment_status==='refund_pending'?'selected':''}>Refund pending</option><option value="refunded" ${o.payment_status==='refunded'?'selected':''}>Refunded</option></select></label><h3>Items</h3>${(o.order_items||[]).map(i=>`<div class="miniLine"><span>${esc(i.name)} ${i.variant_label?'· '+esc(i.variant_label):''} × ${i.qty}</span><b>${money(i.line_total)}</b></div>`).join('')}<div class="miniLine total"><span>Total</span><b>${money(o.total)}</b></div></div></div><div class="statusEditor"><label>Order status <small class="v22-admin-help">Only valid next statuses are shown, per the approved transition rules.</small><select id="orderStatus">${statusOptions}</select></label><label>Delivery partner<input id="deliveryPartner" value="${esc(o.delivery_partner||'')}"></label><div class="two"><label>Tracking number<input id="trackingNumber" value="${esc(o.tracking_number||'')}"></label><label>Reference number<input id="referenceNumber" value="${esc(o.reference_number||'')}"></label></div><label>Tracking URL<input id="trackingUrl" value="${esc(o.tracking_url||'')}"></label><label>Dispatch date<input id="dispatchDate" type="date" value="${esc(o.dispatch_date||'')}"></label><button class="gold full" onclick="updateOrder('${esc(o.order_number)}','${o.id}')">Update order</button></div><div class="timeline"><h3>Order timeline</h3>${timeline||'<div class="empty smallEmpty">No timeline yet.</div>'}</div><div class="notificationBox"><b>Customer update</b><p>Message is generated automatically from the current order status. If the customer doesn't have WhatsApp, use Copy Message and send it via SMS/email/phone instead.</p><div class="cardActions"><button class="outline" onclick="manualWhatsApp('${esc(o.guest_phone||'')}','${esc(o.order_number)}','${esc(o.status)}','${esc(o.tracking_number||'')}','${esc(o.estimated_delivery||'')}')">WhatsApp Customer</button><button class="outline" onclick="copyOrderMessage('${esc(o.order_number)}','${esc(o.status)}','${esc(o.tracking_number||'')}','${esc(o.estimated_delivery||'')}')">Copy Message</button></div></div>`);
 }
 async function updateOrder(orderNumber, orderId){
   const ns=document.getElementById('orderStatus').value;
@@ -178,16 +218,75 @@ const WHATSAPP_STATUS_TEMPLATES = {
   'Returned': (o)=>`Your Jayvi Foods order ${o.orderNumber} has been returned to us. Our team will contact you regarding the next step.`,
   'On Hold / Manual Review': (o)=>`Your Jayvi Foods order ${o.orderNumber} needs a quick manual check on our end. We'll update you shortly.`
 };
+// V32.5 fix (Priority 4, item 10): pulled the message text out of
+// manualWhatsApp() so the exact same standard status-specific template is
+// reused by the new Copy Message fallback below — never a second,
+// different message for the same status.
+function buildStatusMessage(orderNumber,status,trackingNumber,estimatedDelivery){
+  const tmpl = WHATSAPP_STATUS_TEMPLATES[status];
+  return tmpl ? tmpl({orderNumber,trackingNumber,estimatedDelivery}) : `Jayvi Foods order ${orderNumber}: Your order status has been updated. Please contact us if you need help.`;
+}
 function manualWhatsApp(phone,orderNumber,status,trackingNumber,estimatedDelivery){
   if(!phone){toast('Customer mobile number is missing');return}
-  const tmpl = WHATSAPP_STATUS_TEMPLATES[status];
-  const msg = tmpl ? tmpl({orderNumber,trackingNumber,estimatedDelivery}) : `Jayvi Foods order ${orderNumber}: Your order status has been updated. Please contact us if you need help.`;
+  const msg = buildStatusMessage(orderNumber,status,trackingNumber,estimatedDelivery);
   // Fixed: wa.me requires the full international number — the bare
   // 10-digit customer phone alone (with no country code) was a
   // confirmed bug in the previous version of this function.
   const digits = phone.replace(/\D/g,'');
   const withCountryCode = digits.length===10 ? '91'+digits : digits;
   window.open('https://wa.me/'+withCountryCode+'?text='+encodeURIComponent(msg),'_blank');
+}
+// V32.5 (Priority 4, item 10): fallback for customers without WhatsApp.
+// Deliberately NOT trying to detect whether WhatsApp is installed (per the
+// spec) — just a plain, always-available Copy Message button next to
+// WhatsApp Customer, reusing the exact same standard template. Admin pastes
+// it into SMS/email/a phone call note manually.
+// V32.5: shared clipboard helper — extracted so the new "Copy Full
+// Catalogue JSON" button below can reuse the exact same
+// copy-with-fallback behavior as the existing Copy Message button,
+// rather than duplicating it.
+async function copyTextToClipboard(text, successToast, failTitle){
+  try{
+    if(navigator.clipboard?.writeText){
+      await navigator.clipboard.writeText(text);
+    }else{
+      // Older/non-secure-context fallback — hidden textarea + execCommand.
+      const ta=document.createElement('textarea');
+      ta.value=text; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      document.execCommand('copy'); ta.remove();
+    }
+    toast(successToast);
+  }catch(e){
+    // Never fail silently: if copy genuinely can't happen (e.g. clipboard
+    // permission blocked), show the text itself so Admin can still copy it
+    // by hand rather than hitting a dead end.
+    openModal(`<div class="eyebrow">${esc(failTitle)}</div><h2>Copy failed — copy manually</h2><textarea readonly style="width:100%;min-height:300px;font-family:monospace;font-size:11px">${esc(text)}</textarea>`);
+  }
+}
+async function copyOrderMessage(orderNumber,status,trackingNumber,estimatedDelivery){
+  const msg = buildStatusMessage(orderNumber,status,trackingNumber,estimatedDelivery);
+  await copyTextToClipboard(msg, 'Message copied — paste it into SMS, email, or your messaging app of choice.', 'MESSAGE');
+}
+// V32.5: "Copy Full Catalogue JSON" — replaces the manual DevTools
+// console step (`copy(localStorage.getItem('jayviStoreV14'))`) from
+// DEPLOY.md's production procedure with one click. Copies the live
+// in-memory `data` object (identical to what persist() just wrote to
+// localStorage, since persist() is JSON.stringify(data) into the same
+// key) — pretty-printed so it's easy to review before pasting into
+// EMBEDDED_CONFIG/CONFIG_FALLBACK. This does NOT change the
+// production procedure itself: it's still a manual paste-replace of
+// both app.js's EMBEDDED_CONFIG and admin.js's CONFIG_FALLBACK, still
+// requires a deploy, and still requires clearing jayviStoreV14
+// afterward per DEPLOY.md — this button only removes the DevTools
+// step and the risk of a mistyped/partial manual copy.
+async function copyFullCatalogueJSON(){
+  const json = JSON.stringify(data, null, 2);
+  await copyTextToClipboard(
+    json,
+    'Full catalogue JSON copied. Paste it to replace BOTH EMBEDDED_CONFIG (app.js) and CONFIG_FALLBACK (admin.js) — see DEPLOY.md.',
+    'FULL CATALOGUE JSON'
+  );
 }
 window._customerListCache = [];
 async function customersPage(){
@@ -227,6 +326,7 @@ async function promptResetPassword(phone){
   if(!newPassword) return;
   if(newPassword.length < 6){ toast('Password must be at least 6 characters'); return; }
   const {data:session} = await sb.auth.getSession();
+  if(!session?.session?.access_token){ toast('Your admin session has expired — please sign in again and retry.'); return; }
   try{
     const res = await fetch(EDGE_FUNCTIONS_URL + '/admin-reset-password', {
       method: 'POST',
@@ -237,11 +337,20 @@ async function promptResetPassword(phone){
     toast('Password reset. Send the new password to the customer via WhatsApp now.');
     window.open('https://wa.me/91'+phone+'?text='+encodeURIComponent('Your Jayvi Foods password has been reset. You can now log in using your registered mobile number and the new password provided here by our team.'), '_blank');
   }catch(e){
-    toast('Reset failed: '+e.message+' (is admin-reset-password deployed? See DEPLOY.md)');
+    // V32.5 (Priority 1, item 3): a caught fetch() exception here (as
+    // opposed to an !res.ok response above) means the request never got a
+    // real HTTP response at all — either the admin-reset-password Edge
+    // Function isn't deployed yet, or it returned a response the browser
+    // rejected before we could read it (a missing CORS header, fixed in
+    // this Edge Function in V32.5 — see supabase_functions/admin-reset-password).
+    // Meaningful message instead of a bare error, per the requirement:
+    // never show success or silently swallow this, and say clearly that
+    // the password was NOT changed.
+    toast('Password was NOT changed — could not reach the admin-reset-password function ('+e.message+'). Confirm it is deployed via Supabase (see DEPLOY.md) and try again.');
   }
 }
 
-function productsPage(){return `<section class="panel"><div class="panelHead"><div><h2>Products</h2><p>Product catalogue, merchandising, multiple categories and media.</p></div><button class="gold" onclick="productForm()">+ Add product</button></div><div class="productAdminGrid">${data.products.map((p,i)=>`<article class="productAdminCard"><div class="thumb"><img src="${esc(p.image||'')}" alt=""></div><div class="productInfo"><span class="typeTag">${p.best?'BESTSELLER':'PRODUCT'}</span><h3>${esc(p.name)}</h3><p>${esc(p.short||'')}</p><small>${(p.categories||[p.category]).map(catName).join(' · ')} · ${p.variants?.length||0} variants</small><div class="cardActions"><button class="outline" onclick="productForm(${i})">Edit</button><button class="outline dangerBtn" onclick="deleteProduct(${i})">Delete</button></div></div></article>`).join('')}</div></section>`}
+function productsPage(){return `<section class="panel">${localCatalogWarning()}<div class="panelHead"><div><h2>Products</h2><p>Product catalogue, merchandising, multiple categories and media.</p></div><button class="gold" onclick="productForm()">+ Add product</button></div><div class="productAdminGrid">${data.products.map((p,i)=>`<article class="productAdminCard"><div class="thumb"><img src="${esc(p.image||'')}" alt=""></div><div class="productInfo"><span class="typeTag">${p.best?'BESTSELLER':'PRODUCT'}</span><h3>${esc(p.name)}</h3><p>${esc(p.short||'')}</p><small>${(p.categories||[p.category]).map(catName).join(' · ')} · ${p.variants?.length||0} variants</small><div class="cardActions"><button class="outline" onclick="productForm(${i})">Edit</button><button class="outline dangerBtn" onclick="deleteProduct(${i})">Delete</button></div></div></article>`).join('')}</div></section>`}
 function productForm(index=-1){
  const p=index>=0?data.products[index]:{id:'',sku:'',name:'',short:'',description:'',category:data.categories[0]?.id||'',categories:[],active:true,best:false,image:'',mediaFolder:'',media:[],mealTags:[],rating:0,reviewCount:0,variants:[]};
  const selected=p.categories||[p.category].filter(Boolean);
@@ -321,17 +430,17 @@ function saveProduct(index){
  persist();closeModal();render();
 }
 function deleteProduct(i){if(confirm('Delete this product from the prototype catalogue?')){data.products.splice(i,1);persist();render()}}
-function variantsPage(){return `<section class="panel"><div class="panelHead"><div><h2>Variants & sizes</h2><p>Each product controls its own available sizes. Future 1kg, 2kg or other variants can be added here.</p></div></div>${data.products.map((p,i)=>`<div class="variantBlock"><div class="variantTitle"><div><b>${esc(p.name)}</b><small>${esc(p.sku)}</small></div><button class="gold small" onclick="variantForm(${i})">+ Add size</button></div><div class="variantRows">${(p.variants||[]).map((v,j)=>`<div class="variantRow"><span><b>${esc(v.label)}</b><small>${esc(v.weight||v.label)} · ${esc(v.sku||'')}</small></span><strong>${money(v.price)}</strong><del>${money(v.mrp)}</del><span class="${v.active?'good':'danger'}">${v.active?'LIVE':'HIDDEN'}</span><button class="outline" onclick="variantForm(${i},${j})">Edit</button></div>`).join('')||'<div class="empty smallEmpty">No variants yet.</div>'}</div></div>`).join('')}</section>`}
+function variantsPage(){return `<section class="panel">${localCatalogWarning()}<div class="panelHead"><div><h2>Variants & sizes</h2><p>Each product controls its own available sizes. Future 1kg, 2kg or other variants can be added here.</p></div></div>${data.products.map((p,i)=>`<div class="variantBlock"><div class="variantTitle"><div><b>${esc(p.name)}</b><small>${esc(p.sku)}</small></div><button class="gold small" onclick="variantForm(${i})">+ Add size</button></div><div class="variantRows">${(p.variants||[]).map((v,j)=>`<div class="variantRow"><span><b>${esc(v.label)}</b><small>${esc(v.weight||v.label)} · ${esc(v.sku||'')}</small></span><strong>${money(v.price)}</strong><del>${money(v.mrp)}</del><span class="${v.active?'good':'danger'}">${v.active?'LIVE':'HIDDEN'}</span><button class="outline" onclick="variantForm(${i},${j})">Edit</button></div>`).join('')||'<div class="empty smallEmpty">No variants yet.</div>'}</div></div>`).join('')}</section>`}
 function variantForm(pi,vi=-1){const p=data.products[pi],v=vi>=0?p.variants[vi]:{id:'',label:'',weight:'',price:'',mrp:'',sku:'',active:true};openModal(`<div class="eyebrow">VARIANT</div><h2>${vi<0?'Add size':'Edit size'} · ${esc(p.name)}</h2><div class="formGrid"><label>Variant ID<input id="vId" value="${esc(v.id)}"></label><label>Display label<input id="vLabel" value="${esc(v.label)}" placeholder="1kg"></label><label>Weight<input id="vWeight" value="${esc(v.weight)}"></label><label>SKU<input id="vSku" value="${esc(v.sku)}"></label><label>Selling price<input id="vPrice" type="number" value="${v.price}"></label><label>MRP<input id="vMrp" type="number" value="${v.mrp}"></label></div><label class="checkOnly"><input id="vActive" type="checkbox" ${v.active?'checked':''}> Available for sale</label><button class="gold full" onclick="saveVariant(${pi},${vi})">Save variant</button>`)}
 function saveVariant(pi,vi){const p=data.products[pi];const v={id:document.getElementById('vId').value.trim(),label:document.getElementById('vLabel').value.trim(),weight:document.getElementById('vWeight').value.trim(),sku:document.getElementById('vSku').value.trim(),price:Number(document.getElementById('vPrice').value||0),mrp:Number(document.getElementById('vMrp').value||0),active:document.getElementById('vActive').checked};if(!v.id||!v.label){toast('Variant ID and label are required');return}if(vi<0)p.variants.push(v);else p.variants[vi]=v;persist();closeModal();render()}
-function combosPage(){return `<section class="panel"><div class="panelHead"><div><h2>Combos</h2><p>Combo item size dropdowns are filtered to the selected product's own variants.</p></div><button class="gold" onclick="comboForm()">+ Add combo</button></div><div class="comboAdmin">${data.combos.map((c,i)=>`<article><span class="typeTag">COMBO</span><h3>${esc(c.name)}</h3><p>${esc(c.short||'')}</p><div class="chips">${(c.items||[]).map(it=>{const p=product(it.productId),v=variant(it.productId,it.variantId);return `<span>${esc(p?.name||'')} · ${esc(v?.label||'')} × ${it.qty}</span>`}).join('')}</div><strong>${money(c.price)}</strong><small>MRP ${money(c.mrp)} · ${c.active?'Live':'Hidden'}</small><div class="cardActions"><button class="outline" onclick="comboForm(${i})">Edit</button><button class="outline dangerBtn" onclick="data.combos.splice(${i},1);persist();render()">Delete</button></div></article>`).join('')}</div></section>`}
+function combosPage(){return `<section class="panel">${localCatalogWarning()}<div class="panelHead"><div><h2>Combos</h2><p>Combo item size dropdowns are filtered to the selected product's own variants.</p></div><button class="gold" onclick="comboForm()">+ Add combo</button></div><div class="comboAdmin">${data.combos.map((c,i)=>`<article><span class="typeTag">COMBO</span><h3>${esc(c.name)}</h3><p>${esc(c.short||'')}</p><div class="chips">${(c.items||[]).map(it=>{const p=product(it.productId),v=variant(it.productId,it.variantId);return `<span>${esc(p?.name||'')} · ${esc(v?.label||'')} × ${it.qty}</span>`}).join('')}</div><strong>${money(c.price)}</strong><small>MRP ${money(c.mrp)} · ${c.active?'Live':'Hidden'}</small><div class="cardActions"><button class="outline" onclick="comboForm(${i})">Edit</button><button class="outline dangerBtn" onclick="data.combos.splice(${i},1);persist();render()">Delete</button></div></article>`).join('')}</div></section>`}
 function comboForm(index=-1){const c=index>=0?data.combos[index]:{id:'',name:'',short:'',price:0,mrp:0,image:'',active:true,items:[]};openModal(`<div class="eyebrow">COMBO</div><h2>${index<0?'Add combo':'Edit combo'}</h2><div class="formGrid"><label>Combo ID<input id="cId" value="${esc(c.id)}"></label><label>Name<input id="cName" value="${esc(c.name)}"></label><label>Price<input id="cPrice" type="number" value="${c.price}"></label><label>MRP<input id="cMrp" type="number" value="${c.mrp}"></label><label class="fullLabel">Description<textarea id="cShort" rows="3">${esc(c.short||'')}</textarea></label><label class="fullLabel">Image path<input id="cImage" value="${esc(c.image||'')}" placeholder="images/combos/traditional-duo.webp"></label></div><div class="formSection"><h3>Combo items</h3><div id="comboItems"></div><button class="outline" onclick="addComboItemRow()">+ Add item</button></div><label class="checkOnly"><input id="cActive" type="checkbox" ${c.active?'checked':''}> Combo visible</label><button class="gold full" onclick="saveCombo(${index})">Save combo</button>`);window._comboDraft=structuredClone(c.items||[]);renderComboRows()}
 function addComboItemRow(){window._comboDraft.push({productId:data.products[0]?.id||'',variantId:data.products[0]?.variants?.[0]?.id||'',qty:1});renderComboRows()}
 function renderComboRows(){const box=document.getElementById('comboItems');if(!box)return;box.innerHTML=(window._comboDraft||[]).map((it,i)=>{const p=product(it.productId);const opts=(p?.variants||[]).filter(v=>v.active).map(v=>`<option value="${v.id}" ${v.id===it.variantId?'selected':''}>${esc(v.label)} — ${money(v.price)}</option>`).join('');return `<div class="comboItemForm"><select onchange="comboProductChanged(${i},this.value)">${data.products.filter(p=>p.active).map(p=>`<option value="${p.id}" ${p.id===it.productId?'selected':''}>${esc(p.name)}</option>`).join('')}</select><select onchange="window._comboDraft[${i}].variantId=this.value">${opts}</select><input type="number" min="1" value="${it.qty}" onchange="window._comboDraft[${i}].qty=Number(this.value||1)"><button onclick="window._comboDraft.splice(${i},1);renderComboRows()">×</button></div>`}).join('')||'<div class="empty smallEmpty">Add products to this combo.</div>'}
 function comboProductChanged(i,pid){window._comboDraft[i].productId=pid;window._comboDraft[i].variantId=product(pid)?.variants?.find(v=>v.active)?.id||'';renderComboRows()}
 function saveCombo(index){const c={id:document.getElementById('cId').value.trim(),name:document.getElementById('cName').value.trim(),price:Number(document.getElementById('cPrice').value||0),mrp:Number(document.getElementById('cMrp').value||0),short:document.getElementById('cShort').value.trim(),image:document.getElementById('cImage').value.trim(),active:document.getElementById('cActive').checked,items:structuredClone(window._comboDraft||[])};if(!c.id||!c.name){toast('Combo ID and name are required');return}if(index<0)data.combos.push(c);else data.combos[index]=c;persist();closeModal();render()}
 function mealTagsPage(){
- return `<section class="panel"><div class="panelHead"><div><h2>Meal tags</h2><p>Manage the meals shown in product setup and the storefront's “Made for every meal” recommendations.</p></div><button class="gold" onclick="mealTagForm()">+ Add meal tag</button></div>
+ return `<section class="panel">${localCatalogWarning()}<div class="panelHead"><div><h2>Meal tags</h2><p>Manage the meals shown in product setup and the storefront's “Made for every meal” recommendations.</p></div><button class="gold" onclick="mealTagForm()">+ Add meal tag</button></div>
  <div class="categoryTable">${(data.mealTags||[]).sort((a,b)=>(a.order||0)-(b.order||0)).map((t,i)=>`<div class="categoryRow"><span><b>${esc(t.name)}</b><small>ID: ${esc(t.id)}</small></span><strong>${t.order||i+1}</strong><span class="${t.enabled?'good':'danger'}">${t.enabled?'VISIBLE':'HIDDEN'}</span><button class="outline" onclick="mealTagForm(${i})">Edit</button><button class="outline dangerBtn" onclick="deleteMealTag(${i})">Delete</button></div>`).join('')}</div></section>`;
 }
 function mealTagForm(index=-1){
@@ -340,7 +449,7 @@ function mealTagForm(index=-1){
 }
 function saveMealTag(i){const t={id:document.getElementById('mtId').value.trim(),name:document.getElementById('mtName').value.trim(),order:Number(document.getElementById('mtOrder').value||1),enabled:document.getElementById('mtEnabled').checked};if(!t.id||!t.name){toast('ID and name are required');return}if(i<0)data.mealTags.push(t);else data.mealTags[i]=t;data.mealLabels=Object.fromEntries(data.mealTags.map(x=>[x.id,x.name]));persist();closeModal();render()}
 function deleteMealTag(i){const id=data.mealTags[i]?.id;if(data.products.some(p=>(p.mealTags||[]).includes(id))){toast('Remove this tag from products before deleting it');return}if(confirm('Delete this meal tag?')){data.mealTags.splice(i,1);data.mealLabels=Object.fromEntries(data.mealTags.map(x=>[x.id,x.name]));persist();render()}}
-function categoriesPage(){return `<section class="panel"><div class="panelHead"><div><h2>Categories</h2><p>Display position controls ordering. “Orders” is not used here.</p></div><button class="gold" onclick="categoryForm()">+ Add category</button></div><div class="categoryTable">${data.categories.map((c,i)=>`<div class="categoryRow"><span><b>${esc(c.name)}</b><small>ID: ${esc(c.id)}</small></span><strong>${c.order||i+1}</strong><span class="${c.enabled?'good':'danger'}">${c.enabled?'VISIBLE':'HIDDEN'}</span><button class="outline" onclick="categoryForm(${i})">Edit</button></div>`).join('')}</div></section>`}
+function categoriesPage(){return `<section class="panel">${localCatalogWarning()}<div class="panelHead"><div><h2>Categories</h2><p>Display position controls ordering. “Orders” is not used here.</p></div><button class="gold" onclick="categoryForm()">+ Add category</button></div><div class="categoryTable">${data.categories.map((c,i)=>`<div class="categoryRow"><span><b>${esc(c.name)}</b><small>ID: ${esc(c.id)}</small></span><strong>${c.order||i+1}</strong><span class="${c.enabled?'good':'danger'}">${c.enabled?'VISIBLE':'HIDDEN'}</span><button class="outline" onclick="categoryForm(${i})">Edit</button></div>`).join('')}</div></section>`}
 function categoryForm(index=-1){const c=index>=0?data.categories[index]:{id:'',name:'',enabled:true,order:data.categories.length+1};openModal(`<div class="eyebrow">CATEGORY</div><h2>${index<0?'Add category':'Edit category'}</h2><div class="formGrid"><label>ID<input id="catId" value="${esc(c.id)}"></label><label>Name<input id="catName" value="${esc(c.name)}"></label><label>Display position<input id="catOrder" type="number" value="${c.order||1}"></label></div><label class="checkOnly"><input id="catEnabled" type="checkbox" ${c.enabled?'checked':''}> Visible on storefront</label><button class="gold full" onclick="saveCategory(${index})">Save category</button>`)}
 function saveCategory(i){const c={id:document.getElementById('catId').value.trim(),name:document.getElementById('catName').value.trim(),order:Number(document.getElementById('catOrder').value||1),enabled:document.getElementById('catEnabled').checked};if(!c.id||!c.name){toast('Category ID and name are required');return}if(i<0)data.categories.push(c);else data.categories[i]=c;persist();closeModal();render()}
 function homepagePage(){return `<section class="panel"><div class="panelHead"><div><h2>Homepage announcements</h2><p>Each slide has an explicit click action. The target is selected based on the action instead of entering a hidden URL target.</p></div><button class="gold" onclick="announcementForm()">+ Add announcement</button></div><div class="announcementAdmin">${data.announcements.sort((a,b)=>(a.order||0)-(b.order||0)).map((s,i)=>`<article><span class="typeTag">${esc(s.label||'ANNOUNCEMENT')}</span><h3>${esc(s.title||'')}</h3><p>${esc(s.text||'')}</p><small>Action: ${esc(s.actionType|| (s.productId?'Open product':s.comboId?'Open combo':'Shop'))}</small><div class="cardActions"><button class="outline" onclick="announcementForm(${i})">Edit</button></div></article>`).join('')}</div></section>`}
@@ -441,16 +550,53 @@ async function pincodesPage(){
     </div>`;
   }
 
-  return `<section class="panel"><div class="panelHead"><div><h2>Delivery / Pincode management</h2><p>Customer delivery calculation is always Pincode → Serviceability → Delivery Rule. State grouping below is an admin convenience — disabling a state overrides serviceability for every PIN in it without changing any individual PIN's own setting; re-enabling the state restores exactly what each PIN had before.</p></div>
+  return `<section class="panel"><div class="panelHead"><div><h2>Delivery / Pincode management</h2><p>Customer delivery calculation is always Pincode → Serviceability → Delivery Rule. State grouping below is an admin convenience — disabling a state overrides serviceability for every PIN in it without changing any individual PIN's own setting; re-enabling the state restores exactly what each PIN had before. <b>State defaults</b> (V32.5) fill in delivery charge/ETA/courier for any PIN in that state that doesn't set its own — a PIN's own value always wins over the state default.</p></div>
     <div class="cardActions"><button class="outline" onclick="exportPincodes()">Export CSV</button><label class="outline" style="cursor:pointer;display:inline-flex;align-items:center;padding:10px 16px;border-radius:99px">Import CSV<input type="file" accept=".csv" style="display:none" onchange="importPincodesFile(this.files[0])"></label></div>
   </div>
   <div class="categoryTable">
-    <div class="categoryRow" style="font-weight:800;font-size:10.5px;color:var(--ink-faint);text-transform:uppercase"><span>State / circle</span><span>PIN codes</span><span>Serviceable</span><span></span></div>
-    ${withCounts.map(s=>`<div class="categoryRow"><b>${esc(s.state)}</b><small>${s.count} PIN codes</small><label class="checkOnly" style="margin:0!important"><input type="checkbox" ${s.enabled?'checked':''} onchange="toggleStateEnabled('${esc(s.state)}',this.checked)"> ${s.enabled?'ON':'OFF'}</label><button class="outline" onclick="_expandedState='${esc(s.state)}';_pincodeOffset=0;_pincodeSearch='';render()">${_expandedState===s.state?'Collapse':'Expand'}</button></div>`).join('')}
+    <div class="categoryRow" style="font-weight:800;font-size:10.5px;color:var(--ink-faint);text-transform:uppercase"><span>State / circle</span><span>PIN codes / defaults</span><span>Serviceable</span><span></span></div>
+    ${withCounts.map(s=>{
+      const defParts=[];
+      if(s.default_delivery_charge!=null) defParts.push(`₹${s.default_delivery_charge} delivery`);
+      if(s.default_min_eta_days!=null||s.default_max_eta_days!=null) defParts.push(`${s.default_min_eta_days??'?'}–${s.default_max_eta_days??'?'} days`);
+      if(s.default_courier_partner) defParts.push(esc(s.default_courier_partner));
+      return `<div class="categoryRow"><b>${esc(s.state)}</b><small>${s.count} PIN codes${defParts.length?' · Default: '+defParts.join(' · '):' · No state default set'}</small><label class="checkOnly" style="margin:0!important"><input type="checkbox" ${s.enabled?'checked':''} onchange="toggleStateEnabled('${esc(s.state)}',this.checked)"> ${s.enabled?'ON':'OFF'}</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="outline" style="padding:6px 12px" onclick="stateDefaultsForm('${esc(s.state)}')">${defParts.length?'Edit defaults':'Set defaults'}</button><button class="outline" onclick="_expandedState='${esc(s.state)}';_pincodeOffset=0;_pincodeSearch='';render()">${_expandedState===s.state?'Collapse':'Expand'}</button></div></div>`;
+    }).join('')}
   </div>
   ${expandedHtml}
   <div id="importPreview"></div>
   </section>`;
+}
+// V32.5 (Priority 3, item 9): edit a state's delivery defaults. Requires
+// supabase_migration_state_delivery_defaults.sql to have been applied —
+// same "additive migration, run once" pattern as the rest of this file.
+function stateDefaultsForm(state){
+  const s = (window._pincodeStatesCache||[]).find(x=>x.state===state) || {};
+  openModal(`<div class="eyebrow">STATE DEFAULTS</div><h2>${esc(state)}</h2>
+    <p class="v22-admin-help">Applies to every PIN in ${esc(state)} that doesn't set its own delivery charge/ETA/courier (Add/Edit PIN code). Leave a field blank to remove that default. A PIN's own value always takes priority over this.</p>
+    <div class="formGrid">
+      <label>Default delivery charge (₹, optional)<input id="sdCharge" type="number" min="0" step="1" value="${s.default_delivery_charge??''}"></label>
+      <label>Default min ETA days (optional)<input id="sdMin" type="number" min="1" value="${s.default_min_eta_days??''}"></label>
+      <label>Default max ETA days (optional)<input id="sdMax" type="number" min="1" value="${s.default_max_eta_days??''}"></label>
+      <label>Default courier/partner (optional)<input id="sdCourier" value="${esc(s.default_courier_partner||'')}"></label>
+    </div>
+    <button class="gold full" onclick="saveStateDefaults('${esc(state)}')">Save defaults</button>`);
+}
+async function saveStateDefaults(state){
+  const charge = document.getElementById('sdCharge').value;
+  const min = document.getElementById('sdMin').value;
+  const max = document.getElementById('sdMax').value;
+  const courier = document.getElementById('sdCourier').value.trim();
+  const {error} = await sb.from('delivery_states').update({
+    default_delivery_charge: charge?Number(charge):null,
+    default_min_eta_days: min?Number(min):null,
+    default_max_eta_days: max?Number(max):null,
+    default_courier_partner: courier||null,
+    updated_at: new Date().toISOString()
+  }).eq('state', state);
+  if(error){ toast('Could not save state defaults: '+error.message+' — has supabase_migration_state_delivery_defaults.sql been run?'); return; }
+  toast(`${state} defaults saved`);
+  closeModal(); render();
 }
 async function fetchPincodesForState(state, reset){
   if(reset) _pincodeOffset = 0;
@@ -475,14 +621,20 @@ async function togglePincodeServiceable(pincode, serviceable){
   toast(`${pincode} marked ${serviceable?'serviceable':'not serviceable'}`);
 }
 function pincodeForm(state){
+  // V32.5 (Priority 3, item 9): show the state's current defaults so
+  // Admin knows what a blank field will actually resolve to, without
+  // needing to re-enter the same charge/ETA/courier for every PIN.
+  const s = (window._pincodeStatesCache||[]).find(x=>x.state===state) || {};
+  const hint = (label,val)=> val!=null && val!=='' ? ` — leave blank to inherit ${esc(String(val))} from ${esc(state)}'s default` : ' — no state default set for this yet';
   openModal(`<div class="eyebrow">ADD PIN CODE</div><h2>Add to ${esc(state)}</h2>
+    <p class="v22-admin-help">Delivery charge/ETA/courier are optional here: leave any of them blank to automatically use ${esc(state)}'s state default (set via "Set/Edit defaults" on the Delivery page). Only fill them in if this specific PIN needs to differ.</p>
     <div class="formGrid">
       <label>PIN code * <input id="pfPincode" maxlength="6" pattern="[0-9]{6}"></label>
       <label>District/City<input id="pfCity"></label>
-      <label>Delivery charge (₹, optional)<input id="pfCharge" type="number" min="0" step="1"></label>
-      <label>Min ETA days (optional)<input id="pfMin" type="number" min="1"></label>
-      <label>Max ETA days (optional)<input id="pfMax" type="number" min="1"></label>
-      <label>Courier/partner (optional)<input id="pfCourier"></label>
+      <label>Delivery charge (₹, optional)${hint('charge',s.default_delivery_charge!=null?'₹'+s.default_delivery_charge:null)}<input id="pfCharge" type="number" min="0" step="1"></label>
+      <label>Min ETA days (optional)${hint('min',s.default_min_eta_days)}<input id="pfMin" type="number" min="1"></label>
+      <label>Max ETA days (optional)${hint('max',s.default_max_eta_days)}<input id="pfMax" type="number" min="1"></label>
+      <label>Courier/partner (optional)${hint('courier',s.default_courier_partner)}<input id="pfCourier"></label>
     </div>
     <label class="checkOnly"><input id="pfServiceable" type="checkbox" checked> Serviceable</label>
     <button class="gold full" onclick="savePincode('${esc(state)}')">Add PIN code</button>`);
@@ -612,6 +764,7 @@ function settingsPage(){
  return `<section class="settingsGrid">
  <article class="settingCard"><span class="typeTag">STORE OPERATIONS</span><h2>Ordering</h2>
  <label class="toggleRow"><span>Vacation mode<small>Pause ordering without changing product stock.</small></span><input id="setVacation" type="checkbox" ${s.vacationMode?'checked':''}></label>
+ <label class="toggleRow"><span>Delivery enabled<small>Master switch (V32.5): OFF blocks PIN verification/checkout storefront-wide with "Delivery is currently disabled." Separate from, and checked before, individual state/PIN serviceability.</small></span><input id="setDeliveryEnabled" type="checkbox" ${s.deliveryMode==='india'?'checked':''}></label>
  <label>Vacation message<textarea id="setVacationMsg" rows="3">${esc(s.vacationMessage||'')}</textarea></label>
  <div class="two"><label>Delivery minimum days<input id="setMin" type="number" min="1" value="${s.deliveryMinDays||4}"></label><label>Delivery maximum days<input id="setMax" type="number" min="1" value="${s.deliveryMaxDays||8}"></label></div>
  <div class="two"><label>Free shipping above<input id="setFree" type="number" value="${s.freeShippingThreshold||599}"></label><label>Shipping charge<input id="setShip" type="number" value="${s.shippingFlat||49}"></label></div>
@@ -639,7 +792,7 @@ function settingsPage(){
  <label>WhatsApp number<input id="setWhatsApp" value="${esc(s.whatsapp||'')}"></label><label>Instagram URL<input id="setInstagram" value="${esc(s.instagram||'')}"></label><button class="gold full" onclick="saveContactSettings()">Save contact settings</button></article>
  </section>`;
 }
-function saveStoreOperations(){data.store.vacationMode=document.getElementById('setVacation').checked;data.store.vacationMessage=document.getElementById('setVacationMsg').value.trim();data.store.deliveryMinDays=Number(document.getElementById('setMin').value||4);data.store.deliveryMaxDays=Number(document.getElementById('setMax').value||8);data.store.freeShippingThreshold=Number(document.getElementById('setFree').value||599);data.store.shippingFlat=Number(document.getElementById('setShip').value||49);data.store.refundBusinessDays=Number(document.getElementById('setRefundDays').value||4);data.store.announcementSpeed=document.getElementById('setAnnouncementSpeed').value;data.store.homepageReviewCount=Number(document.getElementById('setReviewCount').value||6);persist();render()}
+function saveStoreOperations(){data.store.vacationMode=document.getElementById('setVacation').checked;data.store.deliveryMode=document.getElementById('setDeliveryEnabled').checked?'india':'disabled';data.store.vacationMessage=document.getElementById('setVacationMsg').value.trim();data.store.deliveryMinDays=Number(document.getElementById('setMin').value||4);data.store.deliveryMaxDays=Number(document.getElementById('setMax').value||8);data.store.freeShippingThreshold=Number(document.getElementById('setFree').value||599);data.store.shippingFlat=Number(document.getElementById('setShip').value||49);data.store.refundBusinessDays=Number(document.getElementById('setRefundDays').value||4);data.store.announcementSpeed=document.getElementById('setAnnouncementSpeed').value;data.store.homepageReviewCount=Number(document.getElementById('setReviewCount').value||6);persist();render()}
 function savePayments(){data.store.upiEnabled=document.getElementById('setUpi').checked;data.store.codEnabled=document.getElementById('setCod').checked;data.store.razorpayEnabled=document.getElementById('setRazor').checked;data.store.upiId=document.getElementById('setUpiId').value.trim();data.store.upiName=document.getElementById('setUpiName').value.trim();data.store.upiQrImage=document.getElementById('setQr').value.trim();data.store.razorpayKeyId=document.getElementById('setRzp').value.trim();persist();render()}
 function saveAuth(){data.store.otpEnabled=document.getElementById('setOtp').checked;data.store.otpProvider=document.getElementById('setOtpProvider').value.trim()||'Not configured';persist();render()}
 function saveLocationSettings(){data.store.googleMapsApiKey=document.getElementById('setMaps').value.trim();data.store.googleReviewsUrl=document.getElementById('setGoogleReviews').value.trim();persist();render()}

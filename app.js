@@ -1,5 +1,5 @@
 /* =========================================================
-   Jayvi Foods — v32.4 storefront logic
+   Jayvi Foods — v32.5 storefront logic
    Data model and localStorage keys are unchanged from v27/28
    so existing Admin-entered data keeps working after this
    upgrade. All UI/interaction code has been rewritten as a
@@ -106,12 +106,33 @@ function toggleWishlist(pid){
 }
 
 /* ---------- Product media / gallery ---------- */
+// V32.5 fix (Priority 2, item 7): a broken/missing image used to just
+// vanish from the DOM (onerror removed the slide) while data-count and the
+// "1 / N" badge kept the ORIGINAL count — so a product with e.g. 4
+// configured media entries but a bad path on 3 of them silently ended up
+// with a single working slide (no scroll possible) while still claiming
+// "1 / 4". This keeps the count/controls in sync with what's actually still
+// in the DOM, and removes the counter entirely once only one slide is left
+// — matching the spec: a genuinely single-media product stays static, a
+// multi-media one keeps scrolling, and this is fully automatic for every
+// product (no per-product exception).
+function handleMediaError(imgEl){
+  const frame = imgEl.closest('.cardMediaFrame');
+  imgEl.closest('.cardMediaSlide')?.remove();
+  if(!frame) return;
+  const scroller = frame.querySelector('.cardMediaScroller');
+  const remaining = scroller ? scroller.querySelectorAll('.cardMediaSlide').length : 0;
+  if(scroller) scroller.dataset.count = remaining;
+  const badge = frame.querySelector('.galleryCount');
+  if(remaining<=1) badge?.remove();
+  else if(badge) badge.textContent = `1 / ${remaining}`;
+}
 function cardMediaMarkup(p){
   const media=(p.media?.length?p.media:DEFAULT_PRODUCT_MEDIA[p.id]||[{type:'image',path:p.image}]).filter(Boolean);
   const count=media.length;
   const slides=media.map((m,i)=>m.type==='video'&&m.path
     ? `<div class="cardMediaSlide cardVideo"><video controls playsinline preload="metadata" poster="${escapeHtml(m.poster||'')}"><source src="${escapeHtml(m.path)}" type="video/mp4"></video><span class="mediaLabel">Video</span></div>`
-    : `<div class="cardMediaSlide"><img src="${escapeHtml(m.path||m)}" alt="${escapeHtml(p.name)} image ${i+1}" loading="${i?'lazy':'eager'}" onerror="this.closest('.cardMediaSlide')?.remove()"></div>`
+    : `<div class="cardMediaSlide"><img src="${escapeHtml(m.path||m)}" alt="${escapeHtml(p.name)} image ${i+1}" loading="${i?'lazy':'eager'}" onerror="handleMediaError(this)"></div>`
   ).join('');
   const controls=count>1?`<span class="galleryCount">1 / ${count}</span>`:'';
   return `<div class="cardMediaFrame"><div class="cardMediaScroller" data-count="${count}" aria-label="${escapeHtml(p.name)} media">${slides}</div>${controls}</div>`;
@@ -220,23 +241,47 @@ function comboMediaMarkup(c){
   const controls=count>1?`<span class="galleryCount">1 / ${count}</span>`:'';
   return `<div class="comboMediaScroller" data-count="${count}" aria-label="${escapeHtml(c.name)} images">${slides}</div>${controls}`;
 }
+function cartQtyForCombo(cid){const x=cart.find(i=>i.type==='combo'&&i.comboId===cid);return x?.qty||0}
 function renderCombos(){
   if(!$('comboGrid'))return;
   const cs=(CONFIG.combos||[]).filter(c=>c.active);
   $('comboCount').textContent=cs.length?`${cs.length} combo${cs.length>1?'s':''}`:'';
-  $('comboGrid').innerHTML=cs.length?cs.map(c=>`<article class="comboCard">
+  $('comboGrid').innerHTML=cs.length?cs.map(c=>{
+    // V32.5 fix (Priority 2, item 5): same data-driven qty-stepper pattern
+    // as productCard() — a combo already in the cart must show -/+ just
+    // like every other product, not a static Add to cart button forever.
+    const q=cartQtyForCombo(c.id);
+    const actions=q
+      ?`<div class="pcActions comboActions hasQty"><div class="inlineQty"><button onclick="changeComboQty('${c.id}',-1)" aria-label="Decrease quantity"><i class="fa-solid fa-minus"></i></button><b>${q}</b><button onclick="changeComboQty('${c.id}',1)" aria-label="Increase quantity"><i class="fa-solid fa-plus"></i></button></div><button class="viewCartBtn" onclick="openCart()" aria-label="View cart"><i class="fa-solid fa-bag-shopping"></i></button></div>`
+      :`<div class="pcActions comboActions"><button onclick="addCombo('${c.id}')">Add to cart</button><button onclick="buyCombo('${c.id}')">Buy now</button></div>`;
+    return `<article class="comboCard">
     <div class="comboImage">${comboMediaMarkup(c)}</div>
     <div class="comboBody">
       <div class="eyebrow" style="color:#e8d9b6">COMBO</div>
       <h3>${escapeHtml(c.name)}</h3><p>${escapeHtml(c.short)}</p>
       <div class="comboItems">${c.items.map(i=>{const p=getProduct(i.productId),v=p?getVariant(p,i.variantId):null;return `<span>${escapeHtml(p?.name||'')} · ${v?.label||''}</span>`}).join('')}</div>
       <div class="comboPrice"><b>${money(c.price)}</b><del>${money(c.mrp)}</del><em>Save ${money(c.mrp-c.price)}</em></div>
-      <div class="pcActions comboActions"><button onclick="addCombo('${c.id}')">Add to cart</button><button onclick="buyCombo('${c.id}')">Buy now</button></div>
-    </div></article>`).join(''):'<div class="empty" style="color:#cbbca8">No active combos yet.</div>';
+      ${actions}
+    </div></article>`;
+  }).join(''):'<div class="empty" style="color:#cbbca8">No active combos yet.</div>';
   bindComboGalleryScrollers();
 }
-function addCombo(id){const c=getCombo(id);if(!c)return;const key='combo:'+id;const x=cart.find(i=>i.key===key);if(x)x.qty++;else cart.push({key,type:'combo',comboId:id,qty:1});saveCart();renderCart();refreshProductViews();openCart();showToast(c.name+' added to cart')}
+function addCombo(id){
+  const c=getCombo(id);if(!c)return;const key='combo:'+id;const x=cart.find(i=>i.key===key);
+  if(x)x.qty++; else cart.push({key,type:'combo',comboId:id,qty:1});
+  saveCart();renderCart();refreshProductViews();
+  // V32.5 fix (Priority 2, item 5): must match addToCart()'s UX exactly —
+  // stay on the page and show a toast, never auto-open the cart drawer.
+  showCartAddedToast(c.name);
+}
 function buyCombo(id){const c=getCombo(id);if(!c)return;const key='combo:'+id;const x=cart.find(i=>i.key===key);if(x)x.qty++;else cart.push({key,type:'combo',comboId:id,qty:1});saveCart();renderCart();refreshProductViews();openCheckout()}
+function changeComboQty(id,d){
+  const key='combo:'+id; let x=cart.find(i=>i.key===key);
+  if(!x&&d>0){const c=getCombo(id);if(!c)return;cart.push({key,type:'combo',comboId:id,qty:1})}
+  else if(!x){return}
+  else{x.qty+=d; if(x.qty<1)cart=cart.filter(i=>i.key!==key)}
+  saveCart();renderCart();refreshProductViews();
+}
 
 /* ---------- Meal match ---------- */
 const MEAL_DESCRIPTIONS={idli:'Idli + your favourite podi or chutney',dosa:'Dosa + your favourite chutney flavour',chapati:'Chapati works with every chutney and podi',rice:'Rice + ghee + chutney powder or podi'};
@@ -377,7 +422,7 @@ function addToCart(pid,vid){
   const p=getProduct(pid),v=getVariant(p,vid); if(!p||!v)return;
   const key='product:'+pid+':'+v.id, x=cart.find(i=>i.key===key);
   if(x)x.qty++; else cart.push({key,type:'product',productId:pid,variantId:v.id,qty:1});
-  saveCart();renderCart();refreshProductViews();
+  saveCart();renderCart();refreshProductViews();refreshOpenProductDetail(pid);
   // Item S (approved spec): Add to Cart must NOT open the cart drawer —
   // customers adding several items shouldn't be bounced to the cart
   // after each one. Confirmation toast with an explicit "View cart"
@@ -389,7 +434,7 @@ function changeProductQty(pid,vid,d){
   if(!x&&d>0){const p=getProduct(pid),v=getVariant(p,vid);if(!p||!v)return;cart.push({key,type:'product',productId:pid,variantId:v.id,qty:1})}
   else if(!x){return}
   else{x.qty+=d; if(x.qty<1)cart=cart.filter(i=>i.key!==key)}
-  saveCart();renderCart();refreshProductViews();
+  saveCart();renderCart();refreshProductViews();refreshOpenProductDetail(pid);
 }
 function buyNow(pid,vid){
   const p=getProduct(pid),v=getVariant(p,vid); if(!p||!v)return;
@@ -401,8 +446,13 @@ function changeQty(key,d){
   const x=cart.find(i=>i.key===key); if(!x)return;
   x.qty+=d; if(x.qty<1)cart=cart.filter(i=>i!==x);
   saveCart();renderCart();refreshProductViews();
+  if(x.type==='product') refreshOpenProductDetail(x.productId);
 }
-function removeCart(key){cart=cart.filter(x=>x.key!==key);saveCart();renderCart();refreshProductViews();showToast('Removed from cart')}
+function removeCart(key){
+  const x=cart.find(i=>i.key===key);
+  cart=cart.filter(i=>i.key!==key);saveCart();renderCart();refreshProductViews();showToast('Removed from cart');
+  if(x?.type==='product') refreshOpenProductDetail(x.productId);
+}
 function cartTotals(){
   let sub=cart.reduce((s,x)=>{const d=cartItemDetails(x);return s+d.price*x.qty},0);
   const th=CONFIG.store.freeShippingThreshold, ship=sub===0?0:sub>=th?0:CONFIG.store.shippingFlat;
@@ -711,6 +761,17 @@ async function deleteAddress(id){
 let checkoutPinInfo = null; // set by verifyPincode() once a PIN is confirmed serviceable; drives both displayed AND charged shipping (item B) and the dynamic ETA shown (item H) — never two different numbers for the same thing.
 
 function effectiveShipping(t){
+  // V32.5 fix (Priority 3, item 8): free delivery above the configured
+  // threshold must apply across every state/PIN, per the explicit
+  // requirement ("Free delivery above ₹599 remains applicable across
+  // states"). Previously, ANY non-null PIN-level delivery_charge always
+  // overrode this — a real order above the free-shipping threshold could
+  // still get charged shipping just because its PIN had a configured
+  // charge. This was a pre-existing latent bug that becomes much more
+  // impactful now that state-level defaults (item 8/9) mean most PINs
+  // will have a resolved delivery_charge, so it's fixed here as part of
+  // shipping this feature.
+  if(t.sub > 0 && t.sub >= (CONFIG.store.freeShippingThreshold||0)) return 0;
   return checkoutPinInfo?.charge != null ? Number(checkoutPinInfo.charge) : t.ship;
 }
 function updateCheckoutSummary(){
@@ -777,6 +838,7 @@ function togglePaymentNote(){
   const m=document.querySelector('input[name=paymentMethod]:checked')?.value;
   const n=$('paymentNote'); if(n)n.textContent=m==='cod'?'Pay the delivery partner when your order arrives.':'Scan the QR, pay the exact total, then share the UTR/reference number so we can verify your payment.';
 }
+const PIN_NOT_SERVICEABLE_MSG = 'Delivery is currently unavailable to this PIN code.';
 async function verifyPincode(){
   const pin=$('coPin').value.trim(), status=$('pinStatus');
   if(!/^\d{6}$/.test(pin)){status.className='pinStatus bad';status.textContent='Enter a 6-digit Indian PIN code.';return}
@@ -786,22 +848,27 @@ async function verifyPincode(){
   const {data, error} = await sb.rpc('check_pincode', {p_pincode:pin});
   const row = data?.[0];
   if(error){
-    // Master lookup failed (network/etc) — fail open to the existing
-    // generic estimate rather than blocking checkout on an
-    // infrastructure hiccup.
+    // Master lookup itself failed (network/infra hiccup, not a bad PIN) —
+    // fail open to the generic estimate rather than blocking checkout over
+    // an infrastructure issue. This is a genuinely different case from "PIN
+    // not in master" below and is intentionally left as fail-open. Marked
+    // as verified (not pin-specific) so placeOrder() still allows checkout
+    // to proceed rather than getting stuck behind an outage.
     status.className='pinStatus good';
     status.textContent=`Estimated delivery: ${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days.`;
+    checkoutPinInfo = { charge:null, min:CONFIG.store.deliveryMinDays||4, max:CONFIG.store.deliveryMaxDays||8, pinChecked:false, verifiedPin:pin };
     updateCheckoutSummary();
     return;
   }
   if(!row || !row.found){
-    // PIN not yet in the master (India-wide coverage is large but not
-    // guaranteed complete). Judgment call, flagged rather than made
-    // silently, and kept as fail-open for V32.2/V32.3 per explicit
-    // instruction: fail open with the generic estimate instead of
-    // blocking a legitimate customer over a data gap.
-    status.className='pinStatus good';
-    status.textContent=`Estimated delivery: ${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days.`;
+    // V32.5 fix (Priority 1, item 1): a PIN that does not exist in the
+    // pincode master must NEVER fall back to the generic estimate — that
+    // silently told customers we deliver to an arbitrary/nonexistent PIN.
+    // Treated identically to "not serviceable" (case C from the spec).
+    // checkoutPinInfo is deliberately left null so placeOrder() below
+    // blocks the order until a serviceable PIN is verified.
+    status.className='pinStatus bad';
+    status.textContent=PIN_NOT_SERVICEABLE_MSG;
     updateCheckoutSummary();
     return;
   }
@@ -809,7 +876,7 @@ async function verifyPincode(){
     // Never explains *why* (state disabled vs. individual PIN disabled
     // vs. inactive) — internal admin rules aren't exposed to customers.
     status.className='pinStatus bad';
-    status.textContent="Sorry, we currently don't deliver to this PIN code.";
+    status.textContent=PIN_NOT_SERVICEABLE_MSG;
     updateCheckoutSummary();
     return;
   }
@@ -819,7 +886,7 @@ async function verifyPincode(){
   // in the status message below are stored here and are what
   // updateCheckoutSummary()/placeOrder() actually use — the displayed
   // amount and the charged amount can no longer diverge.
-  checkoutPinInfo = { charge: row.delivery_charge, min, max, pinChecked: true };
+  checkoutPinInfo = { charge: row.delivery_charge, min, max, pinChecked: true, verifiedPin: pin };
   status.className='pinStatus good';
   status.textContent = row.delivery_charge!=null
     ? `Delivery available. Estimated delivery: ${min}–${max} days. Delivery charge for this PIN: ${row.delivery_charge>0?money(row.delivery_charge):'FREE'}.`
@@ -864,6 +931,18 @@ async function placeOrder(e){
   e.preventDefault();
   const pin=$('coPin').value.trim();
   if(!/^\d{6}$/.test(pin)){verifyPincode();showToast('Please verify your 6-digit PIN');return}
+  // V32.5 fix (Priority 1, item 1): checkoutPinInfo is only populated by
+  // verifyPincode() when the PIN is confirmed serviceable (or when the
+  // lookup itself failed and we're intentionally failing open — see
+  // verifyPincode()). If the PIN wasn't verified at all, or was verified
+  // and found non-serviceable/nonexistent, or the customer edited the PIN
+  // after verifying, checkoutPinInfo is null/stale here — re-run
+  // verification and block the order rather than silently accepting it.
+  if(!checkoutPinInfo || checkoutPinInfo.verifiedPin !== pin){
+    verifyPincode();
+    showToast('Please verify delivery availability for this PIN before placing the order.');
+    return;
+  }
   const t=cartTotals();
   const ship = effectiveShipping(t); // same value the summary just displayed — never a second, different number
   const total = t.sub + ship;
@@ -979,11 +1058,17 @@ function trackOrderPrompt(){
     <button class="btn gold full" onclick="trackOrder()">Track order →</button>`;
 }
 const CANCELLABLE_STATUSES = ['Order Confirmed','Preparing']; // mirrors status_transitions exactly — server enforces the real rule regardless, this only decides whether to show the button
+// V32.5 fix (Priority 1, item 2): statuses from which the state machine
+// (supabase_migration_order_state_machine.sql) allows moving back into
+// "Payment Verification" — i.e. a payment that never happened or didn't
+// go through. This is what "Retry Payment" is for: never a new order.
+const RETRY_PAYMENT_STATUSES = ['Payment Pending','Payment Failed'];
 async function trackKnownOrder(orderNumber, phone){
   const {data, error} = await sb.rpc('track_guest_order', {p_order_number:orderNumber, p_phone:phone});
   const o = data?.[0];
   if(error || !o){showToast('Order could not be found for this mobile number.');return}
   const canCancel = CANCELLABLE_STATUSES.includes(o.status);
+  const canRetryPayment = RETRY_PAYMENT_STATUSES.includes(o.status);
   $('accountContent').innerHTML=`<div class="eyebrow">ORDER ${escapeHtml(o.order_number)}</div><h2>${escapeHtml(o.status||'Order received')}</h2>
     <p class="muted">${money(o.total)}</p>${renderTimeline(o)}
     <div class="orderTrackNote">
@@ -993,9 +1078,28 @@ async function trackKnownOrder(orderNumber, phone){
       ${o.delivery_partner?`Delivery partner: ${escapeHtml(o.delivery_partner)}<br>`:''}
       ${formatDynamicEta(o)}
     </div>
+    ${canRetryPayment?`<button class="btn gold full" style="margin-top:14px" onclick="retryPayment('${escapeHtml(o.order_number)}','${escapeHtml(phone)}')">Retry Payment</button>`:''}
     ${canCancel?`<button class="btn light full" style="margin-top:14px" onclick="confirmCancelOrder('${escapeHtml(o.order_number)}','${escapeHtml(phone)}')">Cancel order</button>`
       : (o.status==='Packed & Shipped'||o.status==='Out for Delivery' ? `<p class="tiny" style="margin-top:10px">Cancellation is no longer available because your order has already been shipped.</p>` : '')}`;
   $('accountOverlay').classList.add('open');document.body.classList.add('modalOpen');
+}
+// V32.5 fix (Priority 1, item 2): re-opens payment for an EXISTING order —
+// never calls place_order, so no duplicate order is ever created. Re-fetches
+// the order first so a stale button (e.g. Admin already verified payment in
+// another tab) can't reopen payment on an order that's moved on.
+// Payment method: UPI only for now, matching the current single-method
+// checkout. When more payment methods exist, branch here on the order's own
+// payment_method (once track_guest_order exposes it) instead of assuming UPI.
+async function retryPayment(orderNumber, phone){
+  const {data, error} = await sb.rpc('track_guest_order', {p_order_number:orderNumber, p_phone:phone});
+  const o = data?.[0];
+  if(error || !o){showToast('Order could not be found for this mobile number.');return}
+  if(!RETRY_PAYMENT_STATUSES.includes(o.status)){
+    showToast(`This order is already "${o.status}" — no payment retry needed.`);
+    trackKnownOrder(orderNumber, phone);
+    return;
+  }
+  showUpiPayment({ order_number:o.order_number, phone, total:o.total });
 }
 function formatDynamicEta(o){
   // Item H: reflects the order's OWN stored estimate, and firms up as
@@ -1022,6 +1126,19 @@ function trackOrder(){
 }
 
 /* ---------- Product detail ---------- */
+// V32.5 fix (Priority 2, item 6): tracks which product's detail modal is
+// currently open so cart-mutating actions (addToCart/changeProductQty/
+// buyNow, and the cart drawer's own changeQty/removeCart) can refresh it.
+// This is the actual root cause of "newly added products don't show
+// quantity controls": the detail modal's Add to cart/Buy now buttons were
+// static HTML that never re-rendered after adding to cart, for ANY
+// product — most testing happens via the grid card (which already
+// re-renders correctly on every cart change), so it only surfaced when a
+// just-added product was tested through the detail view.
+let openProductId = null;
+function refreshOpenProductDetail(pid){
+  if(openProductId===pid && $('productOverlay')?.classList.contains('open')) openProduct(pid);
+}
 function openProduct(id){
   const p=getProduct(id); if(!p)return;
   if(isMobile()){
@@ -1030,9 +1147,17 @@ function openProduct(id){
   }
   const v=getVariant(p,variantKey(id));
   if(!v){ showToast('This product is currently unavailable.'); return; } // defensive, same reasoning as productCard()
+  openProductId = id;
   const paused=!!CONFIG.store.vacationMode;
   const addAction=paused?"showToast('Ordering is paused while Jayvi Foods is on vacation.')":`addToCart('${p.id}','${v.id}')`;
   const buyAction=paused?"showToast('Ordering is paused while Jayvi Foods is on vacation.')":`buyNow('${p.id}','${v.id}')`;
+  // Data-driven, same as productCard(): once this variant is in the cart,
+  // show the -/+ stepper instead of Add to cart — works automatically for
+  // every product, new or existing, with no product-specific code.
+  const q=paused?0:cartQtyFor(p.id,v.id);
+  const detailActions = q
+    ? `<div class="detailBtns hasQty"><div class="inlineQty"><button onclick="changeProductQty('${p.id}','${v.id}',-1)" aria-label="Decrease quantity"><i class="fa-solid fa-minus"></i></button><b>${q}</b><button onclick="changeProductQty('${p.id}','${v.id}',1)" aria-label="Increase quantity"><i class="fa-solid fa-plus"></i></button></div><button class="btn gold" onclick="openCart()">View cart</button></div>`
+    : `<div class="detailBtns"><button class="btn light" ${paused?'disabled':''} onclick="${addAction}">${paused?'Orders paused':'Add to cart'}</button><button class="btn gold" ${paused?'disabled':''} onclick="${buyAction}">${paused?'Unavailable':'Buy now →'}</button></div>`;
   $('productContent').innerHTML=`<div class="detailGrid">
     <div class="detailImage">${productGalleryMarkup(p)}</div>
     <div class="detailCopy">
@@ -1043,11 +1168,11 @@ function openProduct(id){
       <div class="detailVariants">${p.variants.filter(x=>x.active).map(x=>`<button class="${x.id===v.id?'active':''}" onclick="selectedVariants['${p.id}']='${x.id}';openProduct('${p.id}')">${escapeHtml(x.label)}<small>${money(x.price)}</small></button>`).join('')}</div>
       <div class="detailPrice"><b>${money(v.price)}</b><del>${money(v.mrp)}</del>${v.mrp>v.price?`<em>Save ${money(v.mrp-v.price)}</em>`:''}</div>
       <div class="detailUse"><b>Works well with</b><span>${(p.mealTags||[]).map(m=>escapeHtml(mealTagList.find(t=>t.id===m)?.name||CONFIG.mealLabels?.[m]||m)).join(' · ')||'Everyday meals'}</span></div>
-      <div class="detailBtns"><button class="btn light" ${paused?'disabled':''} onclick="${addAction}">${paused?'Orders paused':'Add to cart'}</button><button class="btn gold" ${paused?'disabled':''} onclick="${buyAction}">${paused?'Unavailable':'Buy now →'}</button></div>
+      ${detailActions}
     </div></div>`;
   $('productOverlay').classList.add('open');document.body.classList.add('modalOpen');
 }
-function closeProduct(){$('productOverlay').classList.remove('open');document.body.classList.remove('modalOpen')}
+function closeProduct(){openProductId=null;$('productOverlay').classList.remove('open');document.body.classList.remove('modalOpen')}
 
 /* ---------- Misc UI ---------- */
 function toggleMenu(){$('mobileMenu').classList.toggle('open');$('menuScrim')?.classList.toggle('open')}
