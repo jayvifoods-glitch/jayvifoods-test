@@ -7,19 +7,399 @@
    ========================================================= */
 
 const EMBEDDED_CONFIG = {
-  "store":{"name":"Jayvi Foods","tagline":"Purely Traditional. Simply Delicious.","country":"IN","freeShippingThreshold":599,"shippingFlat":49,"deliveryMode":"india","googleMapsApiKey":"","googleReviewsUrl":"https://www.google.com/search?q=Jayvi+Foods+reviews","whatsapp":"918861981003","instagram":"https://instagram.com/jayvifoods","razorpayKeyId":"","paymentMode":"upi_manual","upiEnabled":true,"codEnabled":false,"upiId":"","upiName":"Jayvi Foods","upiQrImage":"","paymentNote":"Pay by UPI QR. Order moves to processing after payment verification.","vacationMode":false,"vacationMessage":"We are taking a short break. Orders will resume soon.","deliveryMinDays":4,"deliveryMaxDays":8,"otpEnabled":false,"otpProvider":"","razorpayEnabled":false,"refundBusinessDays":4,"announcementSpeed":"normal","homepageReviewCount":6},
-  "homepage":{"heroAutoplay":true,"heroSeconds":5},
-  "categories":[{"id":"chutney","name":"Chutney Powders","enabled":true,"order":1},{"id":"pudi","name":"Pudi","enabled":true,"order":2},{"id":"snacks","name":"Snacks","enabled":true,"order":3},{"id":"combos","name":"Combos","enabled":true,"order":4}],
-  "products":[
-    {"id":"peanut","sku":"JF-TAR-CLS-PNT","name":"Peanut Chutney","short":"Rich, nutty and comforting.","category":"chutney","active":true,"best":true,"image":"images/products/peanut-chutney.webp","imageClass":"peanut","variants":[{"id":"peanut-200","label":"200g","weight":"200g","price":155,"mrp":199,"sku":"JF-TAR-CLS-PNT-200","active":true},{"id":"peanut-400","label":"400g","weight":"400g","price":249,"mrp":299,"sku":"JF-TAR-CLS-PNT-400","active":true}],"mealTags":["idli","dosa","chapati","rice"],"rating":4.8,"reviewCount":18},
-    {"id":"flaxseed","sku":"JF-TAR-CLS-FLX","name":"Flaxseed Chutney","short":"A distinctive traditional flavour.","category":"chutney","active":true,"best":true,"image":"images/hero/jayvi-products.webp","imageClass":"flaxseed","variants":[{"id":"flaxseed-200","label":"200g","weight":"200g","price":155,"mrp":199,"sku":"JF-TAR-CLS-FLX-200","active":true},{"id":"flaxseed-400","label":"400g","weight":"400g","price":249,"mrp":299,"sku":"JF-TAR-CLS-FLX-400","active":true}],"mealTags":["idli","dosa","chapati","rice"],"rating":4.8,"reviewCount":12},
-    {"id":"pudi","sku":"JF-TAR-CLS-IDP","name":"Idli Dosa Pudi","short":"Made for idli, dosa and everyday meals.","category":"pudi","active":true,"best":true,"image":"images/hero/jayvi-products.webp","imageClass":"pudi","variants":[{"id":"pudi-200","label":"200g","weight":"200g","price":155,"mrp":199,"sku":"JF-TAR-CLS-IDP-200","active":true},{"id":"pudi-400","label":"400g","weight":"400g","price":249,"mrp":299,"sku":"JF-TAR-CLS-IDP-400","active":true}],"mealTags":["idli","dosa","chapati","rice"],"rating":4.8,"reviewCount":9},
-    {"id":"puffora","sku":"JF-PUF","name":"Puffora","short":"Crunchy, puffy, made for anytime snacking.","category":"snacks","active":true,"best":true,"image":"images/hero/jayvi-products.webp","imageClass":"puffora","variants":[{"id":"puffora-pack","label":"Pack","weight":"Pack","price":99,"mrp":129,"sku":"JF-PUF-200","active":true}],"mealTags":[],"rating":4.7,"reviewCount":4}
+  "store": {
+    "name": "Jayvi Foods",
+    "tagline": "Purely Traditional. Simply Delicious.",
+    "country": "IN",
+    "freeShippingThreshold": 599,
+    "shippingFlat": 49,
+    "deliveryMinDays": 4,
+    "deliveryMaxDays": 8,
+    "vacationMode": false,
+    "vacationMessage": "We are taking a short break. Orders will resume soon.",
+    "googleMapsApiKey": "",
+    "googleReviewsUrl": "https://www.google.com/search?q=Jayvi+Foods+reviews",
+    "whatsapp": "918861981003",
+    "instagram": "https://instagram.com/jayvifoods",
+    "razorpayKeyId": "",
+    "razorpayEnabled": false,
+    "upiEnabled": true,
+    "codEnabled": false,
+    "otpEnabled": false,
+    "upiId": "",
+    "upiName": "Jayvi Foods",
+    "upiQrImage": "",
+    "paymentNote": "Pay by UPI QR. Order moves to processing after payment verification.",
+    "refundBusinessDays": 4,
+    "announcementSpeed": "normal",
+    "homepageReviewCount": 6,
+    "deliveryMode": "india",
+    "paymentMode": "upi_manual",
+    "otpProvider": ""
+  },
+  "homepage": {
+    "heroAutoplay": true,
+    "heroSeconds": 5
+  },
+  "categories": [
+    {
+      "id": "chutney",
+      "name": "Chutney Powders",
+      "enabled": true,
+      "order": 1
+    },
+    {
+      "id": "pudi",
+      "name": "Pudi",
+      "enabled": true,
+      "order": 2
+    },
+    {
+      "id": "snacks",
+      "name": "Snacks",
+      "enabled": true,
+      "order": 3
+    },
+    {
+      "id": "combos",
+      "name": "Combos",
+      "enabled": true,
+      "order": 4
+    }
   ],
-  "combos":[{"id":"duo","name":"Traditional Duo","short":"Peanut + Flaxseed. Two everyday favourites.","active":true,"price":289,"mrp":310,"image":"images/hero/jayvi-products.webp","items":[{"productId":"peanut","variantId":"peanut-200","qty":1},{"productId":"flaxseed","variantId":"flaxseed-200","qty":1}]}],
-  "announcements":[{"id":"h1","label":"BESTSELLER","title":"Peanut Chutney","em":"for every meal.","text":"Rich, nutty and comforting — the everyday favourite.","productId":"peanut","actionType":"product","actionTarget":"peanut","active":true,"order":1},{"id":"h2","label":"NEW","title":"Puffora","em":"crunch time.","text":"A crunchy Jayvi snack for anytime munching.","productId":"puffora","actionType":"product","actionTarget":"puffora","active":true,"order":2},{"id":"h3","label":"COMBO","title":"Traditional Duo","em":"one easy choice.","text":"Peanut + Flaxseed together at ₹289.","comboId":"duo","actionType":"combo","actionTarget":"duo","active":true,"order":3}],
-  "mealTags":[{"id":"idli","name":"Idli","enabled":true,"order":1},{"id":"dosa","name":"Dosa","enabled":true,"order":2},{"id":"chapati","name":"Chapati","enabled":true,"order":3},{"id":"rice","name":"Rice + Ghee","enabled":true,"order":4},{"id":"roti","name":"Roti","enabled":true,"order":5},{"id":"paratha","name":"Paratha","enabled":true,"order":6},{"id":"poori","name":"Poori","enabled":true,"order":7},{"id":"upma","name":"Upma","enabled":true,"order":8},{"id":"vada","name":"Vada","enabled":true,"order":9},{"id":"curd-rice","name":"Curd Rice","enabled":true,"order":10}],
-  "reviews":[{"source":"customer","name":"Prateeksha","rating":5,"text":"It was nice, perfect & tasty.","active":true},{"source":"customer","name":"Praveen Yandigeri","rating":5,"text":"Best Authentic Taste! The Peanut chutney is rich and nutty, while the Flaxseed is savory and spicy. These powders go perfectly with idli, dosa, rotis and sandwiches.","active":true},{"source":"customer","name":"Bhoomika","rating":5,"text":"The peanut chutney pudi was genuinely very good. We had it with chapati, curd, hot rice and ghee, and everyone at home loved it.","active":true},{"source":"customer","name":"Varada Rajesh","rating":5,"text":"Absolutely loved the taste! Feels very homemade and authentic. The peanut chutney is very tasty and the flaxseed one is unique.","active":true}]
+  "products": [
+    {
+      "id": "peanut",
+      "sku": "JF-TAR-CLS-PNT",
+      "name": "Peanut Chutney",
+      "short": "Rich, nutty and comforting.",
+      "category": "chutney",
+      "active": true,
+      "best": true,
+      "image": "images/products/peanut-chutney.webp",
+      "imageClass": "peanut",
+      "variants": [
+        {
+          "id": "peanut-200",
+          "label": "200g",
+          "weight": "200g",
+          "price": 155,
+          "mrp": 199,
+          "sku": "JF-TAR-CLS-PNT-200",
+          "active": true
+        },
+        {
+          "id": "peanut-400",
+          "label": "400g",
+          "weight": "400g",
+          "price": 249,
+          "mrp": 299,
+          "sku": "JF-TAR-CLS-PNT-400",
+          "active": true
+        }
+      ],
+      "mealTags": [
+        "idli",
+        "dosa",
+        "chapati",
+        "rice"
+      ],
+      "rating": 4.8,
+      "reviewCount": 18
+    },
+    {
+      "id": "flaxseed",
+      "sku": "JF-TAR-CLS-FLX",
+      "name": "Flaxseed Chutney",
+      "short": "A distinctive traditional flavour.",
+      "category": "chutney",
+      "active": true,
+      "best": true,
+      "image": "images/hero/jayvi-products.webp",
+      "imageClass": "flaxseed",
+      "variants": [
+        {
+          "id": "flaxseed-200",
+          "label": "200g",
+          "weight": "200g",
+          "price": 155,
+          "mrp": 199,
+          "sku": "JF-TAR-CLS-FLX-200",
+          "active": true
+        },
+        {
+          "id": "flaxseed-400",
+          "label": "400g",
+          "weight": "400g",
+          "price": 249,
+          "mrp": 299,
+          "sku": "JF-TAR-CLS-FLX-400",
+          "active": true
+        }
+      ],
+      "mealTags": [
+        "idli",
+        "dosa",
+        "chapati",
+        "rice"
+      ],
+      "rating": 4.8,
+      "reviewCount": 12
+    },
+    {
+      "id": "pudi",
+      "sku": "JF-TAR-CLS-IDP",
+      "name": "Idli Dosa Pudi",
+      "short": "Made for idli, dosa and everyday meals.",
+      "category": "pudi",
+      "active": true,
+      "best": true,
+      "image": "images/hero/jayvi-products.webp",
+      "imageClass": "pudi",
+      "variants": [
+        {
+          "id": "pudi-200",
+          "label": "200g",
+          "weight": "200g",
+          "price": 155,
+          "mrp": 199,
+          "sku": "JF-TAR-CLS-IDP-200",
+          "active": true
+        },
+        {
+          "id": "pudi-400",
+          "label": "400g",
+          "weight": "400g",
+          "price": 249,
+          "mrp": 299,
+          "sku": "JF-TAR-CLS-IDP-400",
+          "active": true
+        }
+      ],
+      "mealTags": [
+        "idli",
+        "dosa",
+        "chapati",
+        "rice"
+      ],
+      "rating": 4.8,
+      "reviewCount": 9
+    },
+    {
+      "id": "puffora",
+      "sku": "JF-PUF",
+      "name": "Puffora",
+      "short": "Crunchy, puffy, made for anytime snacking.",
+      "category": "snacks",
+      "active": true,
+      "best": true,
+      "image": "images/hero/jayvi-products.webp",
+      "imageClass": "puffora",
+      "variants": [
+        {
+          "id": "puffora-pack",
+          "label": "Pack",
+          "weight": "Pack",
+          "price": 99,
+          "mrp": 129,
+          "sku": "JF-PUF-200",
+          "active": true
+        }
+      ],
+      "mealTags": [],
+      "rating": 4.7,
+      "reviewCount": 4
+    },
+    {
+      "id": "Jamun",
+      "sku": "JF-TAR-CLS-SWT",
+      "name": "Jamun",
+      "short": "",
+      "description": "Test",
+      "category": "snacks",
+      "categories": [
+        "snacks"
+      ],
+      "mealTags": [
+        "vada"
+      ],
+      "image": "images/products/Jamun/hero.webp",
+      "mediaFolder": "images/products/Jamun/",
+      "media": [
+        {
+          "type": "hero",
+          "file": "hero.webp",
+          "path": "images/products/Jamun/hero.webp"
+        },
+        {
+          "type": "packaging",
+          "file": "front-back.webp",
+          "path": "images/products/Jamun/front-back.webp"
+        },
+        {
+          "type": "ingredients",
+          "file": "ingredients.webp",
+          "path": "images/products/Jamun/ingredients.webp"
+        },
+        {
+          "type": "serving",
+          "file": "serving.webp",
+          "path": "images/products/Jamun/serving.webp"
+        }
+      ],
+      "active": true,
+      "best": false,
+      "variants": [
+        {
+          "id": "200g",
+          "label": "200g",
+          "weight": "200g",
+          "sku": "Jamun",
+          "price": 199,
+          "mrp": 299,
+          "active": true
+        }
+      ],
+      "rating": 0,
+      "reviewCount": 0
+    }
+  ],
+  "combos": [
+    {
+      "id": "duo",
+      "name": "Traditional Duo",
+      "short": "Peanut + Flaxseed. Two everyday favourites.",
+      "active": true,
+      "price": 289,
+      "mrp": 310,
+      "image": "images/hero/jayvi-products.webp",
+      "items": [
+        {
+          "productId": "peanut",
+          "variantId": "peanut-200",
+          "qty": 1
+        },
+        {
+          "productId": "flaxseed",
+          "variantId": "flaxseed-200",
+          "qty": 1
+        }
+      ]
+    }
+  ],
+  "announcements": [
+    {
+      "id": "h1",
+      "label": "BESTSELLER",
+      "title": "Peanut Chutney",
+      "em": "for every meal.",
+      "text": "Rich, nutty and comforting — the everyday favourite.",
+      "productId": "peanut",
+      "actionType": "product",
+      "actionTarget": "peanut",
+      "active": true,
+      "order": 1
+    },
+    {
+      "id": "h2",
+      "label": "NEW",
+      "title": "Puffora",
+      "em": "crunch time.",
+      "text": "A crunchy Jayvi snack for anytime munching.",
+      "productId": "puffora",
+      "actionType": "product",
+      "actionTarget": "puffora",
+      "active": true,
+      "order": 2
+    },
+    {
+      "id": "h3",
+      "label": "COMBO",
+      "title": "Traditional Duo",
+      "em": "one easy choice.",
+      "text": "Peanut + Flaxseed together at ₹289.",
+      "comboId": "duo",
+      "actionType": "combo",
+      "actionTarget": "duo",
+      "active": true,
+      "order": 3
+    }
+  ],
+  "mealTags": [
+    {
+      "id": "idli",
+      "name": "Idli",
+      "enabled": true,
+      "order": 1
+    },
+    {
+      "id": "dosa",
+      "name": "Dosa",
+      "enabled": true,
+      "order": 2
+    },
+    {
+      "id": "chapati",
+      "name": "Chapati",
+      "enabled": true,
+      "order": 3
+    },
+    {
+      "id": "rice",
+      "name": "Rice + Ghee",
+      "enabled": true,
+      "order": 4
+    },
+    {
+      "id": "roti",
+      "name": "Roti",
+      "enabled": true,
+      "order": 5
+    },
+    {
+      "id": "paratha",
+      "name": "Paratha",
+      "enabled": true,
+      "order": 6
+    },
+    {
+      "id": "poori",
+      "name": "Poori",
+      "enabled": true,
+      "order": 7
+    },
+    {
+      "id": "upma",
+      "name": "Upma",
+      "enabled": true,
+      "order": 8
+    },
+    {
+      "id": "vada",
+      "name": "Vada",
+      "enabled": true,
+      "order": 9
+    },
+    {
+      "id": "curd-rice",
+      "name": "Curd Rice",
+      "enabled": true,
+      "order": 10
+    }
+  ],
+  "reviews": [],
+  "mealLabels": {
+    "idli": "Idli",
+    "dosa": "Dosa",
+    "chapati": "Chapati",
+    "rice": "Rice + Ghee",
+    "roti": "Roti",
+    "paratha": "Paratha",
+    "poori": "Poori",
+    "upma": "Upma",
+    "vada": "Vada",
+    "curd-rice": "Curd Rice"
+  }
 };
 
 const DEFAULT_PRODUCT_MEDIA={
