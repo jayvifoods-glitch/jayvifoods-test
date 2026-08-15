@@ -1,5 +1,46 @@
 # Jayvi Foods v32.3 — A–AA implementation pass
 
+## ✅ V32.6 — full release notes
+
+See **`CHANGELOG_V32.6.md`** for the complete V32.6 release: SQL
+execution order, verification queries, the Implemented / Partially
+implemented / Deferred / Requires-your-action breakdown, and the
+post-deployment testing checklist. The two sections directly below
+cover the product-catalogue-specific part of V32.6 in more detail; the
+changelog is the single place that covers all of V32.6, including the
+items that aren't about products/media (PIN validation, analytics,
+back navigation, coupons, social links).
+
+## ✅ V32.6 update — Products, product media, and combos are now live in Supabase
+
+As of this release, **products, product media, and combos are no
+longer part of the `jayviStoreV14` localStorage blob** described
+below. They live in three new Supabase tables — `products`,
+`product_media`, `combos` — created by
+`supabase_migration_product_catalog.sql` (run once in the Supabase SQL
+Editor; it also seeds/migrates the catalogue that was previously
+hardcoded in `EMBEDDED_CONFIG`/`CONFIG_FALLBACK`).
+
+**What this means in practice:**
+- Adding, editing, or deleting a product/combo/media item in Admin
+  (Products, Variants & sizes, Combos) is now **live for every
+  customer, on every device, immediately** — no Git sync, no copying
+  JSON into `EMBEDDED_CONFIG`/`CONFIG_FALLBACK`, no redeploy.
+- Product media is a real, unlimited `+ Add Media` list per product
+  (image or video, local path or external URL, any order) — see
+  `FUTURE_product_catalog_migration.md` for the full background and
+  `PRODUCT_MEDIA_MIGRATION.md` for what changed and how to verify it.
+- The storefront (`app.js`) reads products/combos/media from Supabase
+  on every load, falling back to the embedded/local copy only if that
+  fetch fails (e.g. offline), so the store never renders empty.
+- **The "PRODUCTION PROCEDURE" section immediately below this one
+  still applies to everything else** that remains local — store
+  settings, categories, meal tags, announcements, and reviews. Do not
+  apply the old products/combos steps below; they're superseded by the
+  paragraph above for those two sections only.
+
+---
+
 ## ⚠️ PRODUCTION PROCEDURE — Adding a product after launch (read this first)
 
 **Your understanding is 100% correct: Admin Save is not Publish.**

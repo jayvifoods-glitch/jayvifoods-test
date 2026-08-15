@@ -107,6 +107,21 @@ h1,h2,h3{font-family:var(--font-display);font-weight:600;letter-spacing:-.01em;c
 .announcementTrack span{font-size:12px;font-weight:600;letter-spacing:.05em;padding:0 2px}
 @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
+/* ---------- Brand/promo gallery (V32.6, item 3) ----------
+   Reuses the exact marquee technique above (duplicated track,
+   translateX(-50%) loop) — purely visual, no links, no click
+   handlers on the images themselves. Hidden entirely via inline
+   style/display when there are no images (see renderBrandGallery()
+   in app.js); a single image renders statically with no animation. */
+.brandGallerySection{padding:22px 0;background:var(--surface-2,#f6efe4);overflow:hidden}
+.galleryViewport{width:100%;overflow:hidden;mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+.galleryTrack{display:flex;gap:14px;width:max-content}
+.galleryTrack.isAnimating{animation:galleryMarquee var(--gallery-marquee-duration,32s) linear infinite}
+.galleryTrack:hover{animation-play-state:paused}
+.galleryTrack img{height:220px;width:auto;border-radius:var(--radius-lg,16px);object-fit:cover;pointer-events:none;user-select:none;display:block}
+@keyframes galleryMarquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (max-width:959px){.galleryTrack img{height:160px}}
+
 .vacationBanner{background:var(--danger);color:#fff;text-align:center;font-weight:700;font-size:13px;padding:10px 16px}
 
 /* ---------- Header ---------- */

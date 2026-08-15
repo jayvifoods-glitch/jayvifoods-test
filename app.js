@@ -402,12 +402,13 @@ const EMBEDDED_CONFIG = {
   }
 };
 
-const DEFAULT_PRODUCT_MEDIA={
- peanut:[{type:'image',path:'images/products/peanut/hero.webp'},{type:'image',path:'images/gallery/peanut-front.svg'},{type:'image',path:'images/gallery/peanut-back.svg'},{type:'image',path:'images/gallery/peanut-serving.svg'}],
- flaxseed:[{type:'image',path:'images/products/flaxseed/hero.webp'},{type:'image',path:'images/gallery/flaxseed-front.svg'},{type:'image',path:'images/gallery/flaxseed-back.svg'},{type:'image',path:'images/gallery/flaxseed-serving.svg'}],
- pudi:[{type:'image',path:'images/products/pudi/hero.webp'},{type:'image',path:'images/gallery/pudi-front.svg'},{type:'image',path:'images/gallery/pudi-back.svg'},{type:'image',path:'images/gallery/pudi-serving.svg'}],
- puffora:[{type:'image',path:'images/products/puffora/hero.webp'},{type:'image',path:'images/gallery/puffora-front.svg'},{type:'image',path:'images/gallery/puffora-back.svg'},{type:'image',path:'images/gallery/puffora-serving.svg'}]
-};
+// V32.6: the generic-gallery fallback (images/gallery/*) that used to
+// backfill missing per-product media has been removed on purpose — see
+// PLACEHOLDER_MEDIA below and cardMediaMarkup(). A product with no
+// media of its own now shows an explicit placeholder, never another
+// product's (or a generic marketing) image. Product media is now
+// sourced from Supabase's product_media table (see loadCatalogFromSupabase()).
+const PLACEHOLDER_MEDIA=[{type:'image',path:'images/hero/jayvi-products.webp'}];
 
 /* ---------- State ---------- */
 let CONFIG, products=[], categories=[], mealTagList=[];
@@ -442,6 +443,51 @@ function loadConfig(){
     return d;
   }catch{ return structuredClone(EMBEDDED_CONFIG); }
 }
+// V32.6: products, product media, and combos now come from Supabase —
+// the single source of truth shared by every browser/device (mobile
+// and desktop included), replacing the per-browser localStorage
+// catalogue. This is intentionally the smallest safe change: store
+// settings, categories, meal tags, announcements, and reviews are
+// untouched and keep working exactly as before. If the fetch fails for
+// any reason (offline, RLS misconfigured, etc.) we fall back to
+// whatever CONFIG already has (EMBEDDED_CONFIG / localStorage) so the
+// storefront never goes blank — "minimum risk" per the agreed spec.
+async function loadCatalogFromSupabase(){
+  try{
+    const [{data:dbProducts,error:pErr},{data:dbCombos,error:cErr},{data:dbMedia,error:mErr}]=await Promise.all([
+      sb.from('products').select('*').eq('active',true),
+      sb.from('combos').select('*').eq('active',true),
+      sb.from('product_media').select('*').eq('is_active',true).order('display_order',{ascending:true})
+    ]);
+    if(pErr||cErr||mErr) throw (pErr||cErr||mErr);
+    if(!dbProducts) throw new Error('No product data returned');
+
+    const mediaFor=(ownerKey,ownerId)=>dbMedia
+      .filter(m=>m[ownerKey]===ownerId)
+      .map(m=>({type:m.media_type,path:m.media_url,poster:m.poster_url||''}));
+
+    CONFIG.products=[...dbProducts].sort((a,b)=>(a.display_order||0)-(b.display_order||0)).map(p=>{
+      const media=mediaFor('product_id',p.id);
+      return {
+        id:p.id, sku:p.sku, name:p.name, short:p.short_description,
+        description:p.description, category:p.category, categories:p.categories,
+        mealTags:p.meal_tags, active:p.active, best:p.best,
+        image:media[0]?.path||'', media,
+        variants:p.variants||[], rating:p.rating, reviewCount:p.review_count
+      };
+    });
+
+    CONFIG.combos=(dbCombos||[]).map(c=>({
+      id:c.id, name:c.name, short:c.short_description, active:c.active,
+      price:c.price, mrp:c.mrp, items:c.items||[],
+      image:mediaFor('combo_id',c.id)[0]?.path||'', media:mediaFor('combo_id',c.id)
+    }));
+    return true;
+  }catch(err){
+    console.warn('Falling back to embedded/local catalogue — Supabase product fetch failed:', err?.message||err);
+    return false;
+  }
+}
 function sync(){
   // Item T: announcement speed is Admin-configurable (was a hardcoded
   // 22s) — 'normal' is intentionally a bit faster than the old fixed
@@ -458,7 +504,7 @@ function sync(){
   const isSellable = p => p && p.id && p.name && p.image &&
     (p.variants||[]).some(v=>v && v.active && Number(v.price)>0 && Number(v.mrp)>0);
   products=(CONFIG.products||[]).filter(p=>p.active && isSellable(p))
-    .map(p=>({...p,media:p.media?.length?p.media:(DEFAULT_PRODUCT_MEDIA[p.id]||[{type:'image',path:p.image}])}));
+    .map(p=>({...p,media:p.media?.length?p.media:(p.image?[{type:'image',path:p.image}]:PLACEHOLDER_MEDIA)}));
   categories=(CONFIG.categories||[]).filter(c=>c.enabled).sort((a,b)=>a.order-b.order);
   mealTagList=(CONFIG.mealTags||[]).filter(t=>t.enabled).sort((a,b)=>a.order-b.order);
   if($('topShipping')) $('topShipping').textContent=`FREE SHIPPING ABOVE ${money(CONFIG.store.freeShippingThreshold)}`;
@@ -508,7 +554,9 @@ function handleMediaError(imgEl){
   else if(badge) badge.textContent = `1 / ${remaining}`;
 }
 function cardMediaMarkup(p){
-  const media=(p.media?.length?p.media:DEFAULT_PRODUCT_MEDIA[p.id]||[{type:'image',path:p.image}]).filter(Boolean);
+  // No generic-gallery fallback: a product with no media of its own
+  // shows the explicit placeholder, never another product's image.
+  const media=(p.media?.length?p.media:(p.image?[{type:'image',path:p.image}]:PLACEHOLDER_MEDIA)).filter(Boolean);
   const count=media.length;
   const slides=media.map((m,i)=>m.type==='video'&&m.path
     ? `<div class="cardMediaSlide cardVideo"><video controls playsinline preload="metadata" poster="${escapeHtml(m.poster||'')}"><source src="${escapeHtml(m.path)}" type="video/mp4"></video><span class="mediaLabel">Video</span></div>`
@@ -613,11 +661,20 @@ function renderProducts(){
   bindGalleryScrollers();
 }
 function comboMediaMarkup(c){
-  const itemImages=(c.items||[]).map(i=>getProduct(i.productId)?.image).filter(Boolean);
-  const media=[c.image,...itemImages].filter(Boolean);
-  const unique=[...new Set(media)];
+  // V32.6: combos now follow the exact same product_media architecture
+  // as products (item 14 of the spec) — c.media comes straight from
+  // Supabase. Falls back to the old item-image composite only for a
+  // combo that somehow has no media rows of its own, so nothing breaks.
+  const media=(c.media||[]).filter(Boolean);
+  const slidesSrc = media.length
+    ? media
+    : [c.image,...(c.items||[]).map(i=>getProduct(i.productId)?.image)].filter(Boolean).map(path=>({type:'image',path}));
+  const unique=[...new Map(slidesSrc.map(m=>[m.path,m])).values()];
   const count=unique.length;
-  const slides=unique.map((src,i)=>`<div class="comboSlide"><img src="${escapeHtml(src)}" alt="${escapeHtml(c.name)} image ${i+1}" loading="${i?'lazy':'eager'}"></div>`).join('');
+  const slides=unique.map((m,i)=>m.type==='video'&&m.path
+    ? `<div class="comboSlide cardVideo"><video controls playsinline preload="metadata" poster="${escapeHtml(m.poster||'')}"><source src="${escapeHtml(m.path)}" type="video/mp4"></video><span class="mediaLabel">Video</span></div>`
+    : `<div class="comboSlide"><img src="${escapeHtml(m.path)}" alt="${escapeHtml(c.name)} image ${i+1}" loading="${i?'lazy':'eager'}"></div>`
+  ).join('');
   const controls=count>1?`<span class="galleryCount">1 / ${count}</span>`:'';
   return `<div class="comboMediaScroller" data-count="${count}" aria-label="${escapeHtml(c.name)} images">${slides}</div>${controls}`;
 }
@@ -670,10 +727,88 @@ function renderMeal(){
   $('mealTabs').innerHTML=mealTagList.map(t=>`<button class="${t.id===meal?'active':''}" onclick="setMeal('${t.id}')">${escapeHtml(t.name)}</button>`).join('');
   const rec=products.filter(p=>p.mealTags?.includes(meal));
   const desc=MEAL_DESCRIPTIONS[meal]||'Pick from all products that fit this meal';
-  $('mealRecommendations').innerHTML=`<div class="mealIntro"><b>${escapeHtml(desc)}</b><span>${rec.length} product${rec.length===1?'':'s'}</span></div>
-    <div class="miniProducts">${rec.map(p=>{const v=getVariant(p,variantKey(p.id));return `<button onclick="openProduct('${p.id}')"><div class="miniImg"><img src="${p.image}" alt=""></div><span>${escapeHtml(p.name)}</span><b>${money(v.price)}</b></button>`}).join('')||'<div class="empty">No matching products yet.</div>'}</div>`;
+  // V32.6 (root cause of the "combo -/+ doesn't show" bug, item 6): this
+  // used to call getVariant(p,...) and read v.price with no null-check.
+  // A product with zero active/sellable variants made getVariant()
+  // return null, so v.price threw — and because refreshProductViews()
+  // runs renderMeal() BEFORE renderCombos(), that uncaught exception
+  // silently aborted the rest of the chain, leaving the combo card (and
+  // anything else queued after it) stuck showing "Add to cart" even
+  // though the cart itself had already updated correctly. Filtering out
+  // unsellable products here (same defensive pattern productCard()
+  // already uses) fixes this at the actual source, for every product,
+  // not just combos — see also the defensive per-call wrapping in
+  // refreshProductViews() below, which now guarantees one broken
+  // section can never again block its siblings from re-rendering.
+  const sellableRec = rec.filter(p=>getVariant(p,variantKey(p.id)));
+  $('mealRecommendations').innerHTML=`<div class="mealIntro"><b>${escapeHtml(desc)}</b><span>${sellableRec.length} product${sellableRec.length===1?'':'s'}</span></div>
+    <div class="miniProducts">${sellableRec.map(p=>{const v=getVariant(p,variantKey(p.id));return `<button onclick="openProduct('${p.id}')"><div class="miniImg"><img src="${p.image}" alt=""></div><span>${escapeHtml(p.name)}</span><b>${money(v.price)}</b></button>`}).join('')||'<div class="empty">No matching products yet.</div>'}</div>`;
 }
 function setMeal(m){meal=m;renderMeal()}
+
+/* ---------- Footer social links (item 14) ---------- */
+const SOCIAL_ICONS={whatsapp:'fa-whatsapp',instagram:'fa-instagram',facebook:'fa-facebook',youtube:'fa-youtube',x:'fa-x-twitter',linkedin:'fa-linkedin'};
+const SOCIAL_LABELS={whatsapp:'WhatsApp',instagram:'Instagram',facebook:'Facebook',youtube:'YouTube',x:'X',linkedin:'LinkedIn'};
+async function renderFooterSocialLinks(){
+  const box=$('footerSocialLinks'); if(!box) return;
+  try{
+    const {data,error}=await sb.from('social_links').select('*').eq('enabled',true).order('display_order',{ascending:true});
+    if(error||!data) throw error||new Error('empty');
+    if(!data.length) return; // keep the two hardcoded fallback links already in the HTML rather than showing nothing
+    box.innerHTML=data.map(s=>`<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener">${escapeHtml(s.label||SOCIAL_LABELS[s.platform]||s.platform)}</a>`).join('');
+  }catch(err){
+    // Migration not yet run, or a transient fetch failure — the two
+    // links already hard-coded in index.html stay exactly as they were,
+    // so the footer is never empty.
+    console.warn('Footer social links: using fallback (Supabase fetch failed):', err?.message||err);
+  }
+}
+
+/* ---------- Brand/promo gallery (V32.6, item 3) ----------
+   Independent of the product-media architecture on purpose — this is
+   general brand/promo imagery (customer photos, ads, festival
+   banners), never a product. The ONLY place any filename from
+   images/gallery/ is ever listed is the generated manifest.json (see
+   generate-gallery-manifest.js) — this function never hardcodes a
+   single image name, and a brand-new .webp file becomes part of the
+   rotation automatically once the manifest is regenerated and
+   deployed, with no code change. No image is ever clickable/linked. */
+async function renderBrandGallery(){
+  const section=$('brandGallery'), track=$('galleryTrack');
+  if(!section||!track) return;
+  let files=[];
+  try{
+    const res=await fetch('images/gallery/manifest.json',{cache:'no-store'});
+    if(!res.ok) throw new Error('manifest.json not found ('+res.status+')');
+    files=await res.json();
+    if(!Array.isArray(files)) throw new Error('manifest.json is not a list');
+  }catch(err){
+    // No manifest yet, empty list, or a fetch hiccup — hide gracefully
+    // rather than show a broken/empty section. This is expected and
+    // silent until images/gallery/ actually has content.
+    section.style.display='none';
+    return;
+  }
+  files=files.filter(Boolean);
+  if(!files.length){ section.style.display='none'; return; }
+
+  const imgTag=f=>`<img src="images/gallery/${escapeHtml(f)}" alt="" loading="lazy">`;
+  if(files.length===1){
+    // A single image: show it once, statically — no loop, nothing to rotate.
+    track.classList.remove('isAnimating');
+    track.style.removeProperty('--gallery-marquee-duration');
+    track.innerHTML=imgTag(files[0]);
+  }else{
+    // Multiple images: duplicate the list once for a seamless loop
+    // (same technique as the existing announcement ticker), speed
+    // scaled to the number of images so more photos don't just fly by
+    // faster.
+    track.innerHTML=files.map(imgTag).join('')+files.map(imgTag).join('');
+    track.style.setProperty('--gallery-marquee-duration',Math.max(18,files.length*6)+'s');
+    track.classList.add('isAnimating');
+  }
+  section.style.display='';
+}
 
 /* ---------- Reviews ---------- */
 async function renderReviews(){
@@ -797,7 +932,22 @@ function cartItemDetails(x){
   const p=getProduct(x.productId),v=p?getVariant(p,x.variantId):null;
   return p&&v?{name:p.name,price:v.price,mrp:v.mrp,image:p.image,label:v.label}:{name:'Unavailable product',price:0,mrp:0,image:'',label:''};
 }
-function refreshProductViews(){renderBest();renderProducts();renderMeal();renderCombos()}
+// V32.6 (item 6 defense-in-depth, re-verified in this release): each
+// render function is isolated so a bug/exception in any one of them
+// can never again silently prevent the others from running — this is
+// what let a renderMeal() crash block renderCombos() before the real
+// fix (see renderMeal() above). Not a combo-specific workaround: every
+// section gets identical protection, and errors are still visible in
+// the console for debugging rather than being swallowed silently.
+// renderCombos() is also intentionally ordered right after renderBest
+// here (not last) as a second, independent layer of defense — even if
+// a future bug appeared in renderProducts()/renderMeal(), the combo
+// card would already be updated before either of them ever runs.
+function refreshProductViews(){
+  [renderBest,renderCombos,renderProducts,renderMeal].forEach(fn=>{
+    try{ fn(); }catch(err){ console.error(`${fn.name} failed to render:`, err); }
+  });
+}
 function addToCart(pid,vid){
   const p=getProduct(pid),v=getVariant(p,vid); if(!p||!v)return;
   const key='product:'+pid+':'+v.id, x=cart.find(i=>i.key===key);
@@ -1554,6 +1704,50 @@ function openProduct(id){
 }
 function closeProduct(){openProductId=null;$('productOverlay').classList.remove('open');document.body.classList.remove('modalOpen')}
 
+/* ---------- Back-button / history sync (item 12) ---------- */
+// Not a routing framework — deliberately kept small per the spec. Every
+// overlay in this app (cart, product detail, search, account, checkout)
+// is opened from several different call sites via a plain
+// classList.add('open'), so instead of touching every one of those call
+// sites individually (higher risk of missing one), this watches the
+// overlays' class attribute directly: whenever any overlay becomes
+// open, it pushes exactly one history entry; whenever it's dismissed
+// (Escape, backdrop click, an explicit close button — anything that
+// removes the 'open' class) it consumes that same entry via
+// history.back() so the two states never drift apart. The result:
+// pressing the hardware/browser/gesture Back button while any overlay
+// is open closes that overlay and returns to the underlying page —
+// exactly like closing it any other way — instead of leaving the site
+// or losing where the customer was.
+function initBackNavigation(){
+  const overlayIds=['cartOverlay','productOverlay','searchOverlay','accountOverlay','checkoutOverlay','mobileMenu'];
+  let pushedForOverlay=false;
+  const anyOverlayOpen=()=>overlayIds.some(id=>$(id)?.classList.contains('open'));
+  const observer=new MutationObserver(()=>{
+    const isOpen=anyOverlayOpen();
+    if(isOpen && !pushedForOverlay){
+      pushedForOverlay=true;
+      history.pushState({jayviOverlay:true}, '', location.href);
+    }else if(!isOpen && pushedForOverlay){
+      pushedForOverlay=false;
+      // Closed via a UI action (not Back) while our entry is still the
+      // current one — consume it so a later Back press doesn't land on
+      // a dead, already-dismissed overlay state.
+      if(history.state?.jayviOverlay) history.back();
+    }
+  });
+  overlayIds.forEach(id=>{ const el=$(id); if(el) observer.observe(el,{attributes:true,attributeFilter:['class']}); });
+  window.addEventListener('popstate', ()=>{
+    // A real Back press: if something is still open at this point, it
+    // means Back itself is what should close it (the case above already
+    // handled UI-driven closes and won't still show anything open here).
+    if(anyOverlayOpen()){
+      closeCart();closeProduct();closeSearch();closeAccount();closeCheckout();closeMenu();
+      pushedForOverlay=false;
+    }
+  });
+}
+
 /* ---------- Misc UI ---------- */
 function toggleMenu(){$('mobileMenu').classList.toggle('open');$('menuScrim')?.classList.toggle('open')}
 function closeMenu(){$('mobileMenu').classList.remove('open');$('menuScrim')?.classList.remove('open')}
@@ -1607,12 +1801,21 @@ function setupAnnouncementTicker(){
 async function init(){
   CONFIG=loadConfig();
   initOverlayDismissal();
+  initBackNavigation();
+  // V32.6: products/media/combos come from Supabase now (see
+  // loadCatalogFromSupabase). CONFIG.products/CONFIG.combos are
+  // overwritten in place when the fetch succeeds; on failure they keep
+  // whatever loadConfig() already gave them, so the storefront never
+  // renders empty.
+  await loadCatalogFromSupabase();
   sync();
   if(CONFIG.store.vacationMode){
     const b=$('vacationBanner');
     if(b){b.style.display='block';b.textContent=CONFIG.store.vacationMessage||'Orders are temporarily paused while Jayvi Foods is away.'}
   }
   renderBest();renderCategories();renderProducts();renderCombos();renderMeal();renderReviews();renderCart();
+  renderFooterSocialLinks();
+  renderBrandGallery();
   heroShow();startHero();enableHeroSwipe();setupAnnouncementTicker();
   applyVacation();
 

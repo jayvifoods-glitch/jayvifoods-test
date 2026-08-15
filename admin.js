@@ -456,11 +456,117 @@ async function fetchCustomers(){
   return profiles||[];
 }
 
+/* ---------- Product catalogue: Supabase, not localStorage (V32.6) ----------
+   Products, product media, and combos are the real source of truth in
+   Supabase now (see supabase_migration_product_catalog.sql). data.products
+   / data.combos below are just an in-memory cache refreshed every time
+   the relevant Admin page is opened, so the rest of admin.js (combo
+   item pickers, announcement targets, review product pickers, meal-tag
+   deletion guard) keeps working unchanged. Store settings, categories,
+   meal tags, announcements, and reviews remain local/unchanged. */
+function liveCatalogNote(){
+  return `<div class="catalogWarning" style="border-color:#2f7a3d;background:#eefbf0"><b>✅ Live for every customer, on every device</b><p>Products, media, and combos are stored centrally in Supabase now — saving here updates the storefront immediately for everyone, no Git sync or redeploy needed.</p></div>`;
+}
+async function fetchProductMediaRows(){
+  const {data:rows,error}=await sb.from('product_media').select('*').order('display_order',{ascending:true});
+  if(error){ toast('Could not load product media: '+error.message); return []; }
+  return rows||[];
+}
+async function fetchProducts(){
+  const {data:rows,error}=await sb.from('products').select('*').order('display_order',{ascending:true});
+  if(error){ toast('Could not load products: '+error.message); return []; }
+  const mediaRows=await fetchProductMediaRows();
+  const products=(rows||[]).map(p=>({
+    id:p.id, sku:p.sku||'', name:p.name||'', short:p.short_description||'', description:p.description||'',
+    category:p.category||'', categories:p.categories||[], mealTags:p.meal_tags||[],
+    active:p.active, best:p.best, displayOrder:p.display_order||0,
+    variants:p.variants||[], rating:p.rating||0, reviewCount:p.review_count||0,
+    media:mediaRows.filter(m=>m.product_id===p.id).map(m=>({id:m.id,type:m.media_type,path:m.media_url,poster:m.poster_url||'',order:m.display_order})),
+  }));
+  products.forEach(p=>{p.image=p.media[0]?.path||''});
+  data.products=products;
+  data._productMediaAllRows=mediaRows; // reused by combosPage for combo media
+  return products;
+}
+async function fetchCombos(){
+  const {data:rows,error}=await sb.from('combos').select('*').order('display_order',{ascending:true});
+  if(error){ toast('Could not load combos: '+error.message); return []; }
+  const mediaRows=data._productMediaAllRows||await fetchProductMediaRows();
+  const combos=(rows||[]).map(c=>({
+    id:c.id, name:c.name||'', short:c.short_description||'', active:c.active,
+    price:c.price, mrp:c.mrp, items:c.items||[],
+    media:mediaRows.filter(m=>m.combo_id===c.id).map(m=>({id:m.id,type:m.media_type,path:m.media_url,poster:m.poster_url||'',order:m.display_order})),
+  }));
+  combos.forEach(c=>{c.image=c.media[0]?.path||''});
+  data.combos=combos;
+  return combos;
+}
+// Upserts a product row + fully replaces its product_media rows from
+// the given media draft array (simplest safe way to persist reordering
+// and deletions without tracking per-row diffs).
+async function saveProductToSupabase(p, mediaDraft){
+  const {error:pErr}=await sb.from('products').upsert({
+    id:p.id, sku:p.sku, name:p.name, short_description:p.short, description:p.description,
+    category:p.category, categories:p.categories, meal_tags:p.mealTags,
+    active:p.active, best:p.best, variants:p.variants, rating:p.rating||0, review_count:p.reviewCount||0
+  });
+  if(pErr){ toast('Could not save product: '+pErr.message); return false; }
+  const {error:delErr}=await sb.from('product_media').delete().eq('product_id',p.id);
+  if(delErr){ toast('Product saved, but could not update media: '+delErr.message); return false; }
+  if(mediaDraft.length){
+    const {error:insErr}=await sb.from('product_media').insert(mediaDraft.map((m,i)=>({
+      product_id:p.id, media_type:m.type, media_url:m.path, poster_url:m.poster||null, display_order:i+1
+    })));
+    if(insErr){ toast('Product saved, but could not save media: '+insErr.message); return false; }
+  }
+  return true;
+}
+async function saveComboToSupabase(c, mediaDraft){
+  const {error:cErr}=await sb.from('combos').upsert({
+    id:c.id, name:c.name, short_description:c.short, active:c.active, price:c.price, mrp:c.mrp, items:c.items
+  });
+  if(cErr){ toast('Could not save combo: '+cErr.message); return false; }
+  const {error:delErr}=await sb.from('product_media').delete().eq('combo_id',c.id);
+  if(delErr){ toast('Combo saved, but could not update media: '+delErr.message); return false; }
+  if(mediaDraft.length){
+    const {error:insErr}=await sb.from('product_media').insert(mediaDraft.map((m,i)=>({
+      combo_id:c.id, media_type:m.type, media_url:m.path, poster_url:m.poster||null, display_order:i+1
+    })));
+    if(insErr){ toast('Combo saved, but could not save media: '+insErr.message); return false; }
+  }
+  return true;
+}
+// Shared "+ Add Media" list editor used by both the product and combo
+// forms — no per-product/per-combo special cases (item 7 of the spec).
+// No fixed slot count: window._mediaDraft is a plain array, any length.
+function mediaRowsMarkup(){
+  const list=window._mediaDraft||[];
+  return list.length ? list.map((m,i)=>`<div class="comboItemForm">
+    <select onchange="window._mediaDraft[${i}].type=this.value">
+      <option value="image" ${m.type==='image'?'selected':''}>Image</option>
+      <option value="video" ${m.type==='video'?'selected':''}>Video</option>
+    </select>
+    <input value="${esc(m.path)}" placeholder="images/products/.../file.webp or https://..." onchange="window._mediaDraft[${i}].path=this.value">
+    <button type="button" title="Move up" onclick="moveMediaRow(${i},-1)">↑</button>
+    <button type="button" title="Move down" onclick="moveMediaRow(${i},1)">↓</button>
+    <button type="button" onclick="window._mediaDraft.splice(${i},1);renderMediaRows()">×</button>
+  </div>`).join('') : '<div class="empty smallEmpty">No media yet — add at least one image.</div>';
+}
+function mediaEditorMarkup(){
+  return `<div class="formSection"><h3>Media</h3><p>Any number of images/videos, in any order. A local repo path (e.g. <code>images/products/peanut-chutney/hero.webp</code>) or a full external <code>https://</code> URL both work identically — the storefront doesn't care which.</p>
+  <div id="mediaRows">${mediaRowsMarkup()}</div>
+  <button type="button" class="outline" onclick="addMediaRow()">+ Add Media</button>
+  </div>`;
+}
+function renderMediaRows(){const box=document.getElementById('mediaRows');if(box)box.innerHTML=mediaRowsMarkup()}
+function addMediaRow(){window._mediaDraft.push({type:'image',path:''});renderMediaRows()}
+function moveMediaRow(i,dir){const list=window._mediaDraft;const j=i+dir;if(j<0||j>=list.length)return;[list[i],list[j]]=[list[j],list[i]];renderMediaRows()}
+
 function catName(id){return data.categories.find(c=>c.id===id)?.name||id||'Uncategorised'}
 function product(id){return data.products.find(p=>p.id===id)}
 function variant(pid,vid){return product(pid)?.variants?.find(v=>v.id===vid)}
 function esc(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
-function setTab(t){tab=t;document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));render()}
+function setTab(t){tab=t;document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));pushAdminHistory(t);render()}
 document.querySelectorAll('.nav').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
 async function refreshNotifBadge(){
   const {count} = await sb.from('notification_events').select('id',{count:'exact',head:true}).eq('dashboard_read', false);
@@ -494,28 +600,41 @@ async function render(){title.textContent=tab==='variants'?'Variants & sizes':ta
  if(tab==='dashboard')h=await dashboard();
  if(tab==='orders')h=await ordersPage();
  if(tab==='customers')h=await customersPage();
- if(tab==='products')h=productsPage();
- if(tab==='variants')h=variantsPage();
- if(tab==='combos')h=combosPage();
+ if(tab==='products')h=await productsPage();
+ if(tab==='variants')h=await variantsPage();
+ if(tab==='combos')h=await combosPage();
  if(tab==='categories')h=categoriesPage();
  if(tab==='mealtags')h=mealTagsPage();
  if(tab==='homepage')h=homepagePage();
  if(tab==='pincodes')h=await pincodesPage();
+ if(tab==='coupons')h=await couponsPage();
+ if(tab==='social')h=await socialLinksPage();
  if(tab==='reviews')h=await reviewsPage();
  if(tab==='settings')h=settingsPage();
  app.innerHTML=h;
 }
+// V32.6 (item 11): one single, documented definition of "counts as a
+// successful sale" — used everywhere revenue/sales/product-sales are
+// computed, so KPIs, charts, and lists can never disagree with each
+// other. See PRODUCT_MEDIA_MIGRATION.md / CHANGELOG_V32.6.md for the
+// full rationale. Payment Pending / Payment Verification are excluded
+// because payment isn't confirmed yet; Payment Failed, Cancelled,
+// Refund Pending, Refunded, and Returned are excluded because the sale
+// did not (or no longer) results in retained revenue.
+const REVENUE_ORDER_STATUSES = ['Order Confirmed','Preparing','Packed & Shipped','Out for Delivery','Delivered','Delivery Failed','On Hold / Manual Review'];
+const isRevenueOrder = o => REVENUE_ORDER_STATUSES.includes(o.status);
 async function dashboard(){
   const os=await fetchOrders(), cs=await fetchCustomers();
   const today=new Date().toLocaleDateString('en-IN');
   const todayOrders=os.filter(o=>new Date(o.created_at).toLocaleDateString('en-IN')===today);
-  const sales=os.filter(o=>String(o.status||'').toLowerCase()!=='cancelled').reduce((s,o)=>s+Number(o.total||0),0);
-  const todaySales=todayOrders.reduce((s,o)=>s+Number(o.total||0),0);
+  const sales=os.filter(isRevenueOrder).reduce((s,o)=>s+Number(o.total||0),0);
+  const todaySales=todayOrders.filter(isRevenueOrder).reduce((s,o)=>s+Number(o.total||0),0);
+  const refunded=os.filter(o=>['Refund Pending','Refunded'].includes(o.status)).reduce((s,o)=>s+Number(o.total||0),0);
   const pending=os.filter(o=>/pending|received|preparing|packed|shipped|out for/i.test(o.status||'')).length;
   const delivered=os.filter(o=>String(o.status||'').toLowerCase().includes('delivered')).length;
-  const top={};os.forEach(o=>(o.order_items||[]).forEach(i=>{const k=i.name||i.combo_id||'Combo';top[k]=(top[k]||0)+Number(i.qty||0)}));
+  const top={};os.filter(isRevenueOrder).forEach(o=>(o.order_items||[]).forEach(i=>{const k=i.name||i.combo_id||'Combo';top[k]=(top[k]||0)+Number(i.qty||0)}));
   const topList=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,5);
-  return `<section class="kpis"><article><small>ORDERS TODAY</small><b>${todayOrders.length}</b><span>${todaySales?money(todaySales):'No sales yet'}</span></article><article><small>TOTAL ORDERS</small><b>${os.length}</b><span>${delivered} delivered</span></article><article><small>SALES</small><b>${money(sales)}</b><span>All non-cancelled orders</span></article><article><small>REGISTERED CUSTOMERS</small><b>${cs.length}</b><span>Excludes guests</span></article><article><small>PENDING ORDERS</small><b>${pending}</b><span>Need attention</span></article><article><small>FREE SHIPPING</small><b>${money(data.store.freeShippingThreshold)}</b><span>Configured threshold</span></article></section><div class="dashboardGrid"><section class="panel wide"><div class="panelHead"><div><h2>Latest orders</h2><p>Your operational view: customer, amount, payment and current status.</p></div><button class="gold" onclick="setTab('orders')">View all orders →</button></div>${os.length?`<div class="orderTable"><div class="orderHead"><span>Order</span><span>Customer</span><span>Amount</span><span>Payment</span><span>Status</span></div>${os.slice(0,10).map(o=>`<button class="orderLine" onclick="orderView('${esc(o.order_number)}')"><span><b>${esc(o.order_number)}</b><small>${new Date(o.created_at).toLocaleDateString('en-IN')}</small></span><span><b>${esc(o.guest_name||'Guest')}</b><small>${esc(o.guest_phone||'')}</small></span><strong>${money(o.total)}</strong><span>${esc(o.payment_method||'')}</span><span class="statusTag">${esc(o.status||'')}</span></button>`).join('')}</div>`:'<div class="empty">No orders yet.</div>'}</section><section class="panel"><div class="panelHead"><div><h2>Top products</h2><p>Based on live Supabase orders.</p></div></div>${topList.length?topList.map(x=>`<div class="metricRow"><span>${esc(x[0])}</span><b>${x[1]} sold</b></div>`).join(''):'<div class="empty smallEmpty">No sales data yet.</div>'}</section><section class="panel"><div class="panelHead"><div><h2>Store operations</h2><p>Quick controls that affect ordering.</p></div><button class="outline" onclick="setTab('settings')">Open settings</button></div><div class="operation"><span>Vacation mode</span><b class="${data.store.vacationMode?'danger':'good'}">${data.store.vacationMode?'ON — ordering paused':'OFF — ordering open'}</b></div><div class="operation"><span>UPI</span><b class="good">${data.store.upiEnabled===false?'OFF':'ON'}</b></div><div class="operation"><span>COD</span><b>${data.store.codEnabled===false?'OFF':'ON'}</b></div><div class="operation"><span>Razorpay</span><b>${data.store.razorpayEnabled?'ON':'OFF'}</b></div><div class="operation"><span>OTP login</span><b>${data.store.otpEnabled?'ON':'OFF — future'}</b></div></section></div>`;
+  return `<section class="kpis"><article><small>ORDERS TODAY</small><b>${todayOrders.length}</b><span>${todaySales?money(todaySales):'No sales yet'}</span></article><article><small>TOTAL ORDERS</small><b>${os.length}</b><span>${delivered} delivered</span></article><article><small>SALES</small><b>${money(sales)}</b><span>Confirmed/fulfilled orders only — excludes pending payment, failed, cancelled, and refunded</span></article><article><small>REFUNDED</small><b>${money(refunded)}</b><span>Refund pending + refunded</span></article><article><small>REGISTERED CUSTOMERS</small><b>${cs.length}</b><span>Excludes guests</span></article><article><small>PENDING ORDERS</small><b>${pending}</b><span>Need attention</span></article></section><div class="dashboardGrid"><section class="panel wide"><div class="panelHead"><div><h2>Latest orders</h2><p>Your operational view: customer, amount, payment and current status.</p></div><button class="gold" onclick="setTab('orders')">View all orders →</button></div>${os.length?`<div class="orderTable"><div class="orderHead"><span>Order</span><span>Customer</span><span>Amount</span><span>Payment</span><span>Status</span></div>${os.slice(0,10).map(o=>`<button class="orderLine" onclick="orderView('${esc(o.order_number)}')"><span><b>${esc(o.order_number)}</b><small>${new Date(o.created_at).toLocaleDateString('en-IN')}</small></span><span><b>${esc(o.guest_name||'Guest')}</b><small>${esc(o.guest_phone||'')}</small></span><strong>${money(o.total)}</strong><span>${esc(o.payment_method||'')}</span><span class="statusTag">${esc(o.status||'')}</span></button>`).join('')}</div>`:'<div class="empty">No orders yet.</div>'}</section><section class="panel"><div class="panelHead"><div><h2>Top products</h2><p>Based on live Supabase orders (revenue-counted statuses only).</p></div></div>${topList.length?topList.map(x=>`<div class="metricRow"><span>${esc(x[0])}</span><b>${x[1]} sold</b></div>`).join(''):'<div class="empty smallEmpty">No sales data yet.</div>'}</section><section class="panel"><div class="panelHead"><div><h2>Store operations</h2><p>Quick controls that affect ordering.</p></div><button class="outline" onclick="setTab('settings')">Open settings</button></div><div class="operation"><span>Vacation mode</span><b class="${data.store.vacationMode?'danger':'good'}">${data.store.vacationMode?'ON — ordering paused':'OFF — ordering open'}</b></div><div class="operation"><span>UPI</span><b class="good">${data.store.upiEnabled===false?'OFF':'ON'}</b></div><div class="operation"><span>COD</span><b>${data.store.codEnabled===false?'OFF':'ON'}</b></div><div class="operation"><span>Razorpay</span><b>${data.store.razorpayEnabled?'ON':'OFF'}</b></div><div class="operation"><span>OTP login</span><b>${data.store.otpEnabled?'ON':'OFF — future'}</b></div></section></div>`;
 }
 async function ordersPage(){
   const os=await fetchOrders();
@@ -701,16 +820,17 @@ async function promptResetPassword(phone){
   }
 }
 
-function productsPage(){return `<section class="panel">${localCatalogWarning()}<div class="panelHead"><div><h2>Products</h2><p>Product catalogue, merchandising, multiple categories and media.</p></div><button class="gold" onclick="productForm()">+ Add product</button></div><div class="productAdminGrid">${data.products.map((p,i)=>`<article class="productAdminCard"><div class="thumb"><img src="${esc(p.image||'')}" alt=""></div><div class="productInfo"><span class="typeTag">${p.best?'BESTSELLER':'PRODUCT'}</span><h3>${esc(p.name)}</h3><p>${esc(p.short||'')}</p><small>${(p.categories||[p.category]).map(catName).join(' · ')} · ${p.variants?.length||0} variants</small><div class="cardActions"><button class="outline" onclick="productForm(${i})">Edit</button><button class="outline dangerBtn" onclick="deleteProduct(${i})">Delete</button></div></div></article>`).join('')}</div></section>`}
-function productForm(index=-1){
- const p=index>=0?data.products[index]:{id:'',sku:'',name:'',short:'',description:'',category:data.categories[0]?.id||'',categories:[],active:true,best:false,image:'',mediaFolder:'',media:[],mealTags:[],rating:0,reviewCount:0,variants:[]};
- const selected=p.categories||[p.category].filter(Boolean);
- const folder=p.mediaFolder||`images/products/${p.id||'[product-id]'}/`;
- const media=p.media||[];
- const file=(type,def='')=>media.find(x=>x.type===type)?.file||media.find(x=>x.type===type)?.path?.split('/').pop()||def;
- openModal(`<div class="eyebrow">PRODUCT</div><h2>${index<0?'Add product':'Edit product'}</h2>
+async function productsPage(){
+ await fetchProducts();
+ return `<section class="panel">${liveCatalogNote()}<div class="panelHead"><div><h2>Products</h2><p>Product catalogue, merchandising, multiple categories and media — stored in Supabase.</p></div><button class="gold" onclick="productForm()">+ Add product</button></div><div class="productAdminGrid">${data.products.map(p=>`<article class="productAdminCard"><div class="thumb"><img src="${esc(p.image||'')}" alt=""></div><div class="productInfo"><span class="typeTag">${p.best?'BESTSELLER':'PRODUCT'}</span><h3>${esc(p.name)}</h3><p>${esc(p.short||'')}</p><small>${(p.categories?.length?p.categories:[p.category]).map(catName).join(' · ')} · ${p.variants?.length||0} variants · ${p.media?.length||0} media</small><div class="cardActions"><button class="outline" onclick="productForm('${esc(p.id)}')">Edit</button><button class="outline dangerBtn" onclick="deleteProduct('${esc(p.id)}')">Delete</button></div></div></article>`).join('')}</div></section>`;
+}
+function productForm(id=null){
+ const p=id?product(id):{id:'',sku:'',name:'',short:'',description:'',category:data.categories[0]?.id||'',categories:[],active:true,best:false,media:[],mealTags:[],rating:0,reviewCount:0,variants:[]};
+ const selected=p.categories?.length?p.categories:[p.category].filter(Boolean);
+ window._mediaDraft=structuredClone(p.media||[]).map(m=>({type:m.type,path:m.path}));
+ openModal(`<div class="eyebrow">PRODUCT</div><h2>${id?'Edit product':'Add product'}</h2>
  <div class="formGrid">
- <label>Product ID<input id="pId" value="${esc(p.id)}" placeholder="peanut-chutney"></label>
+ <label>Product ID<input id="pId" value="${esc(p.id)}" placeholder="peanut-chutney" ${id?'disabled':''}></label>
  <label>SKU<input id="pSku" value="${esc(p.sku)}"></label>
  <label>Product name<input id="pName" value="${esc(p.name)}"></label>
  <label>Primary category<select id="pCat">${data.categories.map(c=>`<option value="${c.id}" ${c.id===(p.category||selected[0])?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label>
@@ -719,40 +839,22 @@ function productForm(index=-1){
  </div>
  <div class="formSection"><h3>Categories / collections</h3><p>Select as many as needed. Primary category is separate from merchandising collections.</p><div class="checkGrid">${data.categories.map(c=>`<label><input type="checkbox" class="pCats" value="${c.id}" ${selected.includes(c.id)?'checked':''}> ${esc(c.name)}</label>`).join('')}</div></div>
  <div class="formSection"><h3>Meal tags</h3><p>Admin-managed. Add more from <b>Meal tags</b> in the sidebar; nothing is hardcoded to four choices.</p><div class="checkGrid">${(data.mealTags||[]).filter(t=>t.enabled).sort((a,b)=>a.order-b.order).map(t=>`<label><input type="checkbox" class="pMeals" value="${t.id}" ${(p.mealTags||[]).includes(t.id)?'checked':''}> ${esc(t.name)}</label>`).join('')}</div></div>
- <div class="formSection"><h3>Product media</h3>
- <div class="mediaHint"><b>Folder is automatic:</b> <code id="mediaFolderPreview">${esc(folder)}</code><br>
- You do <b>not</b> paste image paths here. Put the approved files in that product folder using the standard names below. The future Git-backed backend will read this folder/manifest automatically.</div>
- <div class="mediaFields">
- <label>Hero filename<input id="mHero" value="${esc(file('hero','hero.webp'))}" placeholder="hero.webp"></label>
- <label>Front / Back filename<input id="mPackaging" value="${esc(file('packaging','front-back.webp'))}" placeholder="front-back.webp"></label>
- <label>Ingredients filename<input id="mIngredients" value="${esc(file('ingredients','ingredients.webp'))}" placeholder="ingredients.webp"></label>
- <label>Serving / use case filename<input id="mServing" value="${esc(file('serving','serving.webp'))}" placeholder="serving.webp"></label>
- <label>Short video filename<input id="mVideo" value="${esc(file('video',''))}" placeholder="use-case.mp4"></label>
- </div>
- <div class="infoBox"><b>Media rule</b><p>WebP images · 4 core images/product · optional 5–15 sec MP4/H.264 video. The storefront will use the hero image in cards and the full gallery in product detail.</p></div>
- </div>
+ ${mediaEditorMarkup()}
  <label class="checkOnly"><input type="checkbox" id="pActive" ${p.active?'checked':''}> Product visible</label>
  <label class="checkOnly"><input type="checkbox" id="pBest" ${p.best?'checked':''}> Bestseller</label>
- <button class="gold full" onclick="saveProduct(${index})">Save product</button>`);
+ <button class="gold full" onclick="saveProduct('${id?esc(id):''}')">Save product</button>`);
 }
-function saveProduct(index){
- const id=document.getElementById('pId').value.trim();
- const folder=`images/products/${id||'product'}/`;
- const media=[
-   ['hero',document.getElementById('mHero')?.value.trim()],
-   ['packaging',document.getElementById('mPackaging')?.value.trim()],
-   ['ingredients',document.getElementById('mIngredients')?.value.trim()],
-   ['serving',document.getElementById('mServing')?.value.trim()],
-   ['video',document.getElementById('mVideo')?.value.trim()]
- ].filter(x=>x[1]).map(x=>({type:x[0],file:x[1],path:folder+x[1]}));
+async function saveProduct(existingId){
+ const id=(existingId||document.getElementById('pId').value.trim());
+ const media=(window._mediaDraft||[]).filter(m=>m.path);
+ const existing=existingId?product(existingId):null;
  const p={id,sku:document.getElementById('pSku').value.trim(),name:document.getElementById('pName').value.trim(),
  short:document.getElementById('pShort').value.trim(),description:document.getElementById('pDesc').value.trim(),
  category:document.getElementById('pCat').value,categories:[...document.querySelectorAll('.pCats:checked')].map(x=>x.value),
  mealTags:[...document.querySelectorAll('.pMeals:checked')].map(x=>x.value),
- image:media.find(x=>x.type==='hero')?.path||folder+'hero.webp',mediaFolder:folder,media,
  active:document.getElementById('pActive').checked,best:document.getElementById('pBest').checked,
- variants:index>=0?data.products[index].variants:[],rating:index>=0?data.products[index].rating:0,
- reviewCount:index>=0?data.products[index].reviewCount:0};
+ variants:existing?existing.variants:[],rating:existing?existing.rating:0,
+ reviewCount:existing?existing.reviewCount:0};
 
  // Item Q — required-field validation before publish. Missing core
  // fields block the save outright, named individually. Variants are a
@@ -767,7 +869,7 @@ function saveProduct(index){
  if(!p.name) missing.push('Product name');
  if(!p.category) missing.push('Category');
  if(!p.short && !p.description) missing.push('Description');
- if(!media.some(m=>m.type==='hero')) missing.push('Main image');
+ if(!media.length) missing.push('At least one media item');
  if(missing.length){
    toast(`${missing.length} required field${missing.length===1?'':'s'} missing: ${missing.join(', ')}`);
    return;
@@ -777,19 +879,58 @@ function saveProduct(index){
    p.active = false;
    toast('Saved as hidden: add at least one variant with a price and MRP (Variants & sizes) before making this visible on the storefront.');
  }
- if(index<0)data.products.push(p);else data.products[index]=p;
- persist();closeModal();render();
+ const ok=await saveProductToSupabase(p, media);
+ if(!ok) return;
+ closeModal();render();
 }
-function deleteProduct(i){if(confirm('Delete this product from the prototype catalogue?')){data.products.splice(i,1);persist();render()}}
-function variantsPage(){return `<section class="panel">${localCatalogWarning()}<div class="panelHead"><div><h2>Variants & sizes</h2><p>Each product controls its own available sizes. Future 1kg, 2kg or other variants can be added here.</p></div></div>${data.products.map((p,i)=>`<div class="variantBlock"><div class="variantTitle"><div><b>${esc(p.name)}</b><small>${esc(p.sku)}</small></div><button class="gold small" onclick="variantForm(${i})">+ Add size</button></div><div class="variantRows">${(p.variants||[]).map((v,j)=>`<div class="variantRow"><span><b>${esc(v.label)}</b><small>${esc(v.weight||v.label)} · ${esc(v.sku||'')}</small></span><strong>${money(v.price)}</strong><del>${money(v.mrp)}</del><span class="${v.active?'good':'danger'}">${v.active?'LIVE':'HIDDEN'}</span><button class="outline" onclick="variantForm(${i},${j})">Edit</button></div>`).join('')||'<div class="empty smallEmpty">No variants yet.</div>'}</div></div>`).join('')}</section>`}
-function variantForm(pi,vi=-1){const p=data.products[pi],v=vi>=0?p.variants[vi]:{id:'',label:'',weight:'',price:'',mrp:'',sku:'',active:true};openModal(`<div class="eyebrow">VARIANT</div><h2>${vi<0?'Add size':'Edit size'} · ${esc(p.name)}</h2><div class="formGrid"><label>Variant ID<input id="vId" value="${esc(v.id)}"></label><label>Display label<input id="vLabel" value="${esc(v.label)}" placeholder="1kg"></label><label>Weight<input id="vWeight" value="${esc(v.weight)}"></label><label>SKU<input id="vSku" value="${esc(v.sku)}"></label><label>Selling price<input id="vPrice" type="number" value="${v.price}"></label><label>MRP<input id="vMrp" type="number" value="${v.mrp}"></label></div><label class="checkOnly"><input id="vActive" type="checkbox" ${v.active?'checked':''}> Available for sale</label><button class="gold full" onclick="saveVariant(${pi},${vi})">Save variant</button>`)}
-function saveVariant(pi,vi){const p=data.products[pi];const v={id:document.getElementById('vId').value.trim(),label:document.getElementById('vLabel').value.trim(),weight:document.getElementById('vWeight').value.trim(),sku:document.getElementById('vSku').value.trim(),price:Number(document.getElementById('vPrice').value||0),mrp:Number(document.getElementById('vMrp').value||0),active:document.getElementById('vActive').checked};if(!v.id||!v.label){toast('Variant ID and label are required');return}if(vi<0)p.variants.push(v);else p.variants[vi]=v;persist();closeModal();render()}
-function combosPage(){return `<section class="panel">${localCatalogWarning()}<div class="panelHead"><div><h2>Combos</h2><p>Combo item size dropdowns are filtered to the selected product's own variants.</p></div><button class="gold" onclick="comboForm()">+ Add combo</button></div><div class="comboAdmin">${data.combos.map((c,i)=>`<article><span class="typeTag">COMBO</span><h3>${esc(c.name)}</h3><p>${esc(c.short||'')}</p><div class="chips">${(c.items||[]).map(it=>{const p=product(it.productId),v=variant(it.productId,it.variantId);return `<span>${esc(p?.name||'')} · ${esc(v?.label||'')} × ${it.qty}</span>`}).join('')}</div><strong>${money(c.price)}</strong><small>MRP ${money(c.mrp)} · ${c.active?'Live':'Hidden'}</small><div class="cardActions"><button class="outline" onclick="comboForm(${i})">Edit</button><button class="outline dangerBtn" onclick="data.combos.splice(${i},1);persist();render()">Delete</button></div></article>`).join('')}</div></section>`}
-function comboForm(index=-1){const c=index>=0?data.combos[index]:{id:'',name:'',short:'',price:0,mrp:0,image:'',active:true,items:[]};openModal(`<div class="eyebrow">COMBO</div><h2>${index<0?'Add combo':'Edit combo'}</h2><div class="formGrid"><label>Combo ID<input id="cId" value="${esc(c.id)}"></label><label>Name<input id="cName" value="${esc(c.name)}"></label><label>Price<input id="cPrice" type="number" value="${c.price}"></label><label>MRP<input id="cMrp" type="number" value="${c.mrp}"></label><label class="fullLabel">Description<textarea id="cShort" rows="3">${esc(c.short||'')}</textarea></label><label class="fullLabel">Image path<input id="cImage" value="${esc(c.image||'')}" placeholder="images/combos/traditional-duo.webp"></label></div><div class="formSection"><h3>Combo items</h3><div id="comboItems"></div><button class="outline" onclick="addComboItemRow()">+ Add item</button></div><label class="checkOnly"><input id="cActive" type="checkbox" ${c.active?'checked':''}> Combo visible</label><button class="gold full" onclick="saveCombo(${index})">Save combo</button>`);window._comboDraft=structuredClone(c.items||[]);renderComboRows()}
+function deleteProduct(id){
+ if(!confirm('Delete this product? This also deletes its media rows and cannot be undone.')) return;
+ sb.from('products').delete().eq('id',id).then(({error})=>{
+   if(error){ toast('Could not delete: '+error.message); return; }
+   render();
+ });
+}
+async function variantsPage(){
+ await fetchProducts();
+ return `<section class="panel">${liveCatalogNote()}<div class="panelHead"><div><h2>Variants & sizes</h2><p>Each product controls its own available sizes. Future 1kg, 2kg or other variants can be added here.</p></div></div>${data.products.map(p=>`<div class="variantBlock"><div class="variantTitle"><div><b>${esc(p.name)}</b><small>${esc(p.sku)}</small></div><button class="gold small" onclick="variantForm('${esc(p.id)}')">+ Add size</button></div><div class="variantRows">${(p.variants||[]).map((v,j)=>`<div class="variantRow"><span><b>${esc(v.label)}</b><small>${esc(v.weight||v.label)} · ${esc(v.sku||'')}</small></span><strong>${money(v.price)}</strong><del>${money(v.mrp)}</del><span class="${v.active?'good':'danger'}">${v.active?'LIVE':'HIDDEN'}</span><button class="outline" onclick="variantForm('${esc(p.id)}',${j})">Edit</button></div>`).join('')||'<div class="empty smallEmpty">No variants yet.</div>'}</div></div>`).join('')}</section>`;
+}
+function variantForm(pid,vi=-1){const p=product(pid),v=vi>=0?p.variants[vi]:{id:'',label:'',weight:'',price:'',mrp:'',sku:'',active:true};openModal(`<div class="eyebrow">VARIANT</div><h2>${vi<0?'Add size':'Edit size'} · ${esc(p.name)}</h2><div class="formGrid"><label>Variant ID<input id="vId" value="${esc(v.id)}"></label><label>Display label<input id="vLabel" value="${esc(v.label)}" placeholder="1kg"></label><label>Weight<input id="vWeight" value="${esc(v.weight)}"></label><label>SKU<input id="vSku" value="${esc(v.sku)}"></label><label>Selling price<input id="vPrice" type="number" value="${v.price}"></label><label>MRP<input id="vMrp" type="number" value="${v.mrp}"></label></div><label class="checkOnly"><input id="vActive" type="checkbox" ${v.active?'checked':''}> Available for sale</label><button class="gold full" onclick="saveVariant('${esc(pid)}',${vi})">Save variant</button>`)}
+async function saveVariant(pid,vi){
+ const p=product(pid);
+ const v={id:document.getElementById('vId').value.trim(),label:document.getElementById('vLabel').value.trim(),weight:document.getElementById('vWeight').value.trim(),sku:document.getElementById('vSku').value.trim(),price:Number(document.getElementById('vPrice').value||0),mrp:Number(document.getElementById('vMrp').value||0),active:document.getElementById('vActive').checked};
+ if(!v.id||!v.label){toast('Variant ID and label are required');return}
+ const variants=structuredClone(p.variants||[]);
+ if(vi<0)variants.push(v);else variants[vi]=v;
+ const {error}=await sb.from('products').update({variants}).eq('id',pid);
+ if(error){ toast('Could not save variant: '+error.message); return; }
+ closeModal();render();
+}
+async function combosPage(){
+ await fetchProducts(); await fetchCombos();
+ return `<section class="panel">${liveCatalogNote()}<div class="panelHead"><div><h2>Combos</h2><p>Combo item size dropdowns are filtered to the selected product's own variants. Combo media works exactly like product media.</p></div><button class="gold" onclick="comboForm()">+ Add combo</button></div><div class="comboAdmin">${data.combos.map(c=>`<article><span class="typeTag">COMBO</span><h3>${esc(c.name)}</h3><p>${esc(c.short||'')}</p><div class="chips">${(c.items||[]).map(it=>{const p=product(it.productId),v=p?.variants?.find(x=>x.id===it.variantId);return `<span>${esc(p?.name||'')} · ${esc(v?.label||'')} × ${it.qty}</span>`}).join('')}</div><strong>${money(c.price)}</strong><small>MRP ${money(c.mrp)} · ${c.active?'Live':'Hidden'} · ${c.media?.length||0} media</small><div class="cardActions"><button class="outline" onclick="comboForm('${esc(c.id)}')">Edit</button><button class="outline dangerBtn" onclick="deleteCombo('${esc(c.id)}')">Delete</button></div></article>`).join('')}</div></section>`;
+}
+function comboForm(id=null){
+ const c=id?data.combos.find(x=>x.id===id):{id:'',name:'',short:'',price:0,mrp:0,active:true,items:[],media:[]};
+ window._mediaDraft=structuredClone(c.media||[]).map(m=>({type:m.type,path:m.path}));
+ openModal(`<div class="eyebrow">COMBO</div><h2>${id?'Edit combo':'Add combo'}</h2><div class="formGrid"><label>Combo ID<input id="cId" value="${esc(c.id)}" ${id?'disabled':''}></label><label>Name<input id="cName" value="${esc(c.name)}"></label><label>Price<input id="cPrice" type="number" value="${c.price}"></label><label>MRP<input id="cMrp" type="number" value="${c.mrp}"></label><label class="fullLabel">Description<textarea id="cShort" rows="3">${esc(c.short||'')}</textarea></label></div><div class="formSection"><h3>Combo items</h3><div id="comboItems"></div><button class="outline" onclick="addComboItemRow()">+ Add item</button></div>${mediaEditorMarkup()}<label class="checkOnly"><input id="cActive" type="checkbox" ${c.active?'checked':''}> Combo visible</label><button class="gold full" onclick="saveCombo('${id?esc(id):''}')">Save combo</button>`);window._comboDraft=structuredClone(c.items||[]);renderComboRows()}
 function addComboItemRow(){window._comboDraft.push({productId:data.products[0]?.id||'',variantId:data.products[0]?.variants?.[0]?.id||'',qty:1});renderComboRows()}
 function renderComboRows(){const box=document.getElementById('comboItems');if(!box)return;box.innerHTML=(window._comboDraft||[]).map((it,i)=>{const p=product(it.productId);const opts=(p?.variants||[]).filter(v=>v.active).map(v=>`<option value="${v.id}" ${v.id===it.variantId?'selected':''}>${esc(v.label)} — ${money(v.price)}</option>`).join('');return `<div class="comboItemForm"><select onchange="comboProductChanged(${i},this.value)">${data.products.filter(p=>p.active).map(p=>`<option value="${p.id}" ${p.id===it.productId?'selected':''}>${esc(p.name)}</option>`).join('')}</select><select onchange="window._comboDraft[${i}].variantId=this.value">${opts}</select><input type="number" min="1" value="${it.qty}" onchange="window._comboDraft[${i}].qty=Number(this.value||1)"><button onclick="window._comboDraft.splice(${i},1);renderComboRows()">×</button></div>`}).join('')||'<div class="empty smallEmpty">Add products to this combo.</div>'}
 function comboProductChanged(i,pid){window._comboDraft[i].productId=pid;window._comboDraft[i].variantId=product(pid)?.variants?.find(v=>v.active)?.id||'';renderComboRows()}
-function saveCombo(index){const c={id:document.getElementById('cId').value.trim(),name:document.getElementById('cName').value.trim(),price:Number(document.getElementById('cPrice').value||0),mrp:Number(document.getElementById('cMrp').value||0),short:document.getElementById('cShort').value.trim(),image:document.getElementById('cImage').value.trim(),active:document.getElementById('cActive').checked,items:structuredClone(window._comboDraft||[])};if(!c.id||!c.name){toast('Combo ID and name are required');return}if(index<0)data.combos.push(c);else data.combos[index]=c;persist();closeModal();render()}
+async function saveCombo(existingId){
+ const media=(window._mediaDraft||[]).filter(m=>m.path);
+ const c={id:existingId||document.getElementById('cId').value.trim(),name:document.getElementById('cName').value.trim(),price:Number(document.getElementById('cPrice').value||0),mrp:Number(document.getElementById('cMrp').value||0),short:document.getElementById('cShort').value.trim(),active:document.getElementById('cActive').checked,items:structuredClone(window._comboDraft||[])};
+ if(!c.id||!c.name){toast('Combo ID and name are required');return}
+ const ok=await saveComboToSupabase(c, media);
+ if(!ok) return;
+ closeModal();render();
+}
+function deleteCombo(id){
+ if(!confirm('Delete this combo? This also deletes its media rows and cannot be undone.')) return;
+ sb.from('combos').delete().eq('id',id).then(({error})=>{
+   if(error){ toast('Could not delete: '+error.message); return; }
+   render();
+ });
+}
 function mealTagsPage(){
  return `<section class="panel">${localCatalogWarning()}<div class="panelHead"><div><h2>Meal tags</h2><p>Manage the meals shown in product setup and the storefront's “Made for every meal” recommendations.</p></div><button class="gold" onclick="mealTagForm()">+ Add meal tag</button></div>
  <div class="categoryTable">${(data.mealTags||[]).sort((a,b)=>(a.order||0)-(b.order||0)).map((t,i)=>`<div class="categoryRow"><span><b>${esc(t.name)}</b><small>ID: ${esc(t.id)}</small></span><strong>${t.order||i+1}</strong><span class="${t.enabled?'good':'danger'}">${t.enabled?'VISIBLE':'HIDDEN'}</span><button class="outline" onclick="mealTagForm(${i})">Edit</button><button class="outline dangerBtn" onclick="deleteMealTag(${i})">Delete</button></div>`).join('')}</div></section>`;
@@ -887,7 +1028,15 @@ async function pincodesPage(){
 
   let expandedHtml = '';
   if(_expandedState){
-    const {rows, count} = await fetchPincodesForState(_expandedState, true);
+    // V32.6 (item 9 fix): the actual bug was here — this used to always
+    // pass reset=true, which zeroed _pincodeOffset back to 0 on *every*
+    // render(), including the render() that loadMorePincodes() itself
+    // triggers after incrementing the offset. So "Load more" always
+    // silently reloaded page 1. Resetting to 0 now only happens where
+    // it should — expanding a (possibly different) state or changing
+    // the search box, both of which already set _pincodeOffset=0
+    // explicitly before calling render() (see onchange/onclick below).
+    const {rows, count} = await fetchPincodesForState(_expandedState, false);
     window._pincodeRowsCache = rows;
     expandedHtml = `<div class="formSection">
       <div class="panelHead"><h3>${esc(_expandedState)} — ${count} PIN code${count===1?'':'s'}</h3><button class="outline" onclick="_expandedState=null;render()">Collapse</button></div>
@@ -902,7 +1051,7 @@ async function pincodesPage(){
   }
 
   return `<section class="panel"><div class="panelHead"><div><h2>Delivery / Pincode management</h2><p>Customer delivery calculation is always Pincode → Serviceability → Delivery Rule. State grouping below is an admin convenience — disabling a state overrides serviceability for every PIN in it without changing any individual PIN's own setting; re-enabling the state restores exactly what each PIN had before. <b>State defaults</b> (V32.5) fill in delivery charge/ETA/courier for any PIN in that state that doesn't set its own — a PIN's own value always wins over the state default.</p></div>
-    <div class="cardActions"><button class="outline" onclick="exportPincodes()">Export CSV</button><label class="outline" style="cursor:pointer;display:inline-flex;align-items:center;padding:10px 16px;border-radius:99px">Import CSV<input type="file" accept=".csv" style="display:none" onchange="importPincodesFile(this.files[0])"></label></div>
+    <div class="cardActions"><button class="gold" onclick="pincodeQuickAddForm()">+ Add PIN code</button><button class="outline" onclick="exportPincodes()">Export CSV</button><label class="outline" style="cursor:pointer;display:inline-flex;align-items:center;padding:10px 16px;border-radius:99px">Import CSV<input type="file" accept=".csv" style="display:none" onchange="importPincodesFile(this.files[0])"></label></div>
   </div>
   <div class="categoryTable">
     <div class="categoryRow" style="font-weight:800;font-size:10.5px;color:var(--ink-faint);text-transform:uppercase"><span>State / circle</span><span>PIN codes / defaults</span><span>Serviceable</span><span></span></div>
@@ -971,6 +1120,85 @@ async function togglePincodeServiceable(pincode, serviceable){
   if(error){ toast('Could not update PIN: '+error.message); return; }
   toast(`${pincode} marked ${serviceable?'serviceable':'not serviceable'}`);
 }
+// V32.6 (item 8): the general "add a PIN code" entry point. State is
+// derived automatically from the existing pincode master wherever
+// possible (never invented) — City/District is always typed by Admin,
+// since the master genuinely doesn't contain it (see
+// FUTURE_product_catalog_migration.md-equivalent note in CHANGELOG_V32.6.md).
+// If the master has no unambiguous state for this PIN (brand-new PIN,
+// or one whose neighbouring PINs span more than one state), Admin must
+// pick the state explicitly from the real list of configured states —
+// never a free-text guess — so a typo or fabricated state can never
+// silently create serviceability data that isn't backed by the master.
+function pincodeQuickAddForm(){
+  openModal(`<div class="eyebrow">ADD PIN CODE</div><h2>Add PIN code</h2>
+    <div class="formGrid">
+      <label>PIN code * <input id="qpPincode" maxlength="6" pattern="[0-9]{6}" onchange="deriveStateForQuickAdd(this.value)"></label>
+      <label>State <span id="qpStateWrap"><input id="qpState" value="" placeholder="Enter PIN first" disabled></span></label>
+    </div>
+    <div id="qpLookupNote" class="v22-admin-help"></div>
+    <div class="formGrid">
+      <label>City/District * <input id="qpCity" placeholder="Manually entered — not in the PIN master"></label>
+      <label>Delivery charge (₹, optional)<input id="qpCharge" type="number" min="0" step="1"></label>
+      <label>Min ETA days (optional)<input id="qpMin" type="number" min="1"></label>
+      <label>Max ETA days (optional)<input id="qpMax" type="number" min="1"></label>
+      <label>Courier/partner (optional)<input id="qpCourier"></label>
+    </div>
+    <label class="checkOnly"><input id="qpServiceable" type="checkbox" checked> Serviceable</label>
+    <button class="gold full" onclick="saveQuickAddPincode()">Add PIN code</button>`);
+}
+async function deriveStateForQuickAdd(pin){
+  pin=pin.trim();
+  const noteEl=document.getElementById('qpLookupNote'), stateWrap=document.getElementById('qpStateWrap');
+  if(!/^\d{6}$/.test(pin)){ noteEl.textContent='Enter a valid 6-digit PIN code.'; return; }
+  const {data:exact}=await sb.from('pincodes').select('pincode').eq('pincode',pin).limit(1);
+  if(exact?.length){
+    noteEl.innerHTML=`<b style="color:#b23">This PIN code already exists.</b> Expand its state below to edit it instead of adding a duplicate.`;
+    stateWrap.innerHTML=`<input id="qpState" value="" disabled placeholder="Already exists">`;
+    return;
+  }
+  // Derive from the real master: look at existing PINs sharing the same
+  // first 3 digits (the standard India Post sorting-district prefix).
+  // If they all agree on one state, prefill it read-only. If they don't
+  // agree (or none exist), Admin must pick a real configured state —
+  // never a typed guess.
+  const prefix=pin.slice(0,3);
+  const {data:neighbours}=await sb.from('pincodes').select('state').ilike('pincode',prefix+'%').limit(200);
+  const states=[...new Set((neighbours||[]).map(n=>n.state))];
+  if(states.length===1){
+    noteEl.innerHTML=`State derived from ${neighbours.length} existing PIN code(s) starting with <b>${esc(prefix)}</b> in the master.`;
+    stateWrap.innerHTML=`<input id="qpState" value="${esc(states[0])}" readonly>`;
+  }else if(states.length>1){
+    const {data:allStates}=await sb.from('delivery_states').select('state').order('state');
+    noteEl.innerHTML=`PIN codes starting with <b>${esc(prefix)}</b> span more than one state in the master (${states.map(esc).join(', ')}) — please confirm which one this PIN actually belongs to.`;
+    stateWrap.innerHTML=`<select id="qpState">${(allStates||[]).map(s=>`<option value="${esc(s.state)}" ${s.state===states[0]?'selected':''}>${esc(s.state)}</option>`).join('')}</select>`;
+  }else{
+    const {data:allStates}=await sb.from('delivery_states').select('state').order('state');
+    noteEl.innerHTML=`No existing PIN codes near <b>${esc(prefix)}</b> to derive a state from — please pick the correct state manually.`;
+    stateWrap.innerHTML=`<select id="qpState">${(allStates||[]).map(s=>`<option value="${esc(s.state)}">${esc(s.state)}</option>`).join('')}</select>`;
+  }
+}
+async function saveQuickAddPincode(){
+  const pincode=document.getElementById('qpPincode').value.trim();
+  const state=document.getElementById('qpState')?.value?.trim();
+  const city=document.getElementById('qpCity').value.trim();
+  if(!/^\d{6}$/.test(pincode)){ toast('Enter a valid 6-digit PIN code'); return; }
+  if(!state){ toast('Look up or select a state before saving — a PIN can never be added without one'); return; }
+  if(!city){ toast('City/District is required — it is never auto-filled from the PIN master'); return; }
+  const row={
+    pincode, state, city,
+    delivery_charge: document.getElementById('qpCharge').value ? Number(document.getElementById('qpCharge').value) : null,
+    min_eta_days: document.getElementById('qpMin').value ? Number(document.getElementById('qpMin').value) : null,
+    max_eta_days: document.getElementById('qpMax').value ? Number(document.getElementById('qpMax').value) : null,
+    courier_partner: document.getElementById('qpCourier').value.trim()||null,
+    serviceable: document.getElementById('qpServiceable').checked,
+    source: 'admin_added'
+  };
+  const {error}=await sb.from('pincodes').insert(row);
+  if(error){ toast('Could not add PIN code: '+error.message); return; }
+  toast('PIN code added');
+  closeModal(); render();
+}
 function pincodeForm(state){
   // V32.5 (Priority 3, item 9): show the state's current defaults so
   // Admin knows what a blank field will actually resolve to, without
@@ -1014,6 +1242,114 @@ async function deletePincode(pincode){
   if(error){ toast('Could not remove PIN: '+error.message); return; }
   toast('PIN code removed'); render();
 }
+
+/* ---------- Coupons & Offers (item 16) ----------
+   Admin CRUD only in V32.6 — see the top of
+   supabase_migration_coupons.sql for exactly what is/isn't wired up
+   yet and why (validate_coupon() is real and server-side-authoritative,
+   but nothing in the customer checkout calls it this release). */
+async function couponsPage(){
+  const {data:rows,error}=await sb.from('coupons').select('*').order('created_at',{ascending:false});
+  if(error) return `<section class="panel"><div class="empty">Could not load coupons: ${esc(error.message)}. Has supabase_migration_coupons.sql been run?</div></section>`;
+  data._coupons=rows||[];
+  return `<section class="panel"><div class="catalogWarning" style="border-color:#8a6a1a;background:#fdf6e3"><b>⚠️ Admin management only in V32.6</b><p>Coupons can be created/edited/enabled here and are validated server-side (<code>public.validate_coupon</code>). Applying a coupon at checkout is <b>not yet wired into the storefront</b> in this release — see <code>CHANGELOG_V32.6.md</code> for why and what a follow-up release needs to do.</p></div>
+  <div class="panelHead"><div><h2>Coupons &amp; Offers</h2><p>Percentage or fixed discounts, with optional date range, minimum order value, usage limits, and product/category restrictions.</p></div><button class="gold" onclick="couponForm()">+ Add coupon</button></div>
+  <div class="comboAdmin">${(rows||[]).map(c=>`<article><span class="typeTag">${esc(c.discount_type.toUpperCase())}</span><h3>${esc(c.code)} — ${esc(c.name)}</h3><p>${esc(c.description||'')}</p><strong>${c.discount_type==='percentage'?c.discount_value+'% off':money(c.discount_value)+' off'}</strong><small>Min order ${money(c.min_order_value||0)}${c.max_discount?' · Max discount '+money(c.max_discount):''}${c.usage_limit?' · Limit '+c.usage_limit+' uses':''} · ${c.active?'Active':'Disabled'}</small><div class="cardActions"><button class="outline" onclick="couponForm('${esc(c.id)}')">Edit</button><button class="outline" onclick="toggleCouponActive('${esc(c.id)}',${!c.active})">${c.active?'Disable':'Enable'}</button><button class="outline dangerBtn" onclick="deleteCoupon('${esc(c.id)}')">Delete</button></div></article>`).join('')||'<div class="empty smallEmpty">No coupons yet.</div>'}</div>
+  </section>`;
+}
+function couponForm(id=null){
+  const c=id?(data._coupons||[]).find(x=>x.id===id):{code:'',name:'',description:'',active:true,start_date:'',end_date:'',discount_type:'percentage',discount_value:'',min_order_value:0,max_discount:'',usage_limit:'',per_customer_limit:1};
+  openModal(`<div class="eyebrow">COUPON</div><h2>${id?'Edit coupon':'Add coupon'}</h2>
+  <div class="formGrid">
+    <label>Code * <input id="cpCode" value="${esc(c.code)}" placeholder="WELCOME10" style="text-transform:uppercase"></label>
+    <label>Name * <input id="cpName" value="${esc(c.name)}"></label>
+    <label class="fullLabel">Description<textarea id="cpDesc" rows="2">${esc(c.description||'')}</textarea></label>
+    <label>Discount type<select id="cpType"><option value="percentage" ${c.discount_type==='percentage'?'selected':''}>Percentage</option><option value="fixed" ${c.discount_type==='fixed'?'selected':''}>Fixed amount (₹)</option></select></label>
+    <label>Discount value * <input id="cpValue" type="number" min="0" step="0.01" value="${c.discount_value}"></label>
+    <label>Minimum order value (₹)<input id="cpMin" type="number" min="0" value="${c.min_order_value||0}"></label>
+    <label>Maximum discount (₹, optional — caps a percentage)<input id="cpMax" type="number" min="0" value="${c.max_discount??''}"></label>
+    <label>Total usage limit (optional)<input id="cpLimit" type="number" min="1" value="${c.usage_limit??''}"></label>
+    <label>Per-customer limit<input id="cpPerCustomer" type="number" min="1" value="${c.per_customer_limit??1}"></label>
+    <label>Start date (optional)<input id="cpStart" type="date" value="${c.start_date?String(c.start_date).slice(0,10):''}"></label>
+    <label>End date (optional)<input id="cpEnd" type="date" value="${c.end_date?String(c.end_date).slice(0,10):''}"></label>
+  </div>
+  <label class="checkOnly"><input id="cpActive" type="checkbox" ${c.active!==false?'checked':''}> Active</label>
+  <button class="gold full" onclick="saveCoupon('${id?esc(id):''}')">Save coupon</button>`);
+}
+async function saveCoupon(id){
+  const row={
+    code:document.getElementById('cpCode').value.trim().toUpperCase(),
+    name:document.getElementById('cpName').value.trim(),
+    description:document.getElementById('cpDesc').value.trim()||null,
+    discount_type:document.getElementById('cpType').value,
+    discount_value:Number(document.getElementById('cpValue').value||0),
+    min_order_value:Number(document.getElementById('cpMin').value||0),
+    max_discount:document.getElementById('cpMax').value?Number(document.getElementById('cpMax').value):null,
+    usage_limit:document.getElementById('cpLimit').value?Number(document.getElementById('cpLimit').value):null,
+    per_customer_limit:document.getElementById('cpPerCustomer').value?Number(document.getElementById('cpPerCustomer').value):null,
+    start_date:document.getElementById('cpStart').value||null,
+    end_date:document.getElementById('cpEnd').value||null,
+    active:document.getElementById('cpActive').checked
+  };
+  if(!row.code||!row.name||!row.discount_value){ toast('Code, name, and discount value are required'); return; }
+  const {error}=id?await sb.from('coupons').update(row).eq('id',id):await sb.from('coupons').insert(row);
+  if(error){ toast('Could not save coupon: '+error.message); return; }
+  toast('Coupon saved'); closeModal(); render();
+}
+async function toggleCouponActive(id,active){
+  const {error}=await sb.from('coupons').update({active}).eq('id',id);
+  if(error){ toast('Could not update coupon: '+error.message); return; }
+  render();
+}
+async function deleteCoupon(id){
+  if(!confirm('Delete this coupon? Past redemption history is kept for records.')) return;
+  const {error}=await sb.from('coupons').delete().eq('id',id);
+  if(error){ toast('Could not delete: '+error.message); return; }
+  render();
+}
+
+/* ---------- Social links (item 14) ---------- */
+const SOCIAL_PLATFORM_LABELS={whatsapp:'WhatsApp',instagram:'Instagram',facebook:'Facebook',youtube:'YouTube',x:'X / Twitter',linkedin:'LinkedIn',other:'Other / custom'};
+async function socialLinksPage(){
+  const {data:rows,error}=await sb.from('social_links').select('*').order('display_order');
+  if(error) return `<section class="panel"><div class="empty">Could not load social links: ${esc(error.message)}. Has supabase_migration_social_links.sql been run?</div></section>`;
+  data._socialLinks=rows||[];
+  return `<section class="panel"><div class="panelHead"><div><h2>Social Links</h2><p>Controls the footer's "Connect" links. Only enabled links appear, in this order.</p></div><button class="gold" onclick="socialLinkForm()">+ Add link</button></div>
+  <div class="categoryTable">${(rows||[]).map((s,i)=>`<div class="categoryRow"><span><b>${esc(SOCIAL_PLATFORM_LABELS[s.platform]||s.platform)}</b><small>${esc(s.label||s.url)}</small></span><strong>${s.display_order}</strong><span class="${s.enabled?'good':'danger'}">${s.enabled?'VISIBLE':'HIDDEN'}</span><button class="outline" onclick="socialLinkForm('${esc(s.id)}')">Edit</button><button class="outline dangerBtn" onclick="deleteSocialLink('${esc(s.id)}')">Delete</button></div>`).join('')||'<div class="empty smallEmpty">No social links yet.</div>'}</div>
+  </section>`;
+}
+function socialLinkForm(id=null){
+  const s=id?(data._socialLinks||[]).find(x=>x.id===id):{platform:'whatsapp',label:'',url:'',enabled:true,display_order:(data._socialLinks?.length||0)+1};
+  openModal(`<div class="eyebrow">SOCIAL LINK</div><h2>${id?'Edit link':'Add link'}</h2>
+  <div class="formGrid">
+    <label>Platform<select id="slPlatform">${Object.entries(SOCIAL_PLATFORM_LABELS).map(([k,v])=>`<option value="${k}" ${s.platform===k?'selected':''}>${v}</option>`).join('')}</select></label>
+    <label>Label (optional — shown as-is for "Other")<input id="slLabel" value="${esc(s.label||'')}"></label>
+    <label class="fullLabel">URL * <input id="slUrl" value="${esc(s.url||'')}" placeholder="https://..."></label>
+    <label>Display position<input id="slOrder" type="number" value="${s.display_order||1}"></label>
+  </div>
+  <label class="checkOnly"><input id="slEnabled" type="checkbox" ${s.enabled!==false?'checked':''}> Visible in footer</label>
+  <button class="gold full" onclick="saveSocialLink('${id?esc(id):''}')">Save link</button>`);
+}
+async function saveSocialLink(id){
+  const row={
+    platform:document.getElementById('slPlatform').value,
+    label:document.getElementById('slLabel').value.trim()||null,
+    url:document.getElementById('slUrl').value.trim(),
+    display_order:Number(document.getElementById('slOrder').value||1),
+    enabled:document.getElementById('slEnabled').checked
+  };
+  if(!row.url){ toast('URL is required'); return; }
+  const {error}=id?await sb.from('social_links').update(row).eq('id',id):await sb.from('social_links').insert(row);
+  if(error){ toast('Could not save link: '+error.message); return; }
+  toast('Social link saved'); closeModal(); render();
+}
+async function deleteSocialLink(id){
+  if(!confirm('Remove this social link?')) return;
+  const {error}=await sb.from('social_links').delete().eq('id',id);
+  if(error){ toast('Could not delete: '+error.message); return; }
+  render();
+}
+
 async function exportPincodes(){
   toast('Preparing export — this may take a moment for the full list...');
   let all = [], from = 0, pageSize = 1000, more = true;
@@ -1151,7 +1487,46 @@ function saveContactSettings(){data.store.whatsapp=document.getElementById('setW
 function openModal(html){document.getElementById('modalBody').innerHTML=html;document.getElementById('modal').classList.add('open')}
 function closeModal(){document.getElementById('modal').classList.remove('open')}
 document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
-requireAdminSession().then(ok=>{ if(ok) render(); });
+
+/* ---------- Back-button / history sync (item 12) ---------- */
+// Small and deliberately not a routing framework, matching the app.js
+// approach: Dashboard → Products → (Edit) Product modal, then Back
+// closes the modal back to Products, Back again returns to Dashboard —
+// instead of the browser Back button leaving Admin entirely or landing
+// somewhere unrelated. Tab switches (setTab) push one history entry
+// each; the modal's open/close is tracked the same class-attribute-
+// watching way app.js uses for its overlays, so every one of the many
+// openModal(...) call sites across this file is covered automatically.
+let _adminPushedForModal=false;
+function pushAdminHistory(t){ history.pushState({jayviAdminTab:t}, '', location.href); }
+(function initAdminBackNavigation(){
+  history.replaceState({jayviAdminTab:tab}, '', location.href);
+  const modalEl=document.getElementById('modal');
+  const observer=new MutationObserver(()=>{
+    const isOpen=modalEl.classList.contains('open');
+    if(isOpen && !_adminPushedForModal){
+      _adminPushedForModal=true;
+      history.pushState({jayviAdminModal:true}, '', location.href);
+    }else if(!isOpen && _adminPushedForModal){
+      _adminPushedForModal=false;
+      if(history.state?.jayviAdminModal) history.back();
+    }
+  });
+  observer.observe(modalEl,{attributes:true,attributeFilter:['class']});
+  window.addEventListener('popstate', e=>{
+    if(modalEl.classList.contains('open')){
+      // Back while the modal is open: close it, don't touch the tab.
+      closeModal(); _adminPushedForModal=false; return;
+    }
+    const t=e.state?.jayviAdminTab;
+    if(t){
+      tab=t;
+      document.querySelectorAll('.nav').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
+      render();
+    }
+  });
+})();
+requireAdminSession().then(async ok=>{ if(ok){ await fetchProducts(); await fetchCombos(); render(); } });
 /* Jayvi Foods V22 Admin polish */
 (function(){
 'use strict';

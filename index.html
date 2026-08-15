@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link rel="stylesheet" href="style.css?v=32.5">
+<link rel="stylesheet" href="style.css?v=32.6">
 </head>
 <body>
 
@@ -77,8 +77,20 @@
     <div><i class="fa-brands fa-whatsapp"></i><b>Need help?</b><small>Chat with Jayvi's team</small></div>
   </div></section>
 
+  <!-- V32.6 (item 3): brand/promo gallery — purely visual, no clicks,
+       no product navigation. Populated entirely from
+       images/gallery/manifest.json (see generate-gallery-manifest.js);
+       hidden automatically by renderBrandGallery() in app.js when that
+       list is empty, so an un-populated gallery never shows a broken
+       or empty section. Independent of the product-media architecture
+       — this has nothing to do with Supabase or any product. -->
+  <section class="brandGallerySection" id="brandGallery" style="display:none">
+    <div class="galleryViewport"><div class="galleryTrack" id="galleryTrack"></div></div>
+  </section>
+
   <section class="lightSection" id="bestsellers"><div class="wrap">
     <div class="sectionHead"><div><div class="eyebrow">SHOP JAYVI'S BESTSELLERS</div><h2>Bestsellers</h2></div><a href="#shop">View all →</a></div>
+
     <div id="bestGrid" class="productGrid"></div>
   </div></section>
 
@@ -128,10 +140,10 @@
   <div class="footerBrand"><a class="footerLogo" href="#home"><img src="images/brand/jayvi-foods-logo.webp" alt="Jayvi Foods"></a><p>Purely Traditional.<br>Simply Delicious.</p></div>
   <div><b>Shop</b><a href="#bestsellers">Bestsellers</a><a href="#shop">All products</a><a href="#combos">Combos</a></div>
   <div><b>Help &amp; Legal</b><a href="help.html">Help &amp; Shipping</a><a href="#" onclick="openTrackOrder();return false">Track Order</a><a href="legal.html#returns">Returns &amp; Refunds</a><a href="legal.html#privacy">Privacy</a><a href="legal.html#terms">Terms</a><a href="#" onclick="openAccount();return false">My account</a></div>
-  <div><b>Connect</b><a href="https://wa.me/918861981003" target="_blank">WhatsApp</a><a href="https://instagram.com/jayvifoods" target="_blank">Instagram</a><a href="mailto:jayvifoods@gmail.com">jayvifoods@gmail.com</a><a href="tel:+918861981003">+91 88619 81003</a></div>
+  <div><b>Connect</b><span id="footerSocialLinks"><a href="https://wa.me/918861981003" target="_blank">WhatsApp</a><a href="https://instagram.com/jayvifoods" target="_blank">Instagram</a></span><a href="mailto:jayvifoods@gmail.com">jayvifoods@gmail.com</a><a href="tel:+918861981003">+91 88619 81003</a></div>
   <div class="footerCompliance"><b>Food Safety &amp; Business</b><div class="fssaiBadge" aria-label="FSSAI"><img src="images/compliance/fssai-logo.png" alt="FSSAI"></div><p>FSSAI Lic. No. <strong>21226177001087</strong></p><p>UDYAM Registered MSME</p><p>UDYAM-KR-03-0681597</p></div>
 </div>
-<div class="wrap copyright">© 2026 Jayvi Foods <span>Delivered across India · Jayvi Foods</span><span class="siteVersion" id="siteVersion">Website v32.5</span></div></footer>
+<div class="wrap copyright">© 2026 Jayvi Foods <span>Delivered across India · Jayvi Foods</span><span class="siteVersion" id="siteVersion">Website v32.6</span></div></footer>
 
 <a class="whatsappFloat" href="https://wa.me/918861981003?text=Hi%20Jayvi%20Foods%2C%20I%20need%20help%20with%20my%20order." target="_blank" aria-label="Chat with Jayvi's team"><i class="fa-brands fa-whatsapp"></i><span>Chat with us</span></a>
 
@@ -153,7 +165,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="supabase-config.js?v=32.5"></script>
-<script src="app.js?v=32.5"></script>
+<script src="supabase-config.js?v=32.6"></script>
+<script src="app.js?v=32.6"></script>
 </body>
 </html>
