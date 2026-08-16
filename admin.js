@@ -69,7 +69,7 @@ const CONFIG_FALLBACK={
       "category": "chutney",
       "active": true,
       "best": true,
-      "image": "images/products/peanut-chutney.webp",
+      "image": "images/products/peanut/hero.webp",
       "imageClass": "peanut",
       "variants": [
         {

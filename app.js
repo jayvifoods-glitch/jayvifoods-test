@@ -76,7 +76,7 @@ const EMBEDDED_CONFIG = {
       "category": "chutney",
       "active": true,
       "best": true,
-      "image": "images/products/peanut-chutney.webp",
+      "image": "images/products/peanut/hero.webp",
       "imageClass": "peanut",
       "variants": [
         {
@@ -410,6 +410,27 @@ const EMBEDDED_CONFIG = {
 // sourced from Supabase's product_media table (see loadCatalogFromSupabase()).
 const PLACEHOLDER_MEDIA=[{type:'image',path:'images/hero/jayvi-products.webp'}];
 
+// V32.7 — performance fix (spec items 6 & 9): product photos are shipped
+// as "images/products/<slug>/<name>.webp" masters. scripts/generate-
+// product-image-variants.py generates a "-400w"/"-800w" sibling next to
+// every one of those masters (see that script for details) — the master
+// itself doubles as the ~1600px "desktop" tier. This helper turns a plain
+// path into a srcset ONLY for paths that convention guarantees have those
+// siblings; anything else (external URLs, SVGs, images/gallery/, brand
+// assets, a future product photo that hasn't been through the script yet)
+// is left completely alone and just renders as a normal <img src>. No
+// database/schema change and no per-product code was needed for this.
+const RESPONSIVE_PRODUCT_IMG = /^images\/products\/.+\.webp$/i;
+function responsiveImgAttrs(path,sizes){
+  if(!path || !RESPONSIVE_PRODUCT_IMG.test(path)) return {src:path,srcset:'',sizes:''};
+  const stem=path.slice(0,-5); // strip ".webp"
+  return {
+    src:`${stem}-800w.webp`,
+    srcset:`${stem}-400w.webp 400w, ${stem}-800w.webp 800w, ${path} 1600w`,
+    sizes:sizes||'(max-width:600px) 45vw, 280px'
+  };
+}
+
 /* ---------- State ---------- */
 let CONFIG, products=[], categories=[], mealTagList=[];
 let cat='all', heroIndex=0, heroTimer=null, meal='idli', selectedVariants={};
@@ -558,10 +579,11 @@ function cardMediaMarkup(p){
   // shows the explicit placeholder, never another product's image.
   const media=(p.media?.length?p.media:(p.image?[{type:'image',path:p.image}]:PLACEHOLDER_MEDIA)).filter(Boolean);
   const count=media.length;
-  const slides=media.map((m,i)=>m.type==='video'&&m.path
-    ? `<div class="cardMediaSlide cardVideo"><video controls playsinline preload="metadata" poster="${escapeHtml(m.poster||'')}"><source src="${escapeHtml(m.path)}" type="video/mp4"></video><span class="mediaLabel">Video</span></div>`
-    : `<div class="cardMediaSlide"><img src="${escapeHtml(m.path||m)}" alt="${escapeHtml(p.name)} image ${i+1}" loading="${i?'lazy':'eager'}" onerror="handleMediaError(this)"></div>`
-  ).join('');
+  const slides=media.map((m,i)=>{
+    if(m.type==='video'&&m.path) return `<div class="cardMediaSlide cardVideo"><video controls playsinline preload="metadata" poster="${escapeHtml(m.poster||'')}"><source src="${escapeHtml(m.path)}" type="video/mp4"></video><span class="mediaLabel">Video</span></div>`;
+    const a=responsiveImgAttrs(m.path||m,'(max-width:600px) 45vw, 280px');
+    return `<div class="cardMediaSlide"><img src="${escapeHtml(a.src)}"${a.srcset?` srcset="${escapeHtml(a.srcset)}" sizes="${escapeHtml(a.sizes)}"`:''} alt="${escapeHtml(p.name)} image ${i+1}" loading="${i?'lazy':'eager'}" decoding="async" onerror="handleMediaError(this)"></div>`;
+  }).join('');
   const controls=count>1?`<span class="galleryCount">1 / ${count}</span>`:'';
   return `<div class="cardMediaFrame"><div class="cardMediaScroller" data-count="${count}" aria-label="${escapeHtml(p.name)} media">${slides}</div>${controls}</div>`;
 }
@@ -612,11 +634,18 @@ function bindGalleryScrollers(){
 function productGalleryMarkup(p){
   const media=(p.media||[]).filter(x=>x.type!=='video'&&(x.path||x.file));
   const items=media.length?media:[{path:p.image}];
-  return `<div class="productGallery"><div class="galleryMain"><img id="galleryMainImg" src="${items[0].path}" alt="${escapeHtml(p.name)}" onerror="this.src='images/hero/jayvi-products.webp'"></div><div class="galleryThumbs">${items.map((m,i)=>`<button type="button" class="${i===0?'active':''}" onclick="setGalleryImage('${escapeHtml(m.path)}',this)"><img src="${escapeHtml(m.path)}" alt=""></button>`).join('')}</div></div>`;
+  const main=responsiveImgAttrs(items[0].path,'(max-width:600px) 92vw, 480px');
+  return `<div class="productGallery"><div class="galleryMain"><img id="galleryMainImg" src="${escapeHtml(main.src)}"${main.srcset?` srcset="${escapeHtml(main.srcset)}" sizes="${escapeHtml(main.sizes)}"`:''} data-full="${escapeHtml(items[0].path)}" alt="${escapeHtml(p.name)}" decoding="async" onerror="this.removeAttribute('srcset');this.src='images/hero/jayvi-products.webp'"></div><div class="galleryThumbs">${items.map((m,i)=>{const t=responsiveImgAttrs(m.path,'80px');return `<button type="button" class="${i===0?'active':''}" onclick="setGalleryImage('${escapeHtml(m.path)}',this)"><img src="${escapeHtml(t.src)}"${t.srcset?` srcset="${escapeHtml(t.srcset)}" sizes="${escapeHtml(t.sizes)}"`:''} loading="lazy" decoding="async" alt=""></button>`}).join('')}</div></div>`;
 }
 function setGalleryImage(path,btn){
   const img=$('galleryMainImg');
-  if(img){img.src=path;img.onerror=()=>img.src='images/hero/jayvi-products.webp'}
+  if(img){
+    const a=responsiveImgAttrs(path,'(max-width:600px) 92vw, 480px');
+    img.src=a.src;
+    if(a.srcset){img.srcset=a.srcset;img.sizes=a.sizes} else img.removeAttribute('srcset');
+    img.dataset.full=path;
+    img.onerror=()=>{img.removeAttribute('srcset');img.src='images/hero/jayvi-products.webp'};
+  }
   document.querySelectorAll('.galleryThumbs button').forEach(x=>x.classList.remove('active'));
   btn?.classList.add('active');
 }
@@ -671,10 +700,11 @@ function comboMediaMarkup(c){
     : [c.image,...(c.items||[]).map(i=>getProduct(i.productId)?.image)].filter(Boolean).map(path=>({type:'image',path}));
   const unique=[...new Map(slidesSrc.map(m=>[m.path,m])).values()];
   const count=unique.length;
-  const slides=unique.map((m,i)=>m.type==='video'&&m.path
-    ? `<div class="comboSlide cardVideo"><video controls playsinline preload="metadata" poster="${escapeHtml(m.poster||'')}"><source src="${escapeHtml(m.path)}" type="video/mp4"></video><span class="mediaLabel">Video</span></div>`
-    : `<div class="comboSlide"><img src="${escapeHtml(m.path)}" alt="${escapeHtml(c.name)} image ${i+1}" loading="${i?'lazy':'eager'}"></div>`
-  ).join('');
+  const slides=unique.map((m,i)=>{
+    if(m.type==='video'&&m.path) return `<div class="comboSlide cardVideo"><video controls playsinline preload="metadata" poster="${escapeHtml(m.poster||'')}"><source src="${escapeHtml(m.path)}" type="video/mp4"></video><span class="mediaLabel">Video</span></div>`;
+    const a=responsiveImgAttrs(m.path,'(max-width:600px) 45vw, 280px');
+    return `<div class="comboSlide"><img src="${escapeHtml(a.src)}"${a.srcset?` srcset="${escapeHtml(a.srcset)}" sizes="${escapeHtml(a.sizes)}"`:''} alt="${escapeHtml(c.name)} image ${i+1}" loading="${i?'lazy':'eager'}" decoding="async"></div>`;
+  }).join('');
   const controls=count>1?`<span class="galleryCount">1 / ${count}</span>`:'';
   return `<div class="comboMediaScroller" data-count="${count}" aria-label="${escapeHtml(c.name)} images">${slides}</div>${controls}`;
 }
@@ -742,7 +772,7 @@ function renderMeal(){
   // section can never again block its siblings from re-rendering.
   const sellableRec = rec.filter(p=>getVariant(p,variantKey(p.id)));
   $('mealRecommendations').innerHTML=`<div class="mealIntro"><b>${escapeHtml(desc)}</b><span>${sellableRec.length} product${sellableRec.length===1?'':'s'}</span></div>
-    <div class="miniProducts">${sellableRec.map(p=>{const v=getVariant(p,variantKey(p.id));return `<button onclick="openProduct('${p.id}')"><div class="miniImg"><img src="${p.image}" alt=""></div><span>${escapeHtml(p.name)}</span><b>${money(v.price)}</b></button>`}).join('')||'<div class="empty">No matching products yet.</div>'}</div>`;
+    <div class="miniProducts">${sellableRec.map(p=>{const v=getVariant(p,variantKey(p.id));const a=responsiveImgAttrs(p.image,'64px');return `<button onclick="openProduct('${p.id}')"><div class="miniImg"><img src="${escapeHtml(a.src)}"${a.srcset?` srcset="${escapeHtml(a.srcset)}" sizes="${escapeHtml(a.sizes)}"`:''} loading="lazy" decoding="async" alt=""></div><span>${escapeHtml(p.name)}</span><b>${money(v.price)}</b></button>`}).join('')||'<div class="empty">No matching products yet.</div>'}</div>`;
 }
 function setMeal(m){meal=m;renderMeal()}
 
@@ -999,7 +1029,8 @@ function renderCart(){
   $('cartHint').textContent=t.sub&&t.ship?`Add ${money(t.remaining)} more for free delivery.`:'';
   $('cartItems').innerHTML=cart.length?cart.map(x=>{
     const d=cartItemDetails(x);
-    return `<div class="cartItem"><img src="${d.image}" alt=""><div><b>${escapeHtml(d.name)}</b><small>${escapeHtml(d.label)} · ${money(d.price)}</small>
+    const a=responsiveImgAttrs(d.image,'64px');
+    return `<div class="cartItem"><img src="${a.src}"${a.srcset?` srcset="${a.srcset}" sizes="${a.sizes}"`:''} loading="lazy" decoding="async" alt=""><div><b>${escapeHtml(d.name)}</b><small>${escapeHtml(d.label)} · ${money(d.price)}</small>
       <div class="qty"><button onclick="changeQty('${x.key}',-1)">−</button><span>${x.qty}</span><button onclick="changeQty('${x.key}',1)">+</button><button onclick="removeCart('${x.key}')">Remove</button></div></div></div>`;
   }).join(''):`<div class="emptyCart"><i class="fa-solid fa-bag-shopping"></i><h3>Your bag is empty</h3><p>Add a Jayvi favourite to get started.</p></div>`;
   updateMobileCartBar(count,t.total);
