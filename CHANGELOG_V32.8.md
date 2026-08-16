@@ -182,3 +182,145 @@ SQL shape — for both products and combos.
       `scripts/generate-product-image-variants.py` to get responsive
       variants, matching the new DEPLOY.md documentation.
 - [ ] No regression to cart, checkout, PIN validation, or orders.
+
+---
+
+# V32.8 — Round 2: Final UI Fixes / Mobile Admin Cleanup
+
+Targeted CSS/UI fixes only, on top of the V32.8 package above (already
+reviewed and approved with 3 clarifications). **Not touched:** product
+data architecture, Supabase product/media functionality, cart,
+checkout/payment, orders, PIN validation, authentication, the image
+optimization mechanism, or any other existing working functionality.
+No JS logic changed anywhere in this round — every fix below is
+CSS-only.
+
+## 1. Product card / gallery image shift on mobile — root cause found, fixed
+
+**It was not a container-resizing bug.** `.cardMediaFrame` (and
+`.comboImage`, `.productGallery .galleryMain`) already used a fixed
+`aspect-ratio` box, which reserves its space immediately regardless of
+when the image loads or what its native dimensions are — card heights
+were never actually changing.
+
+**What was actually happening:** the images inside used
+`object-fit:cover`, which fills the box completely by *cropping*
+whatever doesn't fit. Real product photos have real variance —
+checked directly:
+
+| File | Aspect ratio |
+|---|---|
+| `peanut/hero.webp` | 0.96 (near-square) |
+| `flaxseed/hero.webp` | 0.95 (near-square) |
+| `puffora/hero.webp` | 1.11 |
+| `pudi/hero.webp` | 1.25 |
+| `pudi/front.webp` | 1.50 (landscape) |
+
+In a fixed 1:1 square box, `pudi/front.webp` had roughly a third of its
+height cropped off (top+bottom) to fill the square, while
+`peanut/hero.webp` showed almost the entire photo. Different products
+were effectively showing different *crops* of their own photography —
+that inconsistency is what read as the image "shifting" while
+scrolling through a grid, not an actual layout/size change.
+
+**Fix:** switched `object-fit:cover` → `object-fit:contain` in
+`style.css` for:
+- `.cardMediaSlide img` / `.cardMediaSlide.cardVideo video` (product
+  grid cards)
+- `.comboMediaScroller img` (combo cards)
+- `.productGallery .galleryMain img` and `.galleryThumbs img` (product
+  detail gallery)
+
+The complete photo is now always visible, letterboxed on whichever
+axis is shorter against the existing `var(--surface-2)` background,
+never cropped. Container sizing (`aspect-ratio:1/1` / `16/10`) is
+unchanged — cards were already a fixed height; now the photo inside
+them is also fully, consistently visible.
+
+Not changed (out of scope, smaller/less prominent, not reported):
+`.miniImg` (meal-recommendation tiles), `.cartItem img`, admin's
+`.thumb img` (already `contain` since it was written).
+
+## 2. Homepage announcement cards overflowing on mobile (Admin) — root cause found, fixed
+
+**Root cause:** `.announcementAdmin article` shared one CSS rule with
+`.productAdminCard` / `.customerCard` / `.reviewAdmin article` —
+`display:flex;gap:16px` (a row layout). That rule makes sense for the
+other three because their markup wraps content into two clear columns
+(a fixed-width thumb + an info block, or a text block + an actions
+block). The announcement card's actual markup
+(`homepagePage()` in `admin.js`) has **no such wrapper** — it's five
+loose children directly in the row (`typeTag`, `h3`, `p`, `small`,
+`cardActions`), none constrained in width, which the row-flex laid out
+side by side with nothing to stop them overflowing a narrow viewport.
+
+**Fix (admin.css only):** `.announcementAdmin article` now stacks its
+children vertically (`flex-direction:column`) instead of sharing the
+row layout — there's no thumb here to justify a row in the first
+place, so this is correct at every width, not just mobile. Text now
+wraps naturally inside the full card width; the actions row gets its
+own top margin instead of fighting for horizontal space.
+
+**Desktop note:** this does change how announcement cards look on
+desktop too (stacked instead of the previous cramped row) — worth
+saying plainly since it's a genuine visual change, but it's the
+correct fix for a card style that never had a thumb to justify the row
+layout it was inheriting.
+
+## 3. Categories / Meal tags warning — re-verified again, confirmed still accurate, not removed
+
+Re-checked the actual architecture directly against the source, one
+more time, specifically to answer this request:
+- No `categories` or `meal_tags` table exists in any `.sql` file in
+  this project.
+- `saveCategory()` / `saveMealTag()` in `admin.js` write straight to
+  `data.categories` / `data.mealTags` in memory, then call `persist()`,
+  which does exactly one thing: `localStorage.setItem(...)`.
+- `app.js` (the storefront) never queries Supabase for categories or
+  meal tags anywhere — it reads them from `EMBEDDED_CONFIG`/whatever
+  `loadConfig()` resolved from `localStorage`.
+
+This is unchanged from the last two review rounds and remains
+factually accurate: Categories and Meal tags are still local-only. Per
+your own instruction ("do not simply hide the warning if these
+sections genuinely still require Git/JSON deployment"), **the warning
+was not removed.** No code or wording change in this round beyond what
+was already reworded in the previous round — an actual migration of
+these two sections to Supabase remains a separate, not-yet-requested
+piece of work.
+
+## Git files changed (Round 2)
+- `style.css` — `.cardMediaFrame` comment explaining the diagnosis;
+  `object-fit:cover`→`contain` on 4 selectors (card slides, combo
+  slides, gallery main, gallery thumbs)
+- `admin.css` — `.announcementAdmin article` given its own
+  `flex-direction:column` rule instead of sharing the thumb-oriented
+  row layout
+- `CHANGELOG_V32.8.md` — this section appended
+
+## Verification performed
+- [x] Confirmed real aspect-ratio variance across existing product
+      photos (table above) that would produce inconsistent cropping
+      under `cover` — this is what the fix addresses.
+- [x] Confirmed `.cardMediaFrame`/`.comboImage`/`.productGallery
+      .galleryMain` already reserve space via `aspect-ratio` — no
+      change was needed there; container-level shift was not the
+      actual bug.
+- [x] Confirmed the announcement card's actual DOM structure (5 loose
+      children, no wrapper) against the shared CSS rule, and confirmed
+      `.reviewAdmin article` avoids the same problem only because its
+      markup *does* wrap content in a div — this is why the fix is
+      scoped to `.announcementAdmin article` alone, not the shared rule.
+- [x] Re-verified, directly against source (no `categories`/`meal_tags`
+      table anywhere, `persist()` is `localStorage.setItem` only, and
+      `app.js` never fetches either from Supabase) that the Categories/
+      Meal tags warning remains accurate.
+- [x] `app.js`/`admin.js` re-validated for syntax (unchanged this
+      round); `style.css`/`admin.css` brace-balance checked.
+- [ ] **Still needs a real device/browser check on your side** (this
+      environment has no browser to render and screenshot against):
+      product cards for all 4 products + combo + gallery on an actual
+      mobile viewport, and the announcement cards page on both mobile
+      and desktop widths, to confirm the visual result matches this
+      description.
+
