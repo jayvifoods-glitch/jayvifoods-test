@@ -45,11 +45,13 @@ hardcoded in `EMBEDDED_CONFIG`/`CONFIG_FALLBACK`).
 - The storefront (`app.js`) reads products/combos/media from Supabase
   on every load, falling back to the embedded/local copy only if that
   fetch fails (e.g. offline), so the store never renders empty.
-- **The "PRODUCTION PROCEDURE" section immediately below this one
-  still applies to everything else** that remains local — store
-  settings, categories, meal tags, announcements, and reviews. Do not
-  apply the old products/combos steps below; they're superseded by the
-  paragraph above for those two sections only.
+- **The "PRODUCTION PROCEDURE" section immediately below this one is
+  now entirely historical** — as of V32.11, store settings,
+  announcements, and reviews (the last three things it ever applied
+  to) are also Supabase-backed. Nothing on this site requires that
+  procedure any more. It's kept below for historical reference only
+  (it documents real incidents/fixes from V32.5) — do not follow its
+  numbered steps for any current task.
 
 ---
 
@@ -182,6 +184,191 @@ to support that one rule.
 
 ---
 
+## ✅ V32.11 update — Store Settings, Announcements, and Reviews are now live in Supabase (final architecture)
+
+As of this release, `EMBEDDED_CONFIG`/`CONFIG_FALLBACK`/`jayviStoreV14`
+no longer hold any business data at all. Store settings (delivery,
+payments, contact, auth, misc + the 2 homepage hero fields), homepage
+announcements, and the curated "Google reviews" testimonials — the
+last three pieces that were still local — now live in three new
+Supabase tables: `store_settings` (a single row), `announcements`, and
+`curated_reviews`. Created by
+`supabase_migration_settings_announcements_reviews.sql`.
+
+This is the final architecture, with no more exceptions:
+
+```
+Git/GitHub
+  — Website/application code (app.js, admin.js, index.html, ...)
+  — Website hosting/deployment
+  — Product/combo images/videos (images/products/, images/combos/,
+    with the V32.7 responsive-image optimization pipeline)
+
+Supabase (SQL) — all business/customer/dynamic data
+  — Products, product media references, Combos
+  — Categories, Meal tags
+  — Store settings, Homepage announcements, curated Reviews
+  — Customer-submitted Reviews (website_reviews)
+  — Customers/accounts (Supabase Auth + profiles), Addresses
+  — Orders, order status history, order state machine
+  — Coupons, Pincodes/delivery, Social links, Notifications
+```
+
+**What this means in practice:** every one of the "Adding, editing, or
+deleting X in Admin is now live for every customer immediately, no Git
+sync, no redeploy" statements earlier in this file now applies to
+**every** piece of business data on the site, not just products/
+combos/categories/meal tags. `EMBEDDED_CONFIG`/`CONFIG_FALLBACK` still
+exist as source-code objects (for the offline/fetch-failure fallback
+described below) but hold no data an Admin is ever expected to edit
+through them again.
+
+**On-failure fallback, same principle as every prior migration:** if
+the Supabase fetch for settings/announcements/reviews fails for any
+reason, the storefront falls back to whatever `loadConfig()` already
+resolved from `EMBEDDED_CONFIG`/`localStorage`, so it never renders
+blank. This is a genuinely independent fetch from products/combos and
+from categories/meal tags — a failure in any one of the three has no
+effect on the other two.
+
+**Run before/during deploy:**
+```
+supabase_migration_settings_announcements_reviews.sql
+```
+Read the file's own header comment before re-running it later — the
+`store_settings` seed specifically uses `on conflict do nothing` (not
+`do update`), unlike every other seed in this project, precisely so a
+later re-run can never silently reset real settings an Admin has
+already changed.
+
+### Full audit — everything checked, two items explicitly flagged rather than migrated
+
+Every top-level key in `EMBEDDED_CONFIG`/`CONFIG_FALLBACK` was
+enumerated directly from source (not from memory) and accounted for:
+`products`, `combos` → Supabase since V32.6; `categories`, `mealTags`
+→ Supabase since V32.10; `store`, `homepage`, `announcements`,
+`reviews` → Supabase as of this release; `mealLabels` is a derived
+field (computed from `mealTags`), not real data. Nothing remains
+unaccounted for in either config object.
+
+Two things turned up in the broader sweep that are **explicitly not
+migrated** — flagged per the instruction to identify rather than
+silently act:
+
+1. **Cart (`jayviCartV14`) and Wishlist (`jayviWishlistV9`) —
+   still per-browser `localStorage`, deliberately not touched.**
+   These are architecturally different from everything else migrated
+   so far: they're pre-checkout, per-device, transient customer state
+   — not a persisted business record. The actual business record
+   (the Order) is already in Supabase the moment checkout completes;
+   cart/wishlist are what a shopper has before that point. Migrating
+   these to Supabase would be a materially larger, different kind of
+   change than every migration in this file so far — it would mean
+   either requiring login before adding to cart (a real UX change) or
+   building guest-session cart sync, real-time updates across tabs,
+   and conflict handling for concurrent edits. That's a genuinely new
+   feature, not a data-location change, and risks exactly the kind of
+   "unrelated refactoring" this release was scoped to avoid. **Left
+   as-is pending an explicit decision** on whether guest carts should
+   require an account, before any implementation is attempted.
+2. **Two hardcoded content dictionaries in code, not data:**
+   `MEAL_DESCRIPTIONS` (`app.js`) — one sentence of pairing copy per
+   meal tag, but only covers 4 of the 10 `meal_tags` that now exist in
+   Supabase (idli/dosa/chapati/rice; roti/paratha/poori/upma/vada/
+   curd-rice have no description at all, a pre-existing gap, not
+   something this release introduced) — and `WHATSAPP_STATUS_TEMPLATES`
+   (`admin.js`) — the wording of each order-status WhatsApp message.
+   Both are genuinely business-facing content an Admin might reasonably
+   want to edit without a code change, but turning either into an
+   editable Supabase-backed feature is new functionality (a template/
+   copy editor), not a data migration of something already
+   editable elsewhere. Flagged, not implemented, pending confirmation
+   this is actually wanted.
+
+**Confirmed correctly NOT flagged** (media, not business data, matches
+the architecture's own "Git = media" bucket): `images/gallery/
+manifest.json`, an auto-generated listing of decorative gallery images
+(see `generate-gallery-manifest.js`) — this is a directory listing for
+Git-managed media, not a business record, and correctly stays in Git
+under this architecture.
+
+---
+
+## ✅ V32.10 update — Categories and Meal tags are now live in Supabase too
+
+As of this release, **Categories and Meal tags are no longer part of
+the `jayviStoreV14` localStorage blob** either. They live in two new
+Supabase tables — `categories`, `meal_tags` — created by
+`supabase_migration_categories_meal_tags.sql` (run once in the
+Supabase SQL Editor; it also seeds the 4 categories / 10 meal tags
+that were previously hardcoded in `EMBEDDED_CONFIG`/`CONFIG_FALLBACK`).
+
+This completes the migration that started with Products/Combos in
+V32.6 — every piece of the product catalogue (products, product media,
+combos, categories, meal tags) is now centrally managed through
+Supabase. Only store settings, announcements, and reviews remain
+local/Git-managed (see the "PRODUCTION PROCEDURE" section immediately
+below, which now applies to just those three).
+
+**What this means in practice:**
+- Adding, editing, or deleting a category/meal tag in Admin is now
+  **live for every customer, on every device, immediately** — no Git
+  sync, no copying JSON, no redeploy. Both pages now show the same
+  green "Live for every customer, on every device" note Products/
+  Combos already showed.
+- The storefront (`app.js`) reads categories/meal tags from Supabase on
+  every load, via its own independent fetch — separate from the
+  products/combos fetch, so a failure in one can never affect the
+  other. On failure, it falls back to the embedded/local copy exactly
+  like products/combos already do, so the store never renders empty.
+- The "Local configuration" warning banner is gone from both pages —
+  it would no longer be true, and the code that rendered it
+  (`localCatalogWarning()`) has been removed from `admin.js` entirely.
+
+**Run before/during deploy:**
+```
+supabase_migration_categories_meal_tags.sql
+```
+Safe to run once on any project — see the migration file's own header
+comment for exactly what re-running it later does and doesn't affect
+(short version: it will not touch categories/meal tags with a
+different id than the 14 seeded ones, and will not touch products,
+combos, or any other data at all).
+
+**Final architecture, as of V32.10:**
+```
+Git/GitHub
+  — Website/application code (app.js, admin.js, index.html, ...)
+  — Website hosting/deployment
+  — Images/videos/media (images/products/, images/combos/, with the
+    V32.7 responsive-image optimization pipeline)
+
+Supabase (SQL)
+  — Products, product media references, Combos
+  — Categories, Meal tags
+  — Customers/accounts (Supabase Auth + profiles)
+  — Orders
+  — Coupons, pincodes/delivery, reviews (server-managed pieces),
+    notifications
+```
+Store settings, homepage announcements, and reviews (the storefront's
+own managed-review list, not the coupon/order-adjacent tables above)
+are the only pieces of "business configuration" still local/Git —
+everything else that's genuinely customer/business data now lives in
+Supabase.
+
+---
+
+## ⚠️ PRODUCTION PROCEDURE — Adding a product after launch (HISTORICAL — no longer applicable to any current task, kept for reference)
+
+**As of V32.11, every piece of business data on this site is
+Supabase-backed — this entire section describes a procedure that no
+longer applies to anything.** It's kept below unedited because it
+documents a real incident and fix from V32.5 (the schema-mismatch bug
+described further down), which is useful history, but do not follow
+its numbered steps for products, combos, categories, meal tags, store
+settings, announcements, or reviews — none of them need this any more.
+
 **Your understanding is 100% correct: Admin Save is not Publish.**
 There is no automatic path from Admin's "Save" to the live storefront
 in the current architecture. Below is the exact procedure — revised
@@ -204,7 +391,10 @@ hand-splicing just the new product into `EMBEDDED_CONFIG.products` (an
 earlier version of this document described exactly that) is genuinely
 unsafe — it can silently lose store settings, categories, combos, meal
 tags, or announcements that were only ever saved locally and never
-individually copied over. The fix is in the procedure, not in being
+individually copied over (historical note: this described the
+pre-V32.6/V32.10 state, when products/combos/categories/meal tags were
+all still local too — today only store settings/announcements/reviews
+are at risk here). The fix is in the procedure, not in being
 more careful about what to clear.
 
 ### Why the procedure changed (the risk you were right to flag)
@@ -285,11 +475,12 @@ guarantee rather than a one-time manual check that can go stale.
    do not continue with steps 1–6 until it passes, or the exact class
    of bug described above can happen again.
 1. In Admin (whichever browser), make all the changes you want to
-   publish in one sitting — add/edit products, and anything else
-   (categories, combos, meal tags, announcements, store settings) —
-   clicking Save as you go. Each Save writes the *entire* current
-   configuration to that browser's `localStorage` under
-   `jayviStoreV14`.
+   publish in one sitting — announcements, store settings (the only
+   things this procedure still applies to; products, combos,
+   categories, and meal tags are all Supabase-backed now and publish
+   immediately on Save, no procedure needed) — clicking Save as you
+   go. Each Save writes the *entire* current configuration to that
+   browser's `localStorage` under `jayviStoreV14`.
 2. When ready to publish, click the **"📋 Copy Full Catalogue JSON"**
    button — it's on every catalogue page in Admin (Products, Variants,
    Combos, Categories, Meal tags), inside the same warning banner that

@@ -423,29 +423,18 @@ const money=n=>'₹'+Number(n||0).toLocaleString('en-IN');
 // raw CONFIG_FALLBACK clone that skipped derivation entirely.
 function loadData(){try{const x=JSON.parse(localStorage.getItem(KEY)||'null');return mergeDefaults(x||{})}catch{return mergeDefaults({})}}
 function mergeDefaults(x){const d=structuredClone(CONFIG_FALLBACK);Object.keys(x||{}).forEach(k=>d[k]=x[k]);d.store={...CONFIG_FALLBACK.store,...(x.store||{})};d.homepage={...CONFIG_FALLBACK.homepage,...(x.homepage||{})};d.categories=x.categories||d.categories;d.products=x.products||d.products;d.combos=x.combos||d.combos;d.announcements=x.announcements||d.announcements;d.mealTags=x.mealTags||d.mealTags;d.mealLabels=Object.fromEntries((d.mealTags||[]).map(t=>[t.id,t.name]));d.reviews=x.reviews||d.reviews;return d}
-function persist(){localStorage.setItem(KEY,JSON.stringify(data));toast('Catalogue/settings saved to this browser. Per the agreed architecture, catalogue and store configuration stay Git-managed — sync this out to your repo when ready.')}
-// V32.5 (catalogue architecture clarification): a persistent, always-visible
-// banner — not a toast that fades — so Admin can't mistake "Save" on this
-// page for "published to the live storefront." Nothing about the
-// underlying architecture changes here: this only makes the existing
-// limitation impossible to miss. See FUTURE_product_catalog_migration.md
-// for the actual planned fix (a real central Supabase Product Master) —
-// deliberately not a localStorage sync workaround.
-// V32.9 (round 3 feedback): shortened per explicit request — the
-// previous version was accurate but read like deployment
-// documentation embedded in daily Admin UI (EMBEDDED_CONFIG/
-// CONFIG_FALLBACK/redeploy/clearing browser data). That mechanical
-// detail wasn't deleted, just relocated to where it belongs: the
-// "PRODUCTION PROCEDURE" section of DEPLOY.md already has it in full,
-// including the exact copy-JSON step. The "Copy Full Catalogue JSON"
-// button is removed from this everyday banner for the same reason —
-// it's a deployment action, not a routine Admin task — but the
-// underlying copyFullCatalogueJSON() function is untouched and still
-// callable (e.g. from the browser console) by whoever is actually
-// running the DEPLOY.md procedure.
-function localCatalogWarning(){
-  return `<div class="catalogWarning"><b>Local configuration</b><p>Categories and Meal tags are currently stored locally in this browser and are not yet centrally managed through Supabase. Changes made here will not automatically appear to other devices or customers.</p></div>`;
-}
+function persist(){localStorage.setItem(KEY,JSON.stringify(data));toast('Settings saved to this browser. This applies to store settings, announcements, and reviews only — Products, Combos, Categories, and Meal tags are all stored centrally in Supabase and update live for every customer immediately.')}
+// V32.10: localCatalogWarning() (the "Local configuration" banner
+// previously shown on Categories/Meal tags) has been removed — both
+// are now Supabase-backed, same as Products/Combos, so the banner's
+// premise is no longer true. See liveCatalogNote() below, now also
+// used on those two pages. mergeDefaults() above still keeps
+// CONFIG_FALLBACK.categories/mealTags as a same-session fallback
+// display value only, exactly like it already does for
+// CONFIG_FALLBACK.products/combos — the moment fetchCategories()/
+// fetchMealTags() run (i.e. the instant either page is opened),
+// data.categories/data.mealTags are overwritten with the live
+// Supabase rows.
 function toast(t){const x=document.getElementById('toast');x.textContent=t;x.classList.add('show');setTimeout(()=>x.classList.remove('show'),2300)}
 async function logout(){await sb.auth.signOut();location.href='index.html'}
 
@@ -512,6 +501,123 @@ async function fetchCombos(){
   combos.forEach(c=>{c.image=c.media[0]?.path||''});
   data.combos=combos;
   return combos;
+}
+// V32.10: Categories and Meal tags now come from Supabase, same
+// pattern as products/combos above — fetch-into-data.*, save via
+// upsert, delete via a real row delete. This closes the last two
+// pieces of the catalogue that were still per-browser localStorage.
+async function fetchCategories(){
+  const {data:rows,error}=await sb.from('categories').select('*').order('display_order',{ascending:true});
+  if(error){ toast('Could not load categories: '+error.message); return []; }
+  const categories=(rows||[]).map(c=>({id:c.id, name:c.name||'', enabled:c.enabled, order:c.display_order||0}));
+  data.categories=categories;
+  return categories;
+}
+async function saveCategoryToSupabase(c){
+  const {error}=await sb.from('categories').upsert({id:c.id, name:c.name, enabled:c.enabled, display_order:c.order});
+  if(error){ toast('Could not save category: '+error.message); return false; }
+  return true;
+}
+async function fetchMealTags(){
+  const {data:rows,error}=await sb.from('meal_tags').select('*').order('display_order',{ascending:true});
+  if(error){ toast('Could not load meal tags: '+error.message); return []; }
+  const mealTags=(rows||[]).map(t=>({id:t.id, name:t.name||'', enabled:t.enabled, order:t.display_order||0}));
+  data.mealTags=mealTags;
+  data.mealLabels=Object.fromEntries(mealTags.map(x=>[x.id,x.name]));
+  return mealTags;
+}
+async function saveMealTagToSupabase(t){
+  const {error}=await sb.from('meal_tags').upsert({id:t.id, name:t.name, enabled:t.enabled, display_order:t.order});
+  if(error){ toast('Could not save meal tag: '+error.message); return false; }
+  return true;
+}
+async function deleteMealTagFromSupabase(id){
+  const {error}=await sb.from('meal_tags').delete().eq('id',id);
+  if(error){ toast('Could not delete meal tag: '+error.message); return false; }
+  return true;
+}
+// V32.11: Store settings, Announcements, and curated ("Google")
+// Reviews now come from Supabase too — the last three pieces of
+// business data that were still local. Same fetch-into-data.*/
+// upsert/delete pattern as everything else above.
+const STORE_FIELD_MAP = {
+  name:'name', tagline:'tagline', country:'country',
+  freeShippingThreshold:'free_shipping_threshold', shippingFlat:'shipping_flat',
+  deliveryMinDays:'delivery_min_days', deliveryMaxDays:'delivery_max_days',
+  vacationMode:'vacation_mode', vacationMessage:'vacation_message',
+  googleMapsApiKey:'google_maps_api_key', googleReviewsUrl:'google_reviews_url',
+  whatsapp:'whatsapp', instagram:'instagram',
+  razorpayKeyId:'razorpay_key_id', razorpayEnabled:'razorpay_enabled',
+  upiEnabled:'upi_enabled', codEnabled:'cod_enabled', otpEnabled:'otp_enabled',
+  upiId:'upi_id', upiName:'upi_name', upiQrImage:'upi_qr_image',
+  paymentNote:'payment_note', refundBusinessDays:'refund_business_days',
+  announcementSpeed:'announcement_speed', homepageReviewCount:'homepage_review_count',
+  deliveryMode:'delivery_mode', paymentMode:'payment_mode', otpProvider:'otp_provider'
+};
+async function fetchStoreSettings(){
+  const {data:row,error}=await sb.from('store_settings').select('*').eq('id','default').single();
+  if(error){ toast('Could not load store settings: '+error.message); return; }
+  if(!row) return;
+  const store={};
+  Object.entries(STORE_FIELD_MAP).forEach(([jsKey,dbKey])=>{ store[jsKey]=row[dbKey]; });
+  data.store=store;
+  data.homepage={heroAutoplay:row.hero_autoplay, heroSeconds:row.hero_seconds};
+}
+// Writes the CURRENT full data.store/data.homepage object back to the
+// single settings row — every one of the 5 settings save functions
+// below calls this after mutating its own subset of fields on the same
+// shared in-memory object, so nothing else already saved is clobbered.
+async function saveStoreSettingsToSupabase(){
+  const row={id:'default', hero_autoplay:!!data.homepage.heroAutoplay, hero_seconds:Number(data.homepage.heroSeconds)||5};
+  Object.entries(STORE_FIELD_MAP).forEach(([jsKey,dbKey])=>{ row[dbKey]=data.store[jsKey]; });
+  const {error}=await sb.from('store_settings').upsert(row);
+  if(error){ toast('Could not save settings: '+error.message); return false; }
+  return true;
+}
+async function fetchAnnouncements(){
+  const {data:rows,error}=await sb.from('announcements').select('*').order('display_order',{ascending:true});
+  if(error){ toast('Could not load announcements: '+error.message); return []; }
+  const announcements=(rows||[]).map(a=>({
+    id:a.id, label:a.label||'', title:a.title||'', em:a.em||'', text:a.text||'',
+    image:a.image||'', showPrice:a.show_price, actionType:a.action_type||'product', actionTarget:a.action_target||'',
+    productId:a.product_id||'', comboId:a.combo_id||'', active:a.active, order:a.display_order||0
+  }));
+  data.announcements=announcements;
+  return announcements;
+}
+async function saveAnnouncementToSupabase(a){
+  const {error}=await sb.from('announcements').upsert({
+    id:a.id, label:a.label, title:a.title, em:a.em, text:a.text, image:a.image||'',
+    show_price:a.showPrice!==false, action_type:a.actionType, action_target:a.actionTarget,
+    product_id:a.productId||null, combo_id:a.comboId||null, active:a.active, display_order:a.order
+  });
+  if(error){ toast('Could not save announcement: '+error.message); return false; }
+  return true;
+}
+async function fetchCuratedReviews(){
+  const {data:rows,error}=await sb.from('curated_reviews').select('*').order('display_order',{ascending:true});
+  if(error){ toast('Could not load reviews: '+error.message); return []; }
+  const reviews=(rows||[]).map(r=>({
+    id:r.id, source:r.source||'Google', name:r.name||'', rating:r.rating||5, text:r.text||'',
+    productId:r.product_id||'', active:r.active, verifiedPurchase:r.verified_purchase, order:r.display_order||0
+  }));
+  data.reviews=reviews;
+  return reviews;
+}
+async function saveCuratedReviewToSupabase(r){
+  const row={
+    source:r.source, name:r.name, rating:r.rating, text:r.text,
+    product_id:r.productId||null, active:r.active, verified_purchase:r.verifiedPurchase, display_order:r.order||0
+  };
+  if(r.id) row.id=r.id;
+  const {error}=await sb.from('curated_reviews').upsert(row);
+  if(error){ toast('Could not save review: '+error.message); return false; }
+  return true;
+}
+async function deleteCuratedReviewFromSupabase(id){
+  const {error}=await sb.from('curated_reviews').delete().eq('id',id);
+  if(error){ toast('Could not delete review: '+error.message); return false; }
+  return true;
 }
 // Upserts a product row + fully replaces its product_media rows from
 // the given media draft array (simplest safe way to persist reordering
@@ -615,14 +721,14 @@ async function render(){title.textContent=tab==='variants'?'Variants & sizes':ta
  if(tab==='products')h=await productsPage();
  if(tab==='variants')h=await variantsPage();
  if(tab==='combos')h=await combosPage();
- if(tab==='categories')h=categoriesPage();
- if(tab==='mealtags')h=mealTagsPage();
- if(tab==='homepage')h=homepagePage();
+ if(tab==='categories')h=await categoriesPage();
+ if(tab==='mealtags')h=await mealTagsPage();
+ if(tab==='homepage')h=await homepagePage();
  if(tab==='pincodes')h=await pincodesPage();
  if(tab==='coupons')h=await couponsPage();
  if(tab==='social')h=await socialLinksPage();
  if(tab==='reviews')h=await reviewsPage();
- if(tab==='settings')h=settingsPage();
+ if(tab==='settings')h=await settingsPage();
  app.innerHTML=h;
 }
 // V32.6 (item 11): one single, documented definition of "counts as a
@@ -637,6 +743,7 @@ const REVENUE_ORDER_STATUSES = ['Order Confirmed','Preparing','Packed & Shipped'
 const isRevenueOrder = o => REVENUE_ORDER_STATUSES.includes(o.status);
 async function dashboard(){
   const os=await fetchOrders(), cs=await fetchCustomers();
+  await fetchStoreSettings();
   const today=new Date().toLocaleDateString('en-IN');
   const todayOrders=os.filter(o=>new Date(o.created_at).toLocaleDateString('en-IN')===today);
   const sales=os.filter(isRevenueOrder).reduce((s,o)=>s+Number(o.total||0),0);
@@ -655,6 +762,7 @@ async function ordersPage(){
 async function orderView(orderNumber){
   const o = await fetchOrder(orderNumber);
   if(!o){ toast('Order not found'); return; }
+  await fetchStoreSettings();
   const timeline=(o.history||[]).map(t=>`<div class="timelineItem"><b>${esc(t.status)}</b><small>${new Date(t.created_at).toLocaleString('en-IN')} · ${esc(t.actor||'system')}</small>${t.note?` — ${esc(t.note)}`:''}</div>`).join('');
   // V: only offer statuses the transition table actually allows from
   // this order's current status — never show an option that would be
@@ -853,7 +961,7 @@ async function promptResetPassword(phone){
 }
 
 async function productsPage(){
- await fetchProducts();
+ await fetchProducts(); await fetchCategories(); await fetchMealTags();
  return `<section class="panel">${liveCatalogNote()}<div class="panelHead"><div><h2>Products</h2><p>Product catalogue, merchandising, multiple categories and media — stored in Supabase.</p></div><button class="gold" onclick="productForm()">+ Add product</button></div><div class="productAdminGrid">${data.products.map(p=>`<article class="productAdminCard"><div class="thumb"><img src="${esc(p.image||'')}" alt=""></div><div class="productInfo"><span class="typeTag">${p.best?'BESTSELLER':'PRODUCT'}</span><h3>${esc(p.name)}</h3><p>${esc(p.short||'')}</p><small>${(p.categories?.length?p.categories:[p.category]).map(catName).join(' · ')} · ${p.variants?.length||0} variants · ${p.media?.length||0} media</small><div class="cardActions"><button class="outline" onclick="productForm('${esc(p.id)}')">Edit</button><button class="outline dangerBtn" onclick="deleteProduct('${esc(p.id)}')">Delete</button></div></div></article>`).join('')}</div></section>`;
 }
 function productForm(id=null){
@@ -963,20 +1071,45 @@ function deleteCombo(id){
    render();
  });
 }
-function mealTagsPage(){
- return `<section class="panel">${localCatalogWarning()}<div class="panelHead"><div><h2>Meal tags</h2><p>Manage the meals shown in product setup and the storefront's “Made for every meal” recommendations.</p></div><button class="gold" onclick="mealTagForm()">+ Add meal tag</button></div>
+async function mealTagsPage(){
+ await fetchMealTags();
+ return `<section class="panel">${liveCatalogNote()}<div class="panelHead"><div><h2>Meal tags</h2><p>Manage the meals shown in product setup and the storefront's "Made for every meal" recommendations.</p></div><button class="gold" onclick="mealTagForm()">+ Add meal tag</button></div>
  <div class="categoryTable">${(data.mealTags||[]).sort((a,b)=>(a.order||0)-(b.order||0)).map((t,i)=>`<div class="categoryRow"><span><b>${esc(t.name)}</b><small>ID: ${esc(t.id)}</small></span><strong>${t.order||i+1}</strong><span class="${t.enabled?'good':'danger'}">${t.enabled?'VISIBLE':'HIDDEN'}</span><button class="outline" onclick="mealTagForm(${i})">Edit</button><button class="outline dangerBtn" onclick="deleteMealTag(${i})">Delete</button></div>`).join('')}</div></section>`;
 }
 function mealTagForm(index=-1){
  const t=index>=0?data.mealTags[index]:{id:'',name:'',enabled:true,order:data.mealTags.length+1};
- openModal(`<div class="eyebrow">MEAL TAG</div><h2>${index<0?'Add meal tag':'Edit meal tag'}</h2><div class="formGrid"><label>ID<input id="mtId" value="${esc(t.id)}"></label><label>Name<input id="mtName" value="${esc(t.name)}"></label><label>Display position<input id="mtOrder" type="number" value="${t.order||1}"></label></div><label class="checkOnly"><input id="mtEnabled" type="checkbox" ${t.enabled?'checked':''}> Visible</label><button class="gold full" onclick="saveMealTag(${index})">Save meal tag</button>`);
+ openModal(`<div class="eyebrow">MEAL TAG</div><h2>${index<0?'Add meal tag':'Edit meal tag'}</h2><div class="formGrid"><label>ID<input id="mtId" value="${esc(t.id)}" ${index>=0?'disabled':''}></label><label>Name<input id="mtName" value="${esc(t.name)}"></label><label>Display position<input id="mtOrder" type="number" value="${t.order||1}"></label></div><label class="checkOnly"><input id="mtEnabled" type="checkbox" ${t.enabled?'checked':''}> Visible</label><button class="gold full" onclick="saveMealTag(${index})">Save meal tag</button>`);
 }
-function saveMealTag(i){const t={id:document.getElementById('mtId').value.trim(),name:document.getElementById('mtName').value.trim(),order:Number(document.getElementById('mtOrder').value||1),enabled:document.getElementById('mtEnabled').checked};if(!t.id||!t.name){toast('ID and name are required');return}if(i<0)data.mealTags.push(t);else data.mealTags[i]=t;data.mealLabels=Object.fromEntries(data.mealTags.map(x=>[x.id,x.name]));persist();closeModal();render()}
-function deleteMealTag(i){const id=data.mealTags[i]?.id;if(data.products.some(p=>(p.mealTags||[]).includes(id))){toast('Remove this tag from products before deleting it');return}if(confirm('Delete this meal tag?')){data.mealTags.splice(i,1);data.mealLabels=Object.fromEntries(data.mealTags.map(x=>[x.id,x.name]));persist();render()}}
-function categoriesPage(){return `<section class="panel">${localCatalogWarning()}<div class="panelHead"><div><h2>Categories</h2><p>Display position controls ordering. “Orders” is not used here.</p></div><button class="gold" onclick="categoryForm()">+ Add category</button></div><div class="categoryTable">${data.categories.map((c,i)=>`<div class="categoryRow"><span><b>${esc(c.name)}</b><small>ID: ${esc(c.id)}</small></span><strong>${c.order||i+1}</strong><span class="${c.enabled?'good':'danger'}">${c.enabled?'VISIBLE':'HIDDEN'}</span><button class="outline" onclick="categoryForm(${i})">Edit</button></div>`).join('')}</div></section>`}
-function categoryForm(index=-1){const c=index>=0?data.categories[index]:{id:'',name:'',enabled:true,order:data.categories.length+1};openModal(`<div class="eyebrow">CATEGORY</div><h2>${index<0?'Add category':'Edit category'}</h2><div class="formGrid"><label>ID<input id="catId" value="${esc(c.id)}"></label><label>Name<input id="catName" value="${esc(c.name)}"></label><label>Display position<input id="catOrder" type="number" value="${c.order||1}"></label></div><label class="checkOnly"><input id="catEnabled" type="checkbox" ${c.enabled?'checked':''}> Visible on storefront</label><button class="gold full" onclick="saveCategory(${index})">Save category</button>`)}
-function saveCategory(i){const c={id:document.getElementById('catId').value.trim(),name:document.getElementById('catName').value.trim(),order:Number(document.getElementById('catOrder').value||1),enabled:document.getElementById('catEnabled').checked};if(!c.id||!c.name){toast('Category ID and name are required');return}if(i<0)data.categories.push(c);else data.categories[i]=c;persist();closeModal();render()}
-function homepagePage(){return `<section class="panel"><div class="panelHead"><div><h2>Homepage announcements</h2><p>Each slide has an explicit click action. The target is selected based on the action instead of entering a hidden URL target.</p></div><button class="gold" onclick="announcementForm()">+ Add announcement</button></div><div class="announcementAdmin">${data.announcements.sort((a,b)=>(a.order||0)-(b.order||0)).map((s,i)=>`<article><div class="announcementInfo"><span class="typeTag">${esc(s.label||'ANNOUNCEMENT')}</span><h3>${esc(s.title||'')}</h3><p>${esc(s.text||'')}</p><small>Action: ${esc(s.actionType|| (s.productId?'Open product':s.comboId?'Open combo':'Shop'))}</small></div><div class="cardActions"><button class="outline" onclick="announcementForm(${i})">Edit</button></div></article>`).join('')}</div></section>`}
+async function saveMealTag(i){
+  const existingId=i>=0?data.mealTags[i].id:null;
+  const t={id:existingId||document.getElementById('mtId').value.trim(),name:document.getElementById('mtName').value.trim(),order:Number(document.getElementById('mtOrder').value||1),enabled:document.getElementById('mtEnabled').checked};
+  if(!t.id||!t.name){toast('ID and name are required');return}
+  const ok=await saveMealTagToSupabase(t);
+  if(!ok)return;
+  closeModal();render();
+}
+async function deleteMealTag(i){
+  const id=data.mealTags[i]?.id;
+  if(data.products.some(p=>(p.mealTags||[]).includes(id))){toast('Remove this tag from products before deleting it');return}
+  if(!confirm('Delete this meal tag?'))return;
+  const ok=await deleteMealTagFromSupabase(id);
+  if(!ok)return;
+  render();
+}
+async function categoriesPage(){
+ await fetchCategories();
+ return `<section class="panel">${liveCatalogNote()}<div class="panelHead"><div><h2>Categories</h2><p>Display position controls ordering. "Orders" is not used here.</p></div><button class="gold" onclick="categoryForm()">+ Add category</button></div><div class="categoryTable">${data.categories.map((c,i)=>`<div class="categoryRow"><span><b>${esc(c.name)}</b><small>ID: ${esc(c.id)}</small></span><strong>${c.order||i+1}</strong><span class="${c.enabled?'good':'danger'}">${c.enabled?'VISIBLE':'HIDDEN'}</span><button class="outline" onclick="categoryForm(${i})">Edit</button></div>`).join('')}</div></section>`;
+}
+function categoryForm(index=-1){const c=index>=0?data.categories[index]:{id:'',name:'',enabled:true,order:data.categories.length+1};openModal(`<div class="eyebrow">CATEGORY</div><h2>${index<0?'Add category':'Edit category'}</h2><div class="formGrid"><label>ID<input id="catId" value="${esc(c.id)}" ${index>=0?'disabled':''}></label><label>Name<input id="catName" value="${esc(c.name)}"></label><label>Display position<input id="catOrder" type="number" value="${c.order||1}"></label></div><label class="checkOnly"><input id="catEnabled" type="checkbox" ${c.enabled?'checked':''}> Visible on storefront</label><button class="gold full" onclick="saveCategory(${index})">Save category</button>`)}
+async function saveCategory(i){
+  const existingId=i>=0?data.categories[i].id:null;
+  const c={id:existingId||document.getElementById('catId').value.trim(),name:document.getElementById('catName').value.trim(),order:Number(document.getElementById('catOrder').value||1),enabled:document.getElementById('catEnabled').checked};
+  if(!c.id||!c.name){toast('Category ID and name are required');return}
+  const ok=await saveCategoryToSupabase(c);
+  if(!ok)return;
+  closeModal();render();
+}
+async function homepagePage(){await fetchAnnouncements();return `<section class="panel">${liveCatalogNote()}<div class="panelHead"><div><h2>Homepage announcements</h2><p>Each slide has an explicit click action. The target is selected based on the action instead of entering a hidden URL target.</p></div><button class="gold" onclick="announcementForm()">+ Add announcement</button></div><div class="announcementAdmin">${data.announcements.sort((a,b)=>(a.order||0)-(b.order||0)).map((s,i)=>`<article><div class="announcementInfo"><span class="typeTag">${esc(s.label||'ANNOUNCEMENT')}</span><h3>${esc(s.title||'')}</h3><p>${esc(s.text||'')}</p><small>Action: ${esc(s.actionType|| (s.productId?'Open product':s.comboId?'Open combo':'Shop'))}</small></div><div class="cardActions"><button class="outline" onclick="announcementForm(${i})">Edit</button></div></article>`).join('')}</div></section>`}
 function announcementForm(index=-1){const s=index>=0?data.announcements[index]:{id:'',label:'',title:'',em:'',text:'',actionType:'product',actionTarget:'',active:true,order:data.announcements.length+1};openModal(`<div class="eyebrow">HOMEPAGE ANNOUNCEMENT</div><h2>${index<0?'Add announcement':'Edit announcement'}</h2><div class="formGrid"><label>Label<input id="aLabel" value="${esc(s.label)}"></label><label>Title<input id="aTitle" value="${esc(s.title)}"></label><label>Emphasis<input id="aEm" value="${esc(s.em)}"></label><label>Display position<input id="aOrder" type="number" value="${s.order||1}"></label><label class="fullLabel">Message<textarea id="aText" rows="3">${esc(s.text||'')}</textarea></label><label>Click action<select id="aAction" onchange="renderAnnouncementTarget()"><option value="product" ${s.actionType==='product'?'selected':''}>Open product</option><option value="combo" ${s.actionType==='combo'?'selected':''}>Open combo</option><option value="shop" ${s.actionType==='shop'?'selected':''}>Open Shop</option><option value="reviews" ${s.actionType==='reviews'?'selected':''}>Open Reviews</option><option value="url" ${s.actionType==='url'?'selected':''}>Open external link</option></select></label><div id="aTargetWrap"></div></div><label class="checkOnly"><input id="aActive" type="checkbox" ${s.active?'checked':''}> Active</label><button class="gold full" onclick="saveAnnouncement(${index})">Save announcement</button>`);window._announcementDraft=s;renderAnnouncementTarget()}
 function renderAnnouncementTarget(){const type=document.getElementById('aAction')?.value, s=window._announcementDraft||{};let h='';if(type==='product')h=`<label>Product<select id="aTarget">${data.products.map(p=>`<option value="${p.id}" ${(s.productId||s.actionTarget)===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>`;else if(type==='combo')h=`<label>Combo<select id="aTarget">${data.combos.map(c=>`<option value="${c.id}" ${(s.comboId||s.actionTarget)===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label>`;else if(type==='url')h=`<label>External URL<input id="aTarget" value="${esc(s.actionTarget||'')}" placeholder="https://..."></label>`;document.getElementById('aTargetWrap').innerHTML=h}
 function saveAnnouncement(i){const type=document.getElementById('aAction').value,target=document.getElementById('aTarget')?.value||'';const s={id:document.getElementById('aId')?.value||('ann-'+Date.now().toString(36)),label:document.getElementById('aLabel').value.trim(),title:document.getElementById('aTitle').value.trim(),em:document.getElementById('aEm').value.trim(),text:document.getElementById('aText').value.trim(),actionType:type,actionTarget:target,productId:type==='product'?target:'',comboId:type==='combo'?target:'',active:document.getElementById('aActive').checked,order:Number(document.getElementById('aOrder').value||1)};if(i<0)data.announcements.push(s);else data.announcements[i]=s;persist();closeModal();render()}
@@ -998,6 +1131,7 @@ async function fetchWebsiteReviews(reset=true){
 }
 async function reviewsPage(){
   const {rows, count} = await fetchWebsiteReviews(true);
+  await fetchCuratedReviews();
   const counts = {};
   for(const s of ['pending','approved','rejected']){
     const {count:c} = await sb.from('website_reviews').select('id',{count:'exact',head:true}).eq('status',s);
@@ -1042,9 +1176,25 @@ async function toggleReviewFeatured(id,featured){
   render();
 }
 function reviewForm(i=-1){const r=i>=0?data.reviews[i]:{source:'Google',name:'',rating:5,text:'',active:true,verifiedPurchase:false};openModal(`<div class="eyebrow">REVIEW</div><h2>${i<0?'Add Google review':'Edit review'}</h2><div class="formGrid"><label>Source<select id="rSource"><option value="Google" ${r.source==='Google'?'selected':''}>Google</option><option value="customer" ${r.source==='customer'?'selected':''}>Customer</option></select></label><label>Customer name<input id="rName" value="${esc(r.name)}"></label><label>Rating<select id="rRating">${[1,2,3,4,5].map(n=>`<option ${n===Number(r.rating)?'selected':''}>${n}</option>`).join('')}</select></label><label>Product (optional)<select id="rProduct"><option value="">General review</option>${data.products.map(p=>`<option value="${p.id}" ${r.productId===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label><label class="fullLabel">Review text<textarea id="rText" rows="5">${esc(r.text)}</textarea></label></div><label class="checkOnly"><input id="rActive" type="checkbox" ${r.active?'checked':''}> Published</label><label class="checkOnly"><input id="rVerified" type="checkbox" ${r.verifiedPurchase?'checked':''}> Verified purchase</label><button class="gold full" onclick="saveReview(${i})">Save review</button>`)}
-function saveReview(i){const r={source:document.getElementById('rSource').value,name:document.getElementById('rName').value.trim(),rating:Number(document.getElementById('rRating').value),text:document.getElementById('rText').value.trim(),productId:document.getElementById('rProduct').value,active:document.getElementById('rActive').checked,verifiedPurchase:document.getElementById('rVerified').checked};if(!r.name||!r.text){toast('Name and review text are required');return}if(i<0)data.reviews.push(r);else data.reviews[i]=r;persist();closeModal();render()}
-function toggleReview(i){data.reviews[i].active=!data.reviews[i].active;persist();render()}
-function deleteReview(i){if(confirm('Delete this review?')){data.reviews.splice(i,1);persist();render()}}
+async function saveReview(i){
+  const r={id:i>=0?data.reviews[i].id:undefined,source:document.getElementById('rSource').value,name:document.getElementById('rName').value.trim(),rating:Number(document.getElementById('rRating').value),text:document.getElementById('rText').value.trim(),productId:document.getElementById('rProduct').value,active:document.getElementById('rActive').checked,verifiedPurchase:document.getElementById('rVerified').checked,order:i>=0?data.reviews[i].order:data.reviews.length+1};
+  if(!r.name||!r.text){toast('Name and review text are required');return}
+  const ok=await saveCuratedReviewToSupabase(r);
+  if(!ok)return;
+  closeModal();render();
+}
+async function toggleReview(i){
+  const r=data.reviews[i];
+  const ok=await saveCuratedReviewToSupabase({...r,active:!r.active});
+  if(!ok)return;
+  render();
+}
+async function deleteReview(i){
+  if(!confirm('Delete this review?'))return;
+  const ok=await deleteCuratedReviewFromSupabase(data.reviews[i].id);
+  if(!ok)return;
+  render();
+}
 /* ---------- Delivery / Pincode management (item B) ---------- */
 let _expandedState = null, _pincodeSearch = '', _pincodeOffset = 0;
 const PINCODE_PAGE_SIZE = 100;
@@ -1478,7 +1628,8 @@ async function confirmImportPincodes(){
   render();
 }
 
-function settingsPage(){
+async function settingsPage(){
+ await fetchStoreSettings();
  const s=data.store;
  return `<section class="settingsGrid">
  <article class="settingCard"><span class="typeTag">STORE OPERATIONS</span><h2>Ordering</h2>
@@ -1511,11 +1662,11 @@ function settingsPage(){
  <label>WhatsApp number<input id="setWhatsApp" value="${esc(s.whatsapp||'')}"></label><label>Instagram URL<input id="setInstagram" value="${esc(s.instagram||'')}"></label><button class="gold full" onclick="saveContactSettings()">Save contact settings</button></article>
  </section>`;
 }
-function saveStoreOperations(){data.store.vacationMode=document.getElementById('setVacation').checked;data.store.deliveryMode=document.getElementById('setDeliveryEnabled').checked?'india':'disabled';data.store.vacationMessage=document.getElementById('setVacationMsg').value.trim();data.store.deliveryMinDays=Number(document.getElementById('setMin').value||4);data.store.deliveryMaxDays=Number(document.getElementById('setMax').value||8);data.store.freeShippingThreshold=Number(document.getElementById('setFree').value||599);data.store.shippingFlat=Number(document.getElementById('setShip').value||49);data.store.refundBusinessDays=Number(document.getElementById('setRefundDays').value||4);data.store.announcementSpeed=document.getElementById('setAnnouncementSpeed').value;data.store.homepageReviewCount=Number(document.getElementById('setReviewCount').value||6);persist();render()}
-function savePayments(){data.store.upiEnabled=document.getElementById('setUpi').checked;data.store.codEnabled=document.getElementById('setCod').checked;data.store.razorpayEnabled=document.getElementById('setRazor').checked;data.store.upiId=document.getElementById('setUpiId').value.trim();data.store.upiName=document.getElementById('setUpiName').value.trim();data.store.upiQrImage=document.getElementById('setQr').value.trim();data.store.razorpayKeyId=document.getElementById('setRzp').value.trim();persist();render()}
-function saveAuth(){data.store.otpEnabled=document.getElementById('setOtp').checked;data.store.otpProvider=document.getElementById('setOtpProvider').value.trim()||'Not configured';persist();render()}
-function saveLocationSettings(){data.store.googleMapsApiKey=document.getElementById('setMaps').value.trim();data.store.googleReviewsUrl=document.getElementById('setGoogleReviews').value.trim();persist();render()}
-function saveContactSettings(){data.store.whatsapp=document.getElementById('setWhatsApp').value.trim();data.store.instagram=document.getElementById('setInstagram').value.trim();persist();render()}
+async function saveStoreOperations(){data.store.vacationMode=document.getElementById('setVacation').checked;data.store.deliveryMode=document.getElementById('setDeliveryEnabled').checked?'india':'disabled';data.store.vacationMessage=document.getElementById('setVacationMsg').value.trim();data.store.deliveryMinDays=Number(document.getElementById('setMin').value||4);data.store.deliveryMaxDays=Number(document.getElementById('setMax').value||8);data.store.freeShippingThreshold=Number(document.getElementById('setFree').value||599);data.store.shippingFlat=Number(document.getElementById('setShip').value||49);data.store.refundBusinessDays=Number(document.getElementById('setRefundDays').value||4);data.store.announcementSpeed=document.getElementById('setAnnouncementSpeed').value;data.store.homepageReviewCount=Number(document.getElementById('setReviewCount').value||6);const ok=await saveStoreSettingsToSupabase();if(!ok)return;render()}
+async function savePayments(){data.store.upiEnabled=document.getElementById('setUpi').checked;data.store.codEnabled=document.getElementById('setCod').checked;data.store.razorpayEnabled=document.getElementById('setRazor').checked;data.store.upiId=document.getElementById('setUpiId').value.trim();data.store.upiName=document.getElementById('setUpiName').value.trim();data.store.upiQrImage=document.getElementById('setQr').value.trim();data.store.razorpayKeyId=document.getElementById('setRzp').value.trim();const ok=await saveStoreSettingsToSupabase();if(!ok)return;render()}
+async function saveAuth(){data.store.otpEnabled=document.getElementById('setOtp').checked;data.store.otpProvider=document.getElementById('setOtpProvider').value.trim()||'Not configured';const ok=await saveStoreSettingsToSupabase();if(!ok)return;render()}
+async function saveLocationSettings(){data.store.googleMapsApiKey=document.getElementById('setMaps').value.trim();data.store.googleReviewsUrl=document.getElementById('setGoogleReviews').value.trim();const ok=await saveStoreSettingsToSupabase();if(!ok)return;render()}
+async function saveContactSettings(){data.store.whatsapp=document.getElementById('setWhatsApp').value.trim();data.store.instagram=document.getElementById('setInstagram').value.trim();const ok=await saveStoreSettingsToSupabase();if(!ok)return;render()}
 function openModal(html){document.getElementById('modalBody').innerHTML=html;document.getElementById('modal').classList.add('open')}
 function closeModal(){document.getElementById('modal').classList.remove('open')}
 document.getElementById('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal()});
@@ -1568,7 +1719,7 @@ window.announcementForm=function(index=-1){
  openModal(`<div class="eyebrow">HOMEPAGE ANNOUNCEMENT</div><h2>${index<0?'Add announcement':'Edit announcement'}</h2><div class="formGrid"><label>Label<input id="aLabel" value="${esc(s.label||'')}"></label><label>Title<input id="aTitle" value="${esc(s.title||'')}"></label><label>Emphasis<input id="aEm" value="${esc(s.em||'')}"></label><label>Display position<input id="aOrder" type="number" value="${s.order||1}"></label><label class="fullLabel">Message<textarea id="aText" rows="3">${esc(s.text||'')}</textarea></label><label class="fullLabel">Announcement image path / URL<input id="aImage" value="${esc(s.image||'')}" placeholder="images/hero/announcement.webp or https://..."><small class="v22-admin-help">Optional. If empty, the linked product/combo image is used.</small></label><label>Click action<select id="aAction" onchange="renderAnnouncementTarget()"><option value="product" ${s.actionType==='product'?'selected':''}>Open product</option><option value="combo" ${s.actionType==='combo'?'selected':''}>Open combo</option><option value="shop" ${s.actionType==='shop'?'selected':''}>Open Shop</option><option value="reviews" ${s.actionType==='reviews'?'selected':''}>Open Reviews</option><option value="url" ${s.actionType==='url'?'selected':''}>Open external link</option></select></label><label class="checkOnly"><input id="aShowPrice" type="checkbox" ${s.showPrice!==false?'checked':''}> Show price badge</label><div id="aTargetWrap"></div></div><label class="checkOnly"><input id="aActive" type="checkbox" ${s.active!==false?'checked':''}> Active</label><button class="gold full" onclick="saveAnnouncement(${index})">Save announcement</button>`);
  window._announcementDraft=s;renderAnnouncementTarget();
 };
-window.saveAnnouncement=function(i){const type=document.getElementById('aAction').value,target=document.getElementById('aTarget')?.value||'';const s={id:data.announcements[i]?.id||('ann-'+Date.now().toString(36)),label:document.getElementById('aLabel').value.trim(),title:document.getElementById('aTitle').value.trim(),em:document.getElementById('aEm').value.trim(),text:document.getElementById('aText').value.trim(),image:document.getElementById('aImage').value.trim(),showPrice:document.getElementById('aShowPrice').checked,actionType:type,actionTarget:target,productId:type==='product'?target:'',comboId:type==='combo'?target:'',active:document.getElementById('aActive').checked,order:Number(document.getElementById('aOrder').value||1)};if(i<0)data.announcements.push(s);else data.announcements[i]=s;persist();closeModal();render()};
+window.saveAnnouncement=async function(i){const type=document.getElementById('aAction').value,target=document.getElementById('aTarget')?.value||'';const s={id:data.announcements[i]?.id||('ann-'+Date.now().toString(36)),label:document.getElementById('aLabel').value.trim(),title:document.getElementById('aTitle').value.trim(),em:document.getElementById('aEm').value.trim(),text:document.getElementById('aText').value.trim(),image:document.getElementById('aImage').value.trim(),showPrice:document.getElementById('aShowPrice').checked,actionType:type,actionTarget:target,productId:type==='product'?target:'',comboId:type==='combo'?target:'',active:document.getElementById('aActive').checked,order:Number(document.getElementById('aOrder').value||1)};const ok=await saveAnnouncementToSupabase(s);if(!ok)return;closeModal();render()};
 function polish(){document.querySelectorAll('.cardActions button').forEach(b=>b.classList.add('v22-action'));document.querySelectorAll('.reviewAdmin article,.announcementAdmin article').forEach(x=>x.classList.add('v22-admin-card'))}
 new MutationObserver(polish).observe(document.getElementById('app'),{childList:true,subtree:true});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',polish);else polish();

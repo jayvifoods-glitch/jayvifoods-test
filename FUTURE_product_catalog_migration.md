@@ -1,5 +1,17 @@
 # Future architecture requirement — Product Catalogue Migration
 
+**✅ Status update (V32.11): the full architecture is now complete.**
+Products/product media/combos were migrated in V32.6; Categories and
+Meal tags in V32.10; Store settings, Announcements, and curated
+Reviews (the last three pieces anywhere in the app that were still
+local) in V32.11 — see `DEPLOY.md`'s "V32.11 update" section and
+`supabase_migration_settings_announcements_reviews.sql`. As of V32.11,
+Git holds only code, hosting, and product/combo media; Supabase holds
+all business/customer data, with no remaining exceptions. The rest of
+this file is kept as-is below for historical context (it accurately
+describes the state of things through V32.9); it no longer describes
+the current architecture.
+
 **Status: not implemented. Documentation only, as of V32.5.**
 This file exists purely to record a future requirement discussed
 during V32.5 review. Nothing in this file has been built, and V32.5

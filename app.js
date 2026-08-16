@@ -473,11 +473,11 @@ function loadConfig(){
 // the single source of truth shared by every browser/device (mobile
 // and desktop included), replacing the per-browser localStorage
 // catalogue. This is intentionally the smallest safe change: store
-// settings, categories, meal tags, announcements, and reviews are
-// untouched and keep working exactly as before. If the fetch fails for
-// any reason (offline, RLS misconfigured, etc.) we fall back to
-// whatever CONFIG already has (EMBEDDED_CONFIG / localStorage) so the
-// storefront never goes blank — "minimum risk" per the agreed spec.
+// settings, announcements, and reviews are untouched and keep working
+// exactly as before. If the fetch fails for any reason (offline, RLS
+// misconfigured, etc.) we fall back to whatever CONFIG already has
+// (EMBEDDED_CONFIG / localStorage) so the storefront never goes blank
+// — "minimum risk" per the agreed spec.
 async function loadCatalogFromSupabase(){
   try{
     const [{data:dbProducts,error:pErr},{data:dbCombos,error:cErr},{data:dbMedia,error:mErr}]=await Promise.all([
@@ -511,6 +511,84 @@ async function loadCatalogFromSupabase(){
     return true;
   }catch(err){
     console.warn('Falling back to embedded/local catalogue — Supabase product fetch failed:', err?.message||err);
+    return false;
+  }
+}
+// V32.10: Categories and Meal tags now come from Supabase too, closing
+// the last two pieces of the catalogue that were still per-browser
+// localStorage. Deliberately a SEPARATE try/catch from
+// loadCatalogFromSupabase() above — if this fetch fails for any reason,
+// it falls back to whatever CONFIG already has (same "never go blank"
+// principle) WITHOUT affecting the products/combos fetch above at all,
+// which succeeds or fails entirely independently.
+async function loadCategoriesAndMealTagsFromSupabase(){
+  try{
+    const [{data:dbCategories,error:catErr},{data:dbMealTags,error:mtErr}]=await Promise.all([
+      sb.from('categories').select('*').eq('enabled',true),
+      sb.from('meal_tags').select('*').eq('enabled',true)
+    ]);
+    if(catErr||mtErr) throw (catErr||mtErr);
+    if(!dbCategories || !dbMealTags) throw new Error('No category/meal-tag data returned');
+
+    CONFIG.categories=[...dbCategories].sort((a,b)=>(a.display_order||0)-(b.display_order||0)).map(c=>({
+      id:c.id, name:c.name, enabled:c.enabled, order:c.display_order||0
+    }));
+    CONFIG.mealTags=[...dbMealTags].sort((a,b)=>(a.display_order||0)-(b.display_order||0)).map(t=>({
+      id:t.id, name:t.name, enabled:t.enabled, order:t.display_order||0
+    }));
+    CONFIG.mealLabels=Object.fromEntries(CONFIG.mealTags.map(t=>[t.id,t.name]));
+    return true;
+  }catch(err){
+    console.warn('Falling back to embedded/local categories/meal tags — Supabase fetch failed:', err?.message||err);
+    return false;
+  }
+}
+// V32.11: Store settings, homepage announcements, and curated ("Google")
+// reviews now come from Supabase too — the last three pieces of
+// business data that were still EMBEDDED_CONFIG/localStorage. Same
+// independent try/catch, "never render blank" fallback principle as
+// loadCategoriesAndMealTagsFromSupabase() above.
+const STORE_FIELD_MAP = {
+  name:'name', tagline:'tagline', country:'country',
+  freeShippingThreshold:'free_shipping_threshold', shippingFlat:'shipping_flat',
+  deliveryMinDays:'delivery_min_days', deliveryMaxDays:'delivery_max_days',
+  vacationMode:'vacation_mode', vacationMessage:'vacation_message',
+  googleMapsApiKey:'google_maps_api_key', googleReviewsUrl:'google_reviews_url',
+  whatsapp:'whatsapp', instagram:'instagram',
+  razorpayKeyId:'razorpay_key_id', razorpayEnabled:'razorpay_enabled',
+  upiEnabled:'upi_enabled', codEnabled:'cod_enabled', otpEnabled:'otp_enabled',
+  upiId:'upi_id', upiName:'upi_name', upiQrImage:'upi_qr_image',
+  paymentNote:'payment_note', refundBusinessDays:'refund_business_days',
+  announcementSpeed:'announcement_speed', homepageReviewCount:'homepage_review_count',
+  deliveryMode:'delivery_mode', paymentMode:'payment_mode', otpProvider:'otp_provider'
+};
+async function loadSettingsAnnouncementsReviewsFromSupabase(){
+  try{
+    const [{data:row,error:sErr},{data:dbAnn,error:aErr},{data:dbRev,error:rErr}]=await Promise.all([
+      sb.from('store_settings').select('*').eq('id','default').single(),
+      sb.from('announcements').select('*').eq('active',true),
+      sb.from('curated_reviews').select('*').eq('active',true)
+    ]);
+    if(sErr||aErr||rErr) throw (sErr||aErr||rErr);
+    if(!row) throw new Error('No store settings row returned');
+
+    const store={};
+    Object.entries(STORE_FIELD_MAP).forEach(([jsKey,dbKey])=>{ store[jsKey]=row[dbKey]; });
+    CONFIG.store=store;
+    CONFIG.homepage={heroAutoplay:row.hero_autoplay, heroSeconds:row.hero_seconds};
+
+    CONFIG.announcements=(dbAnn||[]).sort((a,b)=>(a.display_order||0)-(b.display_order||0)).map(a=>({
+      id:a.id, label:a.label, title:a.title, em:a.em, text:a.text,
+      image:a.image, showPrice:a.show_price, actionType:a.action_type, actionTarget:a.action_target,
+      productId:a.product_id||'', comboId:a.combo_id||'', active:a.active, order:a.display_order||0
+    }));
+    CONFIG.reviews=(dbRev||[]).sort((a,b)=>(a.display_order||0)-(b.display_order||0)).map(r=>({
+      source:r.source, name:r.name, rating:r.rating, text:r.text,
+      productId:r.product_id||'', active:r.active, verifiedPurchase:r.verified_purchase
+    }));
+    return true;
+  }catch(err){
+    console.warn('Falling back to embedded/local settings/announcements/reviews — Supabase fetch failed:', err?.message||err);
     return false;
   }
 }
@@ -1888,7 +1966,14 @@ async function init(){
   // overwritten in place when the fetch succeeds; on failure they keep
   // whatever loadConfig() already gave them, so the storefront never
   // renders empty.
-  await loadCatalogFromSupabase();
+  // V32.10: same principle for Categories/Meal tags, via a fully
+  // independent function/try-catch — see
+  // loadCategoriesAndMealTagsFromSupabase() above.
+  // V32.11: same again for Store settings/Announcements/curated
+  // Reviews — see loadSettingsAnnouncementsReviewsFromSupabase() above.
+  // All three fetches run in parallel; a failure in any one has no
+  // effect on the others.
+  await Promise.all([loadCatalogFromSupabase(), loadCategoriesAndMealTagsFromSupabase(), loadSettingsAnnouncementsReviewsFromSupabase()]);
   sync();
   if(CONFIG.store.vacationMode){
     const b=$('vacationBanner');
