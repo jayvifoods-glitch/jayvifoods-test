@@ -431,8 +431,20 @@ function persist(){localStorage.setItem(KEY,JSON.stringify(data));toast('Catalog
 // limitation impossible to miss. See FUTURE_product_catalog_migration.md
 // for the actual planned fix (a real central Supabase Product Master) —
 // deliberately not a localStorage sync workaround.
+// V32.8 (item 2): reworded only — Categories and Meal tags genuinely
+// are still local/Git-managed (unlike Products/Combos, migrated to
+// Supabase in V32.6 — see liveCatalogNote() below), so the substance of
+// this notice has to stay. What changed is the tone: the old wording
+// ("Not live... until synced") read like leftover debt/an apology,
+// which is exactly what prompted the "is this outdated?" question this
+// release answers. It's now framed as the current, intentional design
+// for this specific section, with an explicit contrast to Products/
+// Combos so it's clear this isn't a stale carry-over. If/when
+// Categories and Meal tags are migrated to Supabase in a future
+// release (making this section literally true to remove), this
+// function is the only place that needs to change.
 function localCatalogWarning(){
-  return `<div class="catalogWarning"><b>⚠️ Not live for customers until synced to your repo</b><p>Saving here only writes to <b>this browser's</b> local storage. It does <b>not</b> automatically reach the live storefront, any customer, or even this same Admin panel open in a different browser or device — those all keep showing whatever is baked into the currently deployed <code>app.js</code>/<code>admin.js</code>. To publish, the entire saved configuration gets copied wholesale into both <code>EMBEDDED_CONFIG</code> (<code>app.js</code>) and <code>CONFIG_FALLBACK</code> (<code>admin.js</code>) and redeployed — see the "PRODUCTION PROCEDURE" section at the very top of <code>DEPLOY.md</code> for the exact, safe steps. Only clear this browser's saved data <b>after</b> that wholesale copy is deployed — clearing it first, or only partially updating <code>app.js</code>, risks losing settings that were never copied over.</p><button class="outline" style="margin-top:10px" onclick="copyFullCatalogueJSON()">📋 Copy Full Catalogue JSON</button></div>`;
+  return `<div class="catalogWarning"><b>This section stays local to your Git deployment</b><p>Unlike Products/Combos (stored centrally in Supabase — see the green note on those pages), Categories and Meal tags are still part of the <code>EMBEDDED_CONFIG</code>/<code>CONFIG_FALLBACK</code> configuration that ships with the code. Saving here updates <b>this browser only</b>; to make a change visible to every customer, copy the full configuration and redeploy — see the "PRODUCTION PROCEDURE" section at the top of <code>DEPLOY.md</code> for the exact steps. Only clear this browser's saved data <b>after</b> that copy is deployed.</p><button class="outline" style="margin-top:10px" onclick="copyFullCatalogueJSON()">📋 Copy Full Catalogue JSON</button></div>`;
 }
 function toast(t){const x=document.getElementById('toast');x.textContent=t;x.classList.add('show');setTimeout(()=>x.classList.remove('show'),2300)}
 async function logout(){await sb.auth.signOut();location.href='index.html'}
@@ -792,7 +804,7 @@ function customerOrderHistory(i){
   openModal(`<div class="eyebrow">${c.type.toUpperCase()} CUSTOMER</div><h2>${esc(c.name)}</h2><p class="muted">${esc(c.phone)}</p>${resetBtn}<div class="orders" style="margin-top:16px">${c.orders.map(o=>`<button class="order" type="button" onclick="closeModal();orderView('${esc(o.order_number)}')"><b>${esc(o.order_number)}</b><span>${new Date(o.created_at).toLocaleDateString('en-IN')}</span><strong>${money(o.total)}</strong><small>${esc(o.status)}</small></button>`).join('')||'<div class="empty smallEmpty">No orders.</div>'}</div>`);
 }
 async function promptResetPassword(phone){
-  const newPassword = prompt(`Set a new password for ${phone} (at least 6 characters).\nGive this to the customer via WhatsApp after resetting — it is not shown anywhere else.`);
+  const newPassword = prompt(`Set a new password for ${phone} (at least 6 characters).\nGive this to the customer via WhatsApp after resetting — it is not shown anywhere else. They'll be able to set their own password afterwards from My Jayvi → Security.`);
   if(!newPassword) return;
   if(newPassword.length < 6){ toast('Password must be at least 6 characters'); return; }
   const {data:session} = await sb.auth.getSession();
@@ -803,9 +815,22 @@ async function promptResetPassword(phone){
       headers: { 'Authorization': 'Bearer ' + session.session.access_token, 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone, newPassword })
     });
-    if(!res.ok){ const t = await res.text(); toast('Reset failed: '+t); return; }
-    toast('Password reset. Send the new password to the customer via WhatsApp now.');
-    window.open('https://wa.me/91'+phone+'?text='+encodeURIComponent('Your Jayvi Foods password has been reset. You can now log in using your registered mobile number and the new password provided here by our team.'), '_blank');
+    // V32.8 (item 3): distinguish the specific server-side reasons this
+    // can fail, instead of one generic "Reset failed: <raw body>" for
+    // everything — each of these is a different root cause requiring a
+    // different fix, and the old undifferentiated message made it hard
+    // to tell "function not deployed" apart from "wrong phone number"
+    // apart from "you're not actually an admin in this session."
+    if(!res.ok){
+      const t = await res.text();
+      if(res.status===404) toast('Reset failed: no customer profile found with phone '+phone+'. Check the number is correct (10 digits, no country code).');
+      else if(res.status===401) toast('Reset failed: your admin session is not valid ('+t+'). Sign out and sign back in, then retry.');
+      else if(res.status===403) toast('Reset failed: this signed-in account is not flagged as admin in profiles.role ('+t+').');
+      else toast('Reset failed ('+res.status+'): '+t);
+      return;
+    }
+    toast('Password reset in Supabase Auth. Send the new password to the customer via WhatsApp now — they can set their own permanent password afterwards from My Jayvi → Security.');
+    window.open('https://wa.me/91'+phone+'?text='+encodeURIComponent('Your Jayvi Foods password has been reset. You can now log in using your registered mobile number and the new password provided here by our team. Once logged in, go to My Jayvi → Security to set your own password.'), '_blank');
   }catch(e){
     // V32.5 (Priority 1, item 3): a caught fetch() exception here (as
     // opposed to an !res.ok response above) means the request never got a
@@ -816,7 +841,14 @@ async function promptResetPassword(phone){
     // Meaningful message instead of a bare error, per the requirement:
     // never show success or silently swallow this, and say clearly that
     // the password was NOT changed.
-    toast('Password was NOT changed — could not reach the admin-reset-password function ('+e.message+'). Confirm it is deployed via Supabase (see DEPLOY.md) and try again.');
+    //
+    // V32.8: this remains the #1 real-world cause of "reset doesn't
+    // work" — the Edge Function existing in this repo's source tree
+    // does NOT mean it's deployed to the live Supabase project. It must
+    // be deployed separately with:
+    //   supabase functions deploy admin-reset-password
+    // See "Password reset — deployment check" in DEPLOY.md.
+    toast('Password was NOT changed — could not reach the admin-reset-password function ('+e.message+'). This almost always means it has not been deployed yet: run `supabase functions deploy admin-reset-password` (see DEPLOY.md), then retry.');
   }
 }
 

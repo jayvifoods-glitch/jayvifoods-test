@@ -13,6 +13,18 @@ back navigation, coupons, social links).
 
 ## ✅ V32.6 update — Products, product media, and combos are now live in Supabase
 
+**⚠️ V32.8 fix-up required if this project was live before V32.8:**
+run `supabase_migration_v32_8_combo_media_path_fix.sql` once in the
+Supabase SQL Editor. V32.8 moved the combo's image into its own
+dedicated folder on disk (`images/combos/traditional-duo/hero.webp`,
+previously the flat `images/combos/traditional-duo.webp`) — this small,
+idempotent file updates the corresponding `product_media.media_url` row
+to match, without touching any other product/combo/media data.
+**Do not** re-run `supabase_migration_product_catalog.sql` for this —
+that file deletes and re-seeds ALL product/combo media rows from its
+hardcoded list, which would silently discard any media an Admin has
+added since via Admin → Products/Combos → + Add Media.
+
 As of this release, **products, product media, and combos are no
 longer part of the `jayviStoreV14` localStorage blob** described
 below. They live in three new Supabase tables — `products`,
@@ -41,7 +53,134 @@ hardcoded in `EMBEDDED_CONFIG`/`CONFIG_FALLBACK`).
 
 ---
 
-## ⚠️ PRODUCTION PROCEDURE — Adding a product after launch (read this first)
+## 📸 Adding New Product Images/Media (read this before adding a product)
+
+*Added V32.8, extended from the V32.7 performance work. This is the
+step-by-step version of what `scripts/generate-product-image-variants.py`
+and `RESPONSIVE_PRODUCT_IMG` in `app.js` already do in code — follow
+this every time so a new product/combo can't quietly reintroduce the
+"5000px photos slow the site down" problem V32.7 fixed.*
+
+### 1. Where files go
+
+```
+images/
+├── products/
+│   └── <product-slug>/
+│       ├── hero.webp
+│       ├── front-back.webp
+│       ├── ingredients.webp
+│       ├── serving.webp
+│       └── video-01.mp4        (optional)
+└── combos/
+    └── <combo-slug>/
+        └── hero.webp, ...      (identical rules, own folder)
+```
+
+Every product **and every combo** gets its own folder under
+`images/products/` or `images/combos/` respectively — never share a
+folder between two products, and never pull from `images/gallery/`
+(that folder is for genuinely generic site content only and is never
+consulted for product/combo media).
+
+### 2. Naming conventions
+
+- **Folder name** = the product/combo's `id`/slug, lowercase,
+  hyphen-separated (e.g. `peanut`, `flaxseed-chutney`,
+  `breakfast-combo`) — matches the `id` you'll use in Supabase.
+- **Image file name** = a short, descriptive word for what the photo
+  shows (`hero`, `front-back`, `ingredients`, `serving`, `packaging`),
+  not a generic counter like `image1.jpg`. Any number of these per
+  product — there's no fixed slot count.
+- Don't add your own `-400w`/`-800w` files by hand — the script in
+  step 4 generates those from whatever you name your original.
+
+### 3. Source image rules (this is what actually keeps the site fast)
+
+| Rule | Why |
+|---|---|
+| Format: **WebP** (`.webp`) only | The optimization script and the responsive-`srcset` code in `app.js` only recognize `.webp`. A `.jpg`/`.png` will still display (plain `<img>`, no optimization) but won't get responsive variants — convert to WebP first. |
+| Recommended source size: **under ~2000px** on the long edge, ideally already close to **1600px** | The script resizes anything over 1600px down automatically, but starting closer to that size means a smaller, faster upload and less to re-compress. There's no benefit to shipping a 5000px camera original into Git at all. |
+| Recommended source file size: **under ~2–3MB** per photo before optimization | Anything larger almost always means the source wasn't resized/compressed on export — check your camera/editing app's export settings. |
+| Don't hand-optimize/compress further yourself | The script controls quality settings consistently (master ~84%, thumbnails ~72–78%) — over-compressing before the script runs just compounds quality loss. |
+
+### 4. Run the optimization script — every time you add or replace a photo
+
+```bash
+python3 scripts/generate-product-image-variants.py
+```
+
+This is **required**, not optional. It walks every file under
+`images/products/**/*.webp` and `images/combos/**/*.webp` and, for
+each one:
+1. If it's larger than 1600px on its long edge, resizes it down and
+   re-saves it **in place** (same filename — nothing else needs to
+   change).
+2. Generates `<name>-400w.webp` and `<name>-800w.webp` next to it.
+
+It's safe to re-run any time — already-optimized files are just
+re-processed into the same result, and it only ever touches `.webp`
+files under those two folders.
+
+### 5. What happens if you skip the script / add an image without variants
+
+The site will **not break** — `responsiveImgAttrs()` in `app.js` only
+adds `srcset` for a path if the matching `-400w`/`-800w` files exist
+next to it; if they don't, it falls back to plain `<img src="...">`
+with no responsive variants. But that means:
+- Every visitor, phone or desktop, downloads the **full master file**
+  for that image — exactly the slow-loading problem V32.7 fixed.
+- Nothing will look "broken" in testing, which is exactly why it's
+  easy to forget. Always run the script before considering a new
+  product/combo photo done.
+
+### 6. Multiple images per product/combo
+
+Just add more files to the same folder (`hero.webp`, `front-back.webp`,
+`serving.webp`, ...) and run the script once — it processes every file
+it finds. There's no limit and no code change needed; the product card,
+detail gallery, and combo card all render however many media rows exist
+for that product/combo in Supabase (see step 8).
+
+### 7. Videos
+
+Drop the video file (`.mp4`) into the same product/combo folder. Videos
+are **not** processed by the image script (no resizing/compression is
+applied to video — that's a separate, larger topic if it's ever
+needed). In the `product_media` row for a video, set `media_type` to
+`video` and, if you have one, a `poster_url` pointing at a WebP still
+frame (run that still frame through the same image script like any
+other photo) — the video element already uses `preload="metadata"` and
+never autoplays, so it won't be downloaded until the customer taps it.
+
+### 8. Reference it in Supabase (`product_media`)
+
+Add one row per image/video to `public.product_media`:
+
+```sql
+insert into public.product_media (product_id, media_type, media_url, display_order)
+values ('peanut', 'image', 'images/products/peanut/hero.webp', 1);
+
+-- combo example — combo_id instead of product_id, everything else identical
+insert into public.product_media (combo_id, media_type, media_url, display_order)
+values ('breakfast-combo', 'image', 'images/combos/breakfast-combo/hero.webp', 1);
+```
+
+Always reference the **master** filename (`hero.webp`), never the
+`-400w`/`-800w` files directly — the frontend derives those
+automatically from the master path. `display_order` controls the
+order images appear/swipe in; `is_active=false` hides one image
+without deleting the row.
+
+### 9. The one rule that matters most
+
+**Never commit a product/combo photo without running
+`scripts/generate-product-image-variants.py` afterward, and never
+reference a `-400w`/`-800w` filename directly in `product_media` —
+always reference the master.** Everything else in this section exists
+to support that one rule.
+
+---
 
 **Your understanding is 100% correct: Admin Save is not Publish.**
 There is no automatic path from Admin's "Save" to the live storefront
@@ -376,6 +515,66 @@ success unless the Edge Function itself returned a real success
 response; a genuine "can't reach the function" failure now says so
 explicitly ("Password was NOT changed — could not reach the
 admin-reset-password function…") instead of a bare `Failed to fetch`.
+
+**V32.8 — password reset: what changed and how to verify end-to-end.**
+The Edge Function's own logic was re-reviewed and is correct: it uses
+`auth.admin.updateUserById(targetProfile.id, { password: newPassword })`
+with the `service_role` key — a real Supabase Auth password change, not
+a `profiles` field update or a fake success message. If Admin reset
+still doesn't work for you, the cause is essentially always one of
+these, **in this order of likelihood**:
+1. **The function has never actually been deployed to your project**
+   (having the code in this repo's `supabase_functions/` folder does
+   **not** deploy it — that only happens when you run
+   `supabase functions deploy admin-reset-password` against your
+   actual project). This is the #1 cause of "still not working" across
+   every round of this fix so far.
+2. The signed-in Admin's `profiles.role` isn't actually `'admin'` —
+   the function checks this server-side and refuses with a 403 if not,
+   regardless of what the Admin panel's UI lets you click.
+3. The phone number typed doesn't exactly match `profiles.phone` for
+   that customer (10 digits, no `+91`/country code, no spaces) — a 404
+   means no profile was found with that exact value.
+
+As of V32.8, `admin.js` reports **which of these three** happened
+instead of one generic message — check the toast text after a failed
+reset; it now says explicitly "no customer profile found," "not
+authorized — admin role required," or "session expired," rather than
+just "Reset failed."
+
+**What was genuinely missing (and is now fixed): the customer side.**
+Before V32.8, there was no way for a signed-in customer to set their
+*own* new password — only Admin could set one for them, via the
+privileged Edge Function above. Customers can now do this themselves
+from **My Jayvi → Security** (a new tab in the account view, `app.js`),
+which calls Supabase's own unprivileged, self-service
+`sb.auth.updateUser({ password })` for their **own** current session —
+a completely different, no-special-permission code path from Admin's
+reset. This is what makes "Admin resets a temporary password, customer
+then sets their own permanent one" actually possible end-to-end.
+
+**The existing "Forgot password" flow was checked and is unchanged by
+design, not broken.** `checkForgotPasswordPhone()` in `app.js`
+confirms the phone number exists (via `check_phone_registered`) and
+then hands off to WhatsApp — there is intentionally no automated
+OTP/email self-service reset yet (see the Phase 1 comment directly
+above that function in `app.js`). That's a documented future
+enhancement, not a bug this release fixes; V32.8 did not change this
+flow's behavior.
+
+**Full acceptance sequence to run yourself against your live Supabase
+project** (this cannot be verified from source code alone — it needs
+your actual deployed function and a real test account):
+```
+1. Confirm deployment:  supabase functions deploy admin-reset-password
+2. Register a dummy customer via the storefront (10-digit test phone)
+3. Admin → Customers → find them → Reset password → set a temp password
+   - Watch for the specific error text if this fails (see the 3 causes above)
+4. Customer: sign out if signed in, sign back in with phone + temp password
+5. Customer: My Jayvi → Security → set a new password
+6. Customer: sign out, sign back in with the NEW password (not the temp one)
+7. Confirm Admin's own email login still works unaffected (separate code path)
+```
 
 **5. Product catalogue architecture — confirmed unchanged in V32.5.**
 No migration attempted. See the new file

@@ -411,16 +411,21 @@ const EMBEDDED_CONFIG = {
 const PLACEHOLDER_MEDIA=[{type:'image',path:'images/hero/jayvi-products.webp'}];
 
 // V32.7 — performance fix (spec items 6 & 9): product photos are shipped
-// as "images/products/<slug>/<name>.webp" masters. scripts/generate-
-// product-image-variants.py generates a "-400w"/"-800w" sibling next to
-// every one of those masters (see that script for details) — the master
-// itself doubles as the ~1600px "desktop" tier. This helper turns a plain
-// path into a srcset ONLY for paths that convention guarantees have those
-// siblings; anything else (external URLs, SVGs, images/gallery/, brand
-// assets, a future product photo that hasn't been through the script yet)
+// as "images/products/<slug>/<name>.webp" masters. V32.8 extended the
+// same dedicated-folder convention to combos too
+// ("images/combos/<slug>/<name>.webp" — see CHANGELOG_V32.8.md item 7),
+// so both are covered here. scripts/generate-product-image-variants.py
+// generates a "-400w"/"-800w" sibling next to every one of those masters
+// (see that script for details) — the master itself doubles as the
+// ~1600px "desktop" tier. This helper turns a plain path into a srcset
+// ONLY for paths that convention guarantees have those siblings;
+// anything else (external URLs, SVGs, images/gallery/, brand assets, a
+// future product/combo photo that hasn't been through the script yet)
 // is left completely alone and just renders as a normal <img src>. No
-// database/schema change and no per-product code was needed for this.
-const RESPONSIVE_PRODUCT_IMG = /^images\/products\/.+\.webp$/i;
+// database/schema change and no per-product/per-combo code was needed
+// for this — the same generic component handles every product and
+// every combo, present or future.
+const RESPONSIVE_PRODUCT_IMG = /^images\/(products|combos)\/.+\.webp$/i;
 function responsiveImgAttrs(path,sizes){
   if(!path || !RESPONSIVE_PRODUCT_IMG.test(path)) return {src:path,srcset:'',sizes:''};
   const stem=path.slice(0,-5); // strip ".webp"
@@ -659,7 +664,7 @@ function productCard(p){
     ?`<div class="pcActions hasQty"><div class="inlineQty"><button onclick="changeProductQty('${p.id}','${v.id}',-1)" aria-label="Decrease quantity"><i class="fa-solid fa-minus"></i></button><b>${q}</b><button onclick="changeProductQty('${p.id}','${v.id}',1)" aria-label="Increase quantity"><i class="fa-solid fa-plus"></i></button></div><button class="viewCartBtn" onclick="openCart()" aria-label="View cart"><i class="fa-solid fa-bag-shopping"></i></button></div>`
     :`<div class="pcActions"><button onclick="addToCart('${p.id}','${v.id}')">Add to cart</button><button onclick="buyNow('${p.id}','${v.id}')">Buy now</button></div>`;
   return `<article class="productCard" data-product-id="${p.id}">
-    <div class="visualWrap" onclick="openProduct('${p.id}')">${cardMediaMarkup(p)}${p.best?'<span class="badge">BESTSELLER</span>':''}<button class="heart ${wishlist.includes(p.id)?'isWish':''}" onclick="event.stopPropagation();toggleWishlist('${p.id}')" aria-label="Favourite ${escapeHtml(p.name)}"><i class="${wishlist.includes(p.id)?'fa-solid':'fa-regular'} fa-heart"></i></button></div>
+    <div class="visualWrap" onclick="openProduct('${p.id}')">${cardMediaMarkup(p)}${p.best?'<span class="badge" title="Bestseller" aria-label="Bestseller"><i class="fa-solid fa-star" aria-hidden="true"></i></span>':''}<button class="heart ${wishlist.includes(p.id)?'isWish':''}" onclick="event.stopPropagation();toggleWishlist('${p.id}')" aria-label="Favourite ${escapeHtml(p.name)}"><i class="${wishlist.includes(p.id)?'fa-solid':'fa-regular'} fa-heart"></i></button></div>
     <div class="pcBody">
       <small>${escapeHtml(catName(p.category))}</small>
       <h3 onclick="openProduct('${p.id}')">${escapeHtml(p.name)}</h3>
@@ -1255,11 +1260,56 @@ async function renderAccountView(activeTab='orders'){
     <div class="accountTabs">
       <button class="${activeTab==='orders'?'active':''}" onclick="renderAccountView('orders')">Orders</button>
       <button class="${activeTab==='addresses'?'active':''}" onclick="renderAccountView('addresses')">Addresses</button>
+      <button class="${activeTab==='security'?'active':''}" onclick="renderAccountView('security')">Security</button>
       <button onclick="trackOrderPrompt()">Track order</button>
       <button onclick="signOut()">Sign out</button>
     </div>
     <div id="accountTabBody">Loading…</div>`;
-  if(activeTab==='addresses') renderAddressTab(); else renderOrdersTab();
+  if(activeTab==='addresses') renderAddressTab();
+  else if(activeTab==='security') renderSecurityTab();
+  else renderOrdersTab();
+}
+// V32.8 (item 3): the piece that was actually missing end-to-end — a
+// customer-facing way to SET THEIR OWN password, whether that's
+// because Admin just gave them a temporary one via "Reset password",
+// or they simply want to change it. This is a genuine gap fix, not a
+// login-architecture change: it calls Supabase's own self-service
+// sb.auth.updateUser() for the CURRENTLY signed-in user, which is a
+// completely different, unprivileged code path from Admin's
+// admin-reset-password Edge Function (that one needs the service_role
+// key to change ANOTHER user's password; this one only ever touches
+// the caller's own session and needs no special privilege at all).
+// Phone-based login identity, registration behavior, and Admin's own
+// email login are untouched by this addition.
+async function renderSecurityTab(){
+  const body = $('accountTabBody'); if(!body) return;
+  body.innerHTML = `<p class="muted" style="margin-bottom:12px">Set a new password for your account. If Jayvi Foods support just reset your password for you, use this to replace it with one only you know.</p>
+    <form onsubmit="submitPasswordChange(event)">
+      <label>New password *<input id="secNewPass" type="password" minlength="6" required placeholder="At least 6 characters"></label>
+      <label>Confirm new password *<input id="secNewPass2" type="password" minlength="6" required></label>
+      <button class="btn gold full" type="submit">Update password →</button>
+    </form>
+    <div id="secMsg" class="tiny" style="margin-top:10px"></div>`;
+}
+async function submitPasswordChange(e){
+  e.preventDefault();
+  const p1 = $('secNewPass').value, p2 = $('secNewPass2').value;
+  const msg = $('secMsg');
+  if(p1.length < 6){ msg.style.color='var(--danger)'; msg.textContent='Password must be at least 6 characters.'; return; }
+  if(p1 !== p2){ msg.style.color='var(--danger)'; msg.textContent='Passwords do not match.'; return; }
+  const {error} = await sb.auth.updateUser({ password: p1 });
+  if(error){
+    // Root-cause message, not a generic failure — e.g. Supabase enforces
+    // "new password must be different from the old password" server-side,
+    // which otherwise looks like a silent no-op to the customer.
+    msg.style.color='var(--danger)';
+    msg.textContent = 'Could not update password: ' + error.message;
+    return;
+  }
+  msg.style.color='var(--success)';
+  msg.textContent = 'Password updated. Use it next time you sign in.';
+  $('secNewPass').value=''; $('secNewPass2').value='';
+  showToast('Password updated');
 }
 async function renderOrdersTab(){
   const body = $('accountTabBody'); if(!body) return;

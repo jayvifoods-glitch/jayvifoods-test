@@ -224,7 +224,7 @@ insert into public.product_media (product_id, media_type, media_url, display_ord
   ('Jamun','image','images/products/Jamun/serving.webp',4);
 
 insert into public.product_media (combo_id, media_type, media_url, display_order) values
-  ('duo','image','images/combos/traditional-duo.webp',1);
+  ('duo','image','images/combos/traditional-duo/hero.webp',1);
 
 -- =====================================================================
 -- Verify:
