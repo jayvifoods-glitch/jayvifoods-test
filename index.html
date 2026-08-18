@@ -10,13 +10,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link rel="stylesheet" href="style.css?v=32.11">
+<link rel="stylesheet" href="style.css?v=32.12">
 </head>
 <body>
 
 <div class="topbar" aria-label="Store announcements"><div class="announcementViewport"><div class="announcementTrack" id="announcementTrack">
-  <span id="topShipping">FREE SHIPPING ABOVE ₹599</span><span>FRESHLY PACKED</span><span>DELIVERED ACROSS INDIA</span><span>PURELY TRADITIONAL · SIMPLY DELICIOUS</span>
-  <span aria-hidden="true">FREE SHIPPING ABOVE ₹599</span><span aria-hidden="true">FRESHLY PACKED</span><span aria-hidden="true">DELIVERED ACROSS INDIA</span><span aria-hidden="true">PURELY TRADITIONAL · SIMPLY DELICIOUS</span>
+  <span id="topOffer" class="topOfferSpan" style="display:none"></span><span id="topShipping">FREE SHIPPING ABOVE ₹599</span><span>FRESHLY PACKED</span><span>DELIVERED ACROSS INDIA</span><span>PURELY TRADITIONAL · SIMPLY DELICIOUS</span>
+  <span id="topOfferDup" class="topOfferSpan" aria-hidden="true" style="display:none"></span><span aria-hidden="true">FREE SHIPPING ABOVE ₹599</span><span aria-hidden="true">FRESHLY PACKED</span><span aria-hidden="true">DELIVERED ACROSS INDIA</span><span aria-hidden="true">PURELY TRADITIONAL · SIMPLY DELICIOUS</span>
 </div></div></div>
 
 <div id="vacationBanner" class="vacationBanner" style="display:none"></div>
@@ -143,9 +143,15 @@
   <div><b>Connect</b><span id="footerSocialLinks"><a href="https://wa.me/918861981003" target="_blank">WhatsApp</a><a href="https://instagram.com/jayvifoods" target="_blank">Instagram</a></span><a href="mailto:jayvifoods@gmail.com">jayvifoods@gmail.com</a><a href="tel:+918861981003">+91 88619 81003</a></div>
   <div class="footerCompliance"><b>Food Safety &amp; Business</b><div class="fssaiBadge" aria-label="FSSAI"><img src="images/compliance/fssai-logo.png" alt="FSSAI"></div><p>FSSAI Lic. No. <strong>21226177001087</strong></p><p>UDYAM Registered MSME</p><p>UDYAM-KR-03-0681597</p></div>
 </div>
-<div class="wrap copyright">© 2026 Jayvi Foods <span>Delivered across India · Jayvi Foods</span><span class="siteVersion" id="siteVersion">Website v32.11</span></div></footer>
+<div class="wrap copyright">© 2026 Jayvi Foods <span>Delivered across India · Jayvi Foods</span><span class="siteVersion" id="siteVersion">Website v32.12</span></div></footer>
 
 <a class="whatsappFloat" href="https://wa.me/918861981003?text=Hi%20Jayvi%20Foods%2C%20I%20need%20help%20with%20my%20order." target="_blank" aria-label="Chat with Jayvi's team"><i class="fa-brands fa-whatsapp"></i><span>Chat with us</span></a>
+
+<!-- Workstream 1.2: floating customer-facing offer indicator. Hidden by
+     default and only ever shown by JS (renderFloatingOffer() in app.js)
+     once at least one active, customer-eligible offer is confirmed from
+     Supabase — never hard-coded, never shown "just in case". -->
+<button id="offerFloatBtn" class="offerFloat" style="display:none" onclick="openOffersPanel()" aria-label="View current offers"><i class="fa-solid fa-gift"></i><span id="offerFloatLabel">Offers</span></button>
 
 <button id="mobileCartBar" onclick="openCart()"><span>Your bag <b id="mobileCartCount">0</b> item(s)</span><strong id="mobileCartTotal">₹0</strong><span>View cart →</span></button>
 
@@ -162,10 +168,11 @@
 <div class="overlay" id="accountOverlay"><div class="modal"><button class="close" onclick="closeAccount()">×</button><div id="accountContent"></div></div></div>
 <div class="overlay" id="productOverlay"><div class="modal productModal"><button class="close" onclick="closeProduct()">×</button><div id="productContent"></div></div></div>
 <div class="overlay" id="checkoutOverlay"><div class="modal checkoutModal"><button class="close" onclick="closeCheckout()">×</button><div id="checkoutContent"></div></div></div>
+<div class="overlay" id="offersOverlay"><div class="modal offersModal"><button class="close" onclick="closeOffersPanel()">×</button><div class="eyebrow">AVAILABLE OFFERS</div><h2>Current offers.</h2><div id="offersPanelList"></div></div></div>
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="supabase-config.js?v=32.11"></script>
-<script src="app.js?v=32.11"></script>
+<script src="supabase-config.js?v=32.12"></script>
+<script src="app.js?v=32.12"></script>
 </body>
 </html>

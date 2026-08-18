@@ -379,6 +379,28 @@ footer a:hover{color:#fff}
 .whatsappFloat span{display:none}
 .whatsappFloat i{font-size:20px}
 
+/* ---------- Floating offer indicator (Workstream 1.2) ---------- */
+.offerFloat{
+  position:fixed;right:16px;bottom:calc(var(--bottomnav-h) + var(--safe-b) + 70px);z-index:55;
+  background:var(--brand);color:#fff;border-radius:99px;height:44px;padding:0 16px;display:flex;align-items:center;gap:8px;
+  box-shadow:var(--shadow-lg);font-weight:800;font-size:13px;border:0;animation:offerPulse 2.6s ease-in-out infinite;
+}
+.offerFloat i{font-size:16px;color:var(--gold-soft)}
+@keyframes offerPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.05)}}
+.offersModal{max-width:420px;margin:0 auto}
+.offerCard{border:1px solid var(--line-soft);border-radius:var(--radius-md);padding:14px 16px;margin-bottom:12px;background:var(--surface-2)}
+.offerCard b{display:block;font-family:var(--font-display);font-size:16px;color:var(--brand-dark);letter-spacing:.02em}
+.offerCard p{margin:4px 0 0;font-size:13px;color:var(--ink-soft)}
+.topOfferSpan{font-weight:800}
+
+/* ---------- Cart coupon / apply-offer (Workstream 1.4) ---------- */
+.couponSection{padding:12px 18px;border-top:1px dashed var(--line-soft)}
+.couponSection select{width:100%;border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;margin-top:6px;background:var(--surface)}
+.couponApplied{display:flex;justify-content:space-between;align-items:center;background:var(--brand-soft);border-radius:var(--radius-sm);padding:10px 12px;margin-top:6px}
+.couponApplied b{font-size:13px;color:var(--brand-dark)}
+.couponApplied button{background:none;border:0;color:var(--brand-dark);font-weight:700;text-decoration:underline;font-size:12px}
+.line.discount span,.line.discount b{color:#1a7a3d}
+
 /* ---------- Mobile bottom cart bar ---------- */
 #mobileCartBar{
   position:fixed;left:12px;right:12px;bottom:calc(var(--bottomnav-h) + var(--safe-b) + 10px);z-index:56;

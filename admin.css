@@ -141,6 +141,20 @@ header h1{font:600 38px 'Fraunces',Georgia,serif;margin:6px 0}
 .comboItemForm{display:grid;grid-template-columns:1.4fr 1fr 70px 34px;gap:7px;margin:7px 0}
 .comboItemForm select,.comboItemForm input{margin:0}
 .comboItemForm button{border:0;background:var(--danger);color:#fff;border-radius:var(--radius-sm);font-size:16px}
+
+/* ---------- Product/combo media editor (Workstream 3) ---------- */
+.mediaUploadRow{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.uploadBtn{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.mediaUploadStatus{font-size:11px;color:var(--ink-faint);min-height:14px;margin-bottom:6px}
+.comboItemForm.mediaRow{display:flex;align-items:center;flex-wrap:wrap;gap:6px;grid-template-columns:none;padding:8px;border:1px solid var(--line);border-radius:var(--radius-sm)}
+.comboItemForm.mediaRow.isPrimaryRow{border-color:var(--gold);background:#fdf8ec}
+.comboItemForm.mediaRow select{width:auto}
+.comboItemForm.mediaRow input{flex:1;min-width:140px;margin:0}
+.mediaSourceTag{font-size:10px;color:var(--ink-faint);white-space:nowrap}
+.primaryBtn{background:var(--surface);border:1px solid var(--line);color:var(--ink-soft);font-size:11px;font-weight:700;border-radius:var(--radius-sm);padding:6px 9px;white-space:nowrap}
+.primaryBtn.active{background:var(--gold);color:#211712;border-color:var(--gold)}
+.comboItemForm.mediaRow button{background:var(--surface-2,#f2ede6);color:var(--ink-soft);width:auto;padding:6px 9px;font-size:13px}
+.comboItemForm.mediaRow button:last-child{background:var(--danger);color:#fff}
 .reviewFilters{display:flex;gap:8px;margin-bottom:14px}
 .stars{color:var(--gold);font-weight:800;margin-left:8px}
 

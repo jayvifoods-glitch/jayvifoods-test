@@ -1,5 +1,190 @@
 # Jayvi Foods v32.3 — A–AA implementation pass
 
+## ✅ V32.12 — Coupons wired to storefront, password reset deployment, media → Supabase Storage
+
+**Post-review correction pass applied — read this box first.** After
+the initial V32.12 draft, review against the V32.11 baseline found 3
+real gaps, all fixed in the files below before this package was
+finalized:
+1. `app.js` computed the product-card/gallery image from the lowest
+   `display_order` only — it never looked at `is_primary` at all, even
+   though Admin could already set it. Fixed in `loadCatalogFromSupabase()`
+   (see CHANGELOG for exact mechanism) — now consistent for both
+   products and combos, with the same lowest-`display_order` fallback
+   only when nothing is marked primary.
+2. `validate_coupon()` checked dates/min-order/usage but never
+   `coupons.applicable_products`/`applicable_categories` — a
+   product-restricted coupon could be applied to any cart. Fixed by
+   giving `validate_coupon()` (and the cart-dropdown listing function)
+   two new parameters, enforced identically in `place_order()` using
+   server-computed product/category ids — never the browser's. Admin's
+   coupon form also gained the product/category restriction checkboxes
+   it was missing entirely (the DB columns existed but there was no UI
+   to ever set them).
+3. Existing Git-path media required manual per-product re-upload with
+   no batch path. Added `scripts/migrate-media-to-storage.mjs` (see
+   "Media migration" below) plus a read-only orphaned-file reporter,
+   `scripts/list-orphaned-storage-files.mjs`, for the Storage-cleanup
+   concern (deleting a DB row never deletes the Storage object it
+   pointed to — this script only ever reports, never deletes).
+
+See **`CHANGELOG_V32.12.md`** for the full release notes (this is the
+release requested in the "V32.11 Stable Baseline — Next Development
+Release" brief: complete the customer-facing coupon flow, fix the
+Admin password-reset integration, and move product media from
+Git-only to Supabase Storage). Summary of what to run, in order:
+
+**1. SQL migrations (Supabase SQL Editor, in this exact order):**
+```sql
+-- Only if not already applied from earlier rounds:
+--   supabase_migration_coupons.sql
+--   supabase_migration_product_catalog.sql
+--   supabase_migration_order_state_machine.sql
+
+-- New this release:
+supabase_migration_coupon_checkout.sql          -- public.list_active_offers(), list_eligible_offers_for_cart(), orders.coupon_* columns, coupon-aware place_order() with restriction enforcement
+supabase_migration_product_media_storage.sql    -- product-media Storage bucket + RLS, product_media.is_primary
+```
+Both new files are additive/idempotent (`create or replace`, `if not
+exists`, `on conflict`, `drop function if exists` immediately before
+each `create`) — safe to run more than once, and safe even if an
+earlier draft of `supabase_migration_coupon_checkout.sql` was already
+applied (the corrected version replaces the function bodies cleanly).
+
+**2. Storage bucket.** `supabase_migration_product_media_storage.sql`
+creates the `product-media` bucket and its RLS policies via SQL
+(`storage.buckets` / policies on `storage.objects`) — there is **no
+separate dashboard step required** for the bucket itself. If your
+Supabase project's SQL role doesn't have permission to insert into
+`storage.buckets` directly (some hosted setups restrict this), create
+the bucket once manually instead: **Dashboard → Storage → New bucket →
+name `product-media` → Public bucket: ON**, then re-run just the
+`storage.objects` policy statements from the migration file.
+
+**3. Edge Function.** No change to `admin-reset-password` itself this
+release (see "Password reset" below — the existing function was
+already correct, and remains **unverified against your live project**
+until you actually run it). If it has never been deployed to this
+project, deploy it now:
+```
+supabase functions deploy admin-reset-password
+```
+
+**4. Git deploy.** Standard static-site deploy of this repo (same as
+every prior release) — no new build step, no new environment
+variables for the website itself. `supabase-config.js` is unchanged.
+(The two new one-time scripts under `scripts/` are a separate,
+Node-based operator tool — see "Media migration" below — not part of
+the website's own deploy.)
+
+**5. Verify** — see "Definition of done" / offline-vs-live testing
+breakdown in `CHANGELOG_V32.12.md`.
+
+### Password reset — what "fixing" this release actually means
+
+Re-reviewed end to end for this release: **`admin.js`'s calling code and
+`supabase_functions/admin-reset-password/index.ts` were already
+correct** (the V32.5 CORS fix and the V32.8 authorization/error-message
+work are both still present and unchanged). The screenshot behaviour
+("Password was NOT changed — could not reach the admin-reset-password
+function (Failed to fetch)") is the exact message this code was
+written to show when the function has never been deployed to the live
+project — having the function's source in this repo's
+`supabase_functions/` folder does **not** deploy it. Run:
+```
+supabase login
+supabase link --project-ref <your-project-ref>
+supabase functions deploy admin-reset-password
+```
+then retry Reset password (R4) from Admin → Customers. If it still
+fails after a confirmed deploy, the toast text now distinguishes the 3
+remaining possible causes (session expired / not flagged admin / phone
+not found) — see the V32.8 section further down this file for each.
+
+### Media migration — moving existing Git media to Supabase Storage (script, not manual re-upload)
+
+Per spec section 3.11/3.12, this is opt-in — nothing is deleted or
+force-migrated, and Git-path media keeps working indefinitely as a
+fallback. Two ways to do it:
+
+**A. Batch, via the new script (recommended for migrating everything, or a whole product at a time):**
+```
+npm install                       # installs @supabase/supabase-js (see package.json)
+export SUPABASE_URL=https://<your-project>.supabase.co
+export SUPABASE_SERVICE_ROLE_KEY=<your service_role key — never commit this>
+
+# 1. Preview first — makes no changes at all:
+node scripts/migrate-media-to-storage.mjs --dry-run
+
+# 2. Migrate one product first, per spec Phase D ("test with a few products"):
+node scripts/migrate-media-to-storage.mjs --only=peanut
+
+# 3. Once verified on the storefront (card + gallery, mobile + desktop),
+#    migrate everything else:
+node scripts/migrate-media-to-storage.mjs
+```
+What it does, per row: finds the file on disk at its current Git path,
+uploads it to the `product-media` bucket under `<product-or-combo-id>/…`
+(the same layout Admin's own upload buttons use), and updates **only**
+that row's `media_url` (and `poster_url` for a video's poster). It
+never touches `display_order` or `is_primary` — whatever Admin already
+configured is preserved exactly — and it never deletes the original
+Git file. Safe to re-run: an already-migrated row (or an object that
+already exists at the destination path) is skipped/reused rather than
+duplicated.
+
+**B. Manual, per product, via Admin (for one-off edits):**
+1. Open **Admin → Products → Edit** the product.
+2. Delete the existing Git-path media row and re-add the same image via
+   **+ Add Photo** / **+ Add Video**, picking the file from your
+   computer.
+3. Use **☆ Set primary** on whichever image should be the product-card
+   image (defaults to the first item if never set).
+4. Save.
+
+Either way, `app.js` reads `media_url` generically — it does not need
+to know or care that the value changed from a Git path to a Storage
+URL. Once every product's media is confirmed working from Storage, the
+corresponding files under `images/products/<id>/` can be removed from
+the Git repo in a later, separate cleanup release — never in the same
+release that performs the migration, per spec.
+
+Storage image delivery is optimised automatically: `app.js`'s
+`responsiveImgAttrs()` detects a `storage/v1/object/public/...` URL and
+requests width-specific variants from Supabase's
+`storage/v1/render/image/public/...` transformation endpoint (400w/
+800w/1600w) — no manual resizing step, unlike the Git-path workflow
+which still needs `generate-product-image-variants.py`. If your
+Supabase project's plan doesn't include Image Transformations, the
+`<img>` tag's plain `src` (the untransformed public URL) is what
+actually renders — this can never make an image disappear, only skip
+the resize optimisation; confirm your plan includes it if page-weight
+matters immediately.
+
+### Storage cleanup — orphaned files (documented, not auto-deleted)
+
+Deleting a `product_media` row (via the media editor's "×" button, or
+via "Delete product"/"Delete combo", both of which delete their
+media rows too) does **not** delete the underlying file from the
+`product-media` Storage bucket — Storage objects and database rows are
+independent. Over time this can leave orphaned files quietly using up
+bucket storage.
+
+**No automatic deletion is implemented** — deliberately: a file that
+looks orphaned right now could still be about to be referenced by an
+in-progress Admin edit, so any deletion needs a human to actually look
+at the list first. Instead, run the read-only reporter whenever you
+want to check:
+```
+node scripts/list-orphaned-storage-files.mjs
+```
+It lists every object in the bucket, cross-references it against every
+`media_url`/`poster_url` currently in `product_media`, and prints
+anything not referenced — with a count, not a delete action. Review the
+list, then remove anything you're confident about directly from the
+Supabase Dashboard's Storage browser. Add `--csv` to the command for a
+copy-pasteable list if you're reviewing a large number of files.
+
 ## ✅ V32.6 — full release notes
 
 See **`CHANGELOG_V32.6.md`** for the complete V32.6 release: SQL
@@ -810,6 +995,20 @@ are already applied from prior rounds.
    new enum before the constraint is added.
 2. **`supabase_migration_reviews_featured.sql`** — one column, purely
    additive, doesn't touch the frozen reviews migration.
+
+**V32.12 adds two more, after everything above:**
+3. **`supabase_migration_coupon_checkout.sql`** (corrected — see the
+   note at the top of DEPLOY.md's V32.12 section) —
+   `public.list_active_offers()`, `public.list_eligible_offers_for_cart()`,
+   4 new nullable/defaulted columns on `orders`, and an additional
+   coupon-aware overload of `place_order()` that also enforces
+   `applicable_products`/`applicable_categories`. Requires
+   `supabase_migration_coupons.sql` (coupons/validate_coupon) to already
+   be applied.
+4. **`supabase_migration_product_media_storage.sql`** — the
+   `product-media` Storage bucket + RLS, and `product_media.is_primary`.
+   Requires `supabase_migration_product_catalog.sql` (product_media
+   table) to already be applied.
 
 No other database changes this round.
 

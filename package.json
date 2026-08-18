@@ -1,0 +1,10 @@
+{
+  "name": "jayvifoods-scripts",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Node dependency for scripts/migrate-media-to-storage.mjs only. The website itself (index.html/admin.html/app.js/admin.js) has no build step and does not use this package.json — it loads @supabase/supabase-js from a CDN <script> tag at runtime instead.",
+  "type": "module",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.3"
+  }
+}

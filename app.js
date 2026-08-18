@@ -426,14 +426,45 @@ const PLACEHOLDER_MEDIA=[{type:'image',path:'images/hero/jayvi-products.webp'}];
 // for this — the same generic component handles every product and
 // every combo, present or future.
 const RESPONSIVE_PRODUCT_IMG = /^images\/(products|combos)\/.+\.webp$/i;
+// V32.12 (Workstream 3, item 3.8): a Git-repo image gets its responsive
+// srcset from the pre-generated -400w/-800w files (see
+// scripts/generate-product-image-variants.py). A Supabase Storage
+// image never has those pre-generated siblings — instead we use
+// Supabase's own on-the-fly image-transformation endpoint
+// (storage/v1/render/image/public/... ?width=&quality=), which resizes
+// server-side per request, so a 600px product card never has to
+// download an 8K source file. Detected purely by URL shape — this
+// storefront still doesn't care whether a product's media lives in Git
+// or Storage, exactly as documented in PRODUCT_MEDIA_MIGRATION.md.
+const SUPABASE_STORAGE_OBJECT_RE = /\/storage\/v1\/object\/public\/(.+)$/;
+function supabaseImageVariant(path, width){
+  const m = path.match(SUPABASE_STORAGE_OBJECT_RE);
+  if(!m) return null;
+  const base = path.slice(0, path.indexOf('/storage/v1/object/public/'));
+  return `${base}/storage/v1/render/image/public/${m[1]}?width=${width}&quality=75&resize=contain`;
+}
 function responsiveImgAttrs(path,sizes){
-  if(!path || !RESPONSIVE_PRODUCT_IMG.test(path)) return {src:path,srcset:'',sizes:''};
-  const stem=path.slice(0,-5); // strip ".webp"
-  return {
-    src:`${stem}-800w.webp`,
-    srcset:`${stem}-400w.webp 400w, ${stem}-800w.webp 800w, ${path} 1600w`,
-    sizes:sizes||'(max-width:600px) 45vw, 280px'
-  };
+  if(!path) return {src:path,srcset:'',sizes:''};
+  if(RESPONSIVE_PRODUCT_IMG.test(path)){
+    const stem=path.slice(0,-5); // strip ".webp"
+    return {
+      src:`${stem}-800w.webp`,
+      srcset:`${stem}-400w.webp 400w, ${stem}-800w.webp 800w, ${path} 1600w`,
+      sizes:sizes||'(max-width:600px) 45vw, 280px'
+    };
+  }
+  // Supabase Storage image (public bucket URL) — only images, never
+  // videos, and the render/image endpoint is best-effort: if the
+  // project's Supabase plan doesn't have Image Transformation enabled,
+  // the endpoint 404s and the <img> tag's plain `src` (below) is what
+  // actually renders since it's a normal object URL, not the transform
+  // one — so this can never make an image disappear, only skip the
+  // resize optimisation.
+  if(/\.(webp|jpe?g|png|avif)$/i.test(path)){
+    const v400=supabaseImageVariant(path,400), v800=supabaseImageVariant(path,800), v1600=supabaseImageVariant(path,1600);
+    if(v400) return {src:v800, srcset:`${v400} 400w, ${v800} 800w, ${v1600} 1600w`, sizes:sizes||'(max-width:600px) 45vw, 280px'};
+  }
+  return {src:path,srcset:'',sizes:''};
 }
 
 /* ---------- State ---------- */
@@ -488,9 +519,26 @@ async function loadCatalogFromSupabase(){
     if(pErr||cErr||mErr) throw (pErr||cErr||mErr);
     if(!dbProducts) throw new Error('No product data returned');
 
-    const mediaFor=(ownerKey,ownerId)=>dbMedia
-      .filter(m=>m[ownerKey]===ownerId)
-      .map(m=>({type:m.media_type,path:m.media_url,poster:m.poster_url||''}));
+    // V32.12.1 fix: is_primary now actually carried through (previously
+    // dropped here, so the storefront could never tell which media row
+    // Admin had marked primary and always silently fell back to lowest
+    // display_order). Also reorders the media array itself so the
+    // primary item is always index 0 — every consumer of p.media/
+    // c.media (product card carousel, combo card carousel, product
+    // detail gallery's initial image) reads media[0] as "the" image, so
+    // fixing the order once here, in one place, is what makes primary
+    // actually apply everywhere without touching each render function.
+    // Fallback (no row marked primary — e.g. legacy data from before
+    // the is_primary column existed) is exactly the previous behaviour:
+    // lowest display_order, unchanged, since dbMedia is already ordered
+    // that way by the query above.
+    const mediaFor=(ownerKey,ownerId)=>{
+      const list=dbMedia.filter(m=>m[ownerKey]===ownerId)
+        .map(m=>({type:m.media_type,path:m.media_url,poster:m.poster_url||'',isPrimary:!!m.is_primary}));
+      const primaryIdx=list.findIndex(m=>m.isPrimary);
+      if(primaryIdx>0) return [list[primaryIdx], ...list.slice(0,primaryIdx), ...list.slice(primaryIdx+1)];
+      return list;
+    };
 
     CONFIG.products=[...dbProducts].sort((a,b)=>(a.display_order||0)-(b.display_order||0)).map(p=>{
       const media=mediaFor('product_id',p.id);
@@ -503,11 +551,14 @@ async function loadCatalogFromSupabase(){
       };
     });
 
-    CONFIG.combos=(dbCombos||[]).map(c=>({
-      id:c.id, name:c.name, short:c.short_description, active:c.active,
-      price:c.price, mrp:c.mrp, items:c.items||[],
-      image:mediaFor('combo_id',c.id)[0]?.path||'', media:mediaFor('combo_id',c.id)
-    }));
+    CONFIG.combos=(dbCombos||[]).map(c=>{
+      const media=mediaFor('combo_id',c.id);
+      return {
+        id:c.id, name:c.name, short:c.short_description, active:c.active,
+        price:c.price, mrp:c.mrp, items:c.items||[],
+        image:media[0]?.path||'', media
+      };
+    });
     return true;
   }catch(err){
     console.warn('Falling back to embedded/local catalogue — Supabase product fetch failed:', err?.message||err);
@@ -1037,6 +1088,152 @@ function enableHeroSwipe(){
   },{passive:true});
 }
 
+/* ---------- Coupons & Offers (Workstream 1) ---------- */
+// Discovery list only (code, name, description, discount_type,
+// discount_value, min_order_value) via the public.list_active_offers()
+// RPC added in supabase_migration_coupon_checkout.sql — the coupons
+// table itself stays admin-only (see that migration's own comments on
+// why: a signed-in customer enumerating every code directly would be
+// a minor information leak). Never hard-coded, per spec 1.2.
+let activeOffers = [];
+async function fetchActiveOffers(){
+  try{
+    const {data,error} = await sb.rpc('list_active_offers');
+    if(error) throw error;
+    activeOffers = data||[];
+  }catch(err){
+    console.warn('Could not load active offers — floating button/announcement/cart dropdown will simply show none until this succeeds:', err?.message||err);
+    activeOffers = [];
+  }
+}
+function loadCoupon(){try{return JSON.parse(localStorage.getItem('jayviCouponV1')||'null')}catch{return null}}
+function saveCoupon(c){ if(c) localStorage.setItem('jayviCouponV1', JSON.stringify(c)); else localStorage.removeItem('jayviCouponV1'); }
+let appliedCoupon = loadCoupon(); // {code,name,discountType,discountValue,minOrderValue,discountAmount} | null — the UI-side preview only; server re-validates authoritatively at place_order() time (see placeOrder()).
+
+function offerLabel(o){ return o.discount_type==='percentage' ? `${o.discount_value}% OFF` : `${money(o.discount_value)} OFF`; }
+function renderFloatingOffer(){
+  const btn=$('offerFloatBtn'); if(!btn)return;
+  if(!activeOffers.length){ btn.style.display='none'; return; }
+  $('offerFloatLabel').textContent = activeOffers.length===1 ? offerLabel(activeOffers[0]) : 'Offers';
+  btn.style.display='flex';
+}
+function openOffersPanel(){
+  $('offersPanelList').innerHTML = activeOffers.length
+    ? activeOffers.map(o=>`<div class="offerCard"><b>${escapeHtml(o.code)} — ${offerLabel(o)}</b><p>${escapeHtml(o.description||o.name||'')}${o.min_order_value?` · Min order ${money(o.min_order_value)}`:''}</p></div>`).join('')
+    : '<div class="empty smallEmpty">No active offers right now.</div>';
+  $('offersOverlay').classList.add('open'); document.body.classList.add('modalOpen');
+}
+function closeOffersPanel(){ $('offersOverlay').classList.remove('open'); document.body.classList.remove('modalOpen'); }
+function renderOfferAnnouncement(){
+  const a=$('topOffer'), b=$('topOfferDup');
+  if(!a||!b)return;
+  if(!activeOffers.length){ a.style.display='none'; b.style.display='none'; return; }
+  const text = activeOffers.length===1
+    ? `🎉 Get ${offerLabel(activeOffers[0])} on orders${activeOffers[0].min_order_value?` above ${money(activeOffers[0].min_order_value)}`:''} – Use code ${activeOffers[0].code}`
+    : `🎉 Offers available: ${activeOffers.map(offerLabel).join(' | ')}`;
+  a.textContent=text; b.textContent=text; a.style.display='inline'; b.style.display='inline';
+}
+// Cart "Apply coupon" — client calls validate_coupon() for immediate,
+// responsive feedback (spec 1.5: "the customer UI can calculate/display
+// the offer for responsiveness"), but this is only ever a PREVIEW.
+// place_order() calls validate_coupon() itself again, server-side, at
+// the moment the order is actually placed — that second call is the
+// only one that is ever trusted to authorize a real discount.
+//
+// V32.12.1 fix: cartProductAndCategoryIds() below builds the same
+// product-id/category-id pair validate_coupon() now checks against
+// coupons.applicable_products/applicable_categories — passed into
+// BOTH the "Apply coupon" preview call and the eligible-offers
+// dropdown fetch, so a restricted coupon can never even be selected
+// for a cart it doesn't apply to, let alone applied.
+function cartProductAndCategoryIds(){
+  const productIds = new Set(), categoryIds = new Set();
+  const addProduct = p=>{ if(!p) return; productIds.add(p.id); if(p.category) categoryIds.add(p.category); (p.categories||[]).forEach(c=>categoryIds.add(c)); };
+  cart.forEach(x=>{
+    if(x.type==='combo'){
+      const c=getCombo(x.comboId); if(!c) return;
+      productIds.add(x.comboId);
+      (c.items||[]).forEach(it=>addProduct(getProduct(it.productId)));
+    } else {
+      addProduct(getProduct(x.productId));
+    }
+  });
+  return {productIds:[...productIds], categoryIds:[...categoryIds]};
+}
+async function applyCouponFromCart(code){
+  if(!code)return;
+  const t=cartTotals();
+  const {productIds,categoryIds} = cartProductAndCategoryIds();
+  const phone = currentProfile?.phone || null;
+  const {data,error} = await sb.rpc('validate_coupon',{p_code:code,p_subtotal:t.sub,p_customer_phone:phone,p_product_ids:productIds,p_category_ids:categoryIds});
+  const row = Array.isArray(data)?data[0]:data;
+  if(error || !row || !row.valid){
+    showToast(row?.reason || error?.message || 'This coupon could not be applied.');
+    return;
+  }
+  const meta = eligibleCartOffers.find(o=>o.code.toUpperCase()===code.toUpperCase()) || activeOffers.find(o=>o.code.toUpperCase()===code.toUpperCase());
+  appliedCoupon = {
+    code: code.toUpperCase(), coupon_id: row.coupon_id,
+    name: meta?.name||'', discountType: meta?.discount_type||null,
+    discountAmount: Number(row.discount_amount)
+  };
+  saveCoupon(appliedCoupon);
+  renderCart(); updateCheckoutSummary();
+  showToast(`Coupon applied: ${appliedCoupon.code} — Discount ${money(appliedCoupon.discountAmount)}`);
+}
+function removeAppliedCoupon(){
+  appliedCoupon=null; saveCoupon(null);
+  renderCart(); updateCheckoutSummary();
+  showToast('Coupon removed');
+}
+// Recomputed on every cart render against the CURRENT subtotal (cart
+// contents can change after a coupon was applied) — if the previously
+// applied code no longer qualifies (subtotal dropped below its minimum,
+// it expired, etc.) it's cleared here with the exact customer-facing
+// wording required by spec 1.6, rather than silently kept stale.
+function currentDiscount(sub){
+  if(!appliedCoupon) return 0;
+  if(appliedCoupon.discountAmount>sub){ return sub; }
+  return appliedCoupon.discountAmount;
+}
+// V32.12.1 fix: the dropdown now shows only offers that are ELIGIBLE
+// FOR THIS CART right now — restriction-aware (product/category) and
+// min-order-aware — fetched from list_eligible_offers_for_cart(),
+// never the unfiltered marketing list (activeOffers) that the floating
+// button/announcement use. This is a network call, so it's fetched
+// asynchronously and cached in eligibleCartOffers; couponSectionMarkup()
+// itself stays a plain, synchronous renderer of whatever was last
+// fetched, same pattern as every other cached-then-rendered list in
+// this file (categories, mealTags, etc.).
+let eligibleCartOffers = [];
+async function refreshEligibleCartOffers(){
+  if(!cart.length){ eligibleCartOffers=[]; return; }
+  const t=cartTotals();
+  const {productIds,categoryIds} = cartProductAndCategoryIds();
+  try{
+    const {data,error} = await sb.rpc('list_eligible_offers_for_cart',{p_product_ids:productIds,p_category_ids:categoryIds,p_subtotal:t.sub});
+    if(error) throw error;
+    eligibleCartOffers = data||[];
+  }catch(err){
+    console.warn('Could not refresh eligible cart offers:', err?.message||err);
+    eligibleCartOffers = [];
+  }
+  const box=document.getElementById('cartCouponBox');
+  if(box && cart.length && !appliedCoupon) box.innerHTML = couponSectionMarkup();
+}
+function couponSectionMarkup(){
+  const t=cartTotals();
+  if(appliedCoupon){
+    return `<div class="couponSection"><div class="couponApplied"><b>Coupon applied: ${escapeHtml(appliedCoupon.code)} · Discount ${money(currentDiscount(t.sub))}</b><button onclick="removeAppliedCoupon()">Remove coupon</button></div></div>`;
+  }
+  const eligible = eligibleCartOffers;
+  return `<div class="couponSection"><label><b>Apply coupon</b>
+    <select id="couponSelect" onchange="this.value&&applyCouponFromCart(this.value)">
+      <option value="">${eligible.length?'Select an offer…':(activeOffers.length?'No offers eligible for the items in your cart':'No offers available right now')}</option>
+      ${eligible.map(o=>`<option value="${escapeHtml(o.code)}">${escapeHtml(o.code)} – ${offerLabel(o)}</option>`).join('')}
+    </select></label></div>`;
+}
+
 /* ---------- Cart ---------- */
 function loadCart(){try{return JSON.parse(localStorage.getItem('jayviCartV14')||'[]')}catch{return []}}
 function saveCart(){localStorage.setItem('jayviCartV14',JSON.stringify(cart))}
@@ -1103,20 +1300,34 @@ function cartTotals(){
 }
 function renderCart(){
   if(!$('cartItems'))return;
+  if(cart.length===0 && appliedCoupon){ appliedCoupon=null; saveCoupon(null); } // an emptied cart clears any applied coupon — nothing to discount
   const count=cart.reduce((s,x)=>s+x.qty,0);
   $('cartCount').textContent=count;
   const t=cartTotals();
+  const discount=currentDiscount(t.sub);
   $('cartSubtotal').textContent=money(t.sub);
-  $('cartTotal').textContent=money(t.total);
+  $('cartTotal').textContent=money(Math.max(0,t.total-discount));
   $('cartShipping').innerHTML=t.sub===0?'':t.ship===0?'<span class="free">FREE DELIVERY</span>':`Delivery ${money(t.ship)}`;
   $('cartHint').textContent=t.sub&&t.ship?`Add ${money(t.remaining)} more for free delivery.`:'';
+  const foot=document.querySelector('.cartFoot');
+  if(foot){
+    let discLine = document.getElementById('cartDiscountLine');
+    if(discount>0){
+      if(!discLine){ discLine=document.createElement('div'); discLine.id='cartDiscountLine'; discLine.className='line discount'; foot.insertBefore(discLine, foot.querySelector('.line.total')); }
+      discLine.innerHTML=`<span>Discount</span><b>−${money(discount)}</b>`;
+    } else if(discLine){ discLine.remove(); }
+    let couponBox=document.getElementById('cartCouponBox');
+    if(!couponBox){ couponBox=document.createElement('div'); couponBox.id='cartCouponBox'; foot.insertBefore(couponBox, foot.firstChild); }
+    couponBox.innerHTML = cart.length ? couponSectionMarkup() : '';
+    if(cart.length) refreshEligibleCartOffers(); // async — re-renders just #cartCouponBox when it resolves (see refreshEligibleCartOffers)
+  }
   $('cartItems').innerHTML=cart.length?cart.map(x=>{
     const d=cartItemDetails(x);
     const a=responsiveImgAttrs(d.image,'64px');
     return `<div class="cartItem"><img src="${a.src}"${a.srcset?` srcset="${a.srcset}" sizes="${a.sizes}"`:''} loading="lazy" decoding="async" alt=""><div><b>${escapeHtml(d.name)}</b><small>${escapeHtml(d.label)} · ${money(d.price)}</small>
       <div class="qty"><button onclick="changeQty('${x.key}',-1)">−</button><span>${x.qty}</span><button onclick="changeQty('${x.key}',1)">+</button><button onclick="removeCart('${x.key}')">Remove</button></div></div></div>`;
   }).join(''):`<div class="emptyCart"><i class="fa-solid fa-bag-shopping"></i><h3>Your bag is empty</h3><p>Add a Jayvi favourite to get started.</p></div>`;
-  updateMobileCartBar(count,t.total);
+  updateMobileCartBar(count,Math.max(0,t.total-discount));
   updateBottomNavBadge(count);
 }
 function openCart(){$('cartOverlay').classList.add('open');document.body.classList.add('modalOpen');renderCart()}
@@ -1466,8 +1677,12 @@ function effectiveShipping(t){
 function updateCheckoutSummary(){
   const t = cartTotals();
   const ship = effectiveShipping(t);
-  const total = t.sub + ship;
+  const discount = currentDiscount(t.sub);
+  const total = Math.max(0, t.sub - discount + ship);
   const shipEl = $('checkoutShipLine'), totalEl = $('checkoutTotalLine'), estEl = $('checkoutEstimate');
+  const discEl = $('checkoutDiscountLine');
+  if(discEl) discEl.parentElement.style.display = discount>0 ? '' : 'none';
+  if(discEl) discEl.textContent = '−'+money(discount);
   if(shipEl) shipEl.textContent = ship ? money(ship) : 'FREE';
   if(totalEl) totalEl.textContent = money(total);
   if(estEl){
@@ -1515,8 +1730,9 @@ async function openCheckout(){
     <aside class="summary"><h3>Your order</h3>
       ${cart.map(x=>{const d=cartItemDetails(x);return `<div class="line"><span>${escapeHtml(d.name)} · ${escapeHtml(d.label)} × ${x.qty}</span><b>${money(d.price*x.qty)}</b></div>`}).join('')}
       <div class="line"><span>Subtotal</span><b>${money(t.sub)}</b></div>
+      <div class="line discount" style="display:${currentDiscount(t.sub)>0?'':'none'}"><span>Discount ${appliedCoupon?'('+escapeHtml(appliedCoupon.code)+')':''}</span><b id="checkoutDiscountLine">−${money(currentDiscount(t.sub))}</b></div>
       <div class="line"><span>Delivery</span><b id="checkoutShipLine">${t.ship?money(t.ship):'FREE'}</b></div>
-      <div class="line total"><span>Total</span><b id="checkoutTotalLine">${money(t.total)}</b></div>
+      <div class="line total"><span>Total</span><b id="checkoutTotalLine">${money(Math.max(0,t.sub-currentDiscount(t.sub)+t.ship))}</b></div>
     </aside></div>`;
   $('checkoutOverlay').classList.add('open');document.body.classList.add('modalOpen');
   initPlaces();
@@ -1634,7 +1850,8 @@ async function placeOrder(e){
   }
   const t=cartTotals();
   const ship = effectiveShipping(t); // same value the summary just displayed — never a second, different number
-  const total = t.sub + ship;
+  const discount = currentDiscount(t.sub); // UI preview only — place_order() below re-validates this server-side and is the real authority (spec 1.5)
+  const total = Math.max(0, t.sub - discount + ship);
   const min = checkoutPinInfo?.min ?? CONFIG.store.deliveryMinDays ?? 4;
   const max = checkoutPinInfo?.max ?? CONFIG.store.deliveryMaxDays ?? 8;
   const method=document.querySelector('input[name=paymentMethod]:checked')?.value||'upi';
@@ -1662,19 +1879,35 @@ async function placeOrder(e){
       p_payment_method: method,
       p_estimated_delivery: `${min}-${max} days`,
       p_items: items,
-      p_eta_min_days: min, p_eta_max_days: max
+      p_eta_min_days: min, p_eta_max_days: max,
+      p_coupon_code: appliedCoupon?.code || null
     });
     if(!result.error || result.error.code !== '23505') break; // 23505 = unique_violation, retry with a new number
     orderNumber = makeOrderNumber(); attempt++;
   }
   if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = 'Continue checkout'; }
 
-  if(result.error){ showToast('Could not place order: '+result.error.message); return; }
+  if(result.error){
+    // Spec 1.6: if the coupon became invalid between cart and checkout
+    // (expired, usage limit reached by someone else, etc.) place_order()
+    // rejects the ENTIRE order server-side rather than silently
+    // dropping just the discount — this is that exact customer-facing
+    // message, and the stale local coupon is cleared so the next
+    // attempt starts clean.
+    if(/coupon is no longer available/i.test(result.error.message||'')){
+      appliedCoupon=null; saveCoupon(null);
+      showToast('This coupon is no longer available. Please select another offer.');
+      renderCart(); updateCheckoutSummary();
+      return;
+    }
+    showToast('Could not place order: '+result.error.message); return;
+  }
 
   const phone = $('coPhone').value.trim(), name = $('coName').value.trim();
   cart=[]; saveCart();
+  appliedCoupon=null; saveCoupon(null);
   closeCheckout();
-  const orderStub = { order_number: orderNumber, total: t.total, status: method==='upi'?'Payment verification pending':'Order received — COD', customerName:name, phone, estimated_delivery:`${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days` };
+  const orderStub = { order_number: orderNumber, total, status: method==='upi'?'Payment verification pending':'Order received — COD', customerName:name, phone, estimated_delivery:`${CONFIG.store.deliveryMinDays||4}–${CONFIG.store.deliveryMaxDays||8} days` };
   if(method==='upi') showUpiPayment(orderStub); else showOrderSuccess(orderStub);
   refreshProductViews(); renderCart();
 }
@@ -1973,8 +2206,9 @@ async function init(){
   // Reviews — see loadSettingsAnnouncementsReviewsFromSupabase() above.
   // All three fetches run in parallel; a failure in any one has no
   // effect on the others.
-  await Promise.all([loadCatalogFromSupabase(), loadCategoriesAndMealTagsFromSupabase(), loadSettingsAnnouncementsReviewsFromSupabase()]);
+  await Promise.all([loadCatalogFromSupabase(), loadCategoriesAndMealTagsFromSupabase(), loadSettingsAnnouncementsReviewsFromSupabase(), fetchActiveOffers()]);
   sync();
+  renderFloatingOffer(); renderOfferAnnouncement();
   if(CONFIG.store.vacationMode){
     const b=$('vacationBanner');
     if(b){b.style.display='block';b.textContent=CONFIG.store.vacationMessage||'Orders are temporarily paused while Jayvi Foods is away.'}

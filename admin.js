@@ -482,9 +482,9 @@ async function fetchProducts(){
     category:p.category||'', categories:p.categories||[], mealTags:p.meal_tags||[],
     active:p.active, best:p.best, displayOrder:p.display_order||0,
     variants:p.variants||[], rating:p.rating||0, reviewCount:p.review_count||0,
-    media:mediaRows.filter(m=>m.product_id===p.id).map(m=>({id:m.id,type:m.media_type,path:m.media_url,poster:m.poster_url||'',order:m.display_order})),
+    media:mediaRows.filter(m=>m.product_id===p.id).map(m=>({id:m.id,type:m.media_type,path:m.media_url,poster:m.poster_url||'',order:m.display_order,isPrimary:!!m.is_primary})),
   }));
-  products.forEach(p=>{p.image=p.media[0]?.path||''});
+  products.forEach(p=>{p.image=(p.media.find(m=>m.isPrimary)||p.media[0])?.path||''});
   data.products=products;
   data._productMediaAllRows=mediaRows; // reused by combosPage for combo media
   return products;
@@ -496,7 +496,7 @@ async function fetchCombos(){
   const combos=(rows||[]).map(c=>({
     id:c.id, name:c.name||'', short:c.short_description||'', active:c.active,
     price:c.price, mrp:c.mrp, items:c.items||[],
-    media:mediaRows.filter(m=>m.combo_id===c.id).map(m=>({id:m.id,type:m.media_type,path:m.media_url,poster:m.poster_url||'',order:m.display_order})),
+    media:mediaRows.filter(m=>m.combo_id===c.id).map(m=>({id:m.id,type:m.media_type,path:m.media_url,poster:m.poster_url||'',order:m.display_order,isPrimary:!!m.is_primary})),
   }));
   combos.forEach(c=>{c.image=c.media[0]?.path||''});
   data.combos=combos;
@@ -632,8 +632,10 @@ async function saveProductToSupabase(p, mediaDraft){
   const {error:delErr}=await sb.from('product_media').delete().eq('product_id',p.id);
   if(delErr){ toast('Product saved, but could not update media: '+delErr.message); return false; }
   if(mediaDraft.length){
+    const hasPrimary = mediaDraft.some(m=>m.primary);
     const {error:insErr}=await sb.from('product_media').insert(mediaDraft.map((m,i)=>({
-      product_id:p.id, media_type:m.type, media_url:m.path, poster_url:m.poster||null, display_order:i+1
+      product_id:p.id, media_type:m.type, media_url:m.path, poster_url:m.poster||null, display_order:i+1,
+      is_primary: hasPrimary ? !!m.primary : i===0 // no explicit primary chosen → first item, matching the display-order convention this always had
     })));
     if(insErr){ toast('Product saved, but could not save media: '+insErr.message); return false; }
   }
@@ -647,8 +649,10 @@ async function saveComboToSupabase(c, mediaDraft){
   const {error:delErr}=await sb.from('product_media').delete().eq('combo_id',c.id);
   if(delErr){ toast('Combo saved, but could not update media: '+delErr.message); return false; }
   if(mediaDraft.length){
+    const hasPrimary = mediaDraft.some(m=>m.primary);
     const {error:insErr}=await sb.from('product_media').insert(mediaDraft.map((m,i)=>({
-      combo_id:c.id, media_type:m.type, media_url:m.path, poster_url:m.poster||null, display_order:i+1
+      combo_id:c.id, media_type:m.type, media_url:m.path, poster_url:m.poster||null, display_order:i+1,
+      is_primary: hasPrimary ? !!m.primary : i===0
     })));
     if(insErr){ toast('Combo saved, but could not save media: '+insErr.message); return false; }
   }
@@ -659,26 +663,68 @@ async function saveComboToSupabase(c, mediaDraft){
 // No fixed slot count: window._mediaDraft is a plain array, any length.
 function mediaRowsMarkup(){
   const list=window._mediaDraft||[];
-  return list.length ? list.map((m,i)=>`<div class="comboItemForm">
+  const anyPrimary = list.some(m=>m.primary);
+  return list.length ? list.map((m,i)=>{
+    const isPrimary = anyPrimary ? m.primary : i===0;
+    const isStorage = /\/storage\/v1\/object\/public\//.test(m.path||'');
+    return `<div class="comboItemForm mediaRow${isPrimary?' isPrimaryRow':''}">
     <select onchange="window._mediaDraft[${i}].type=this.value">
       <option value="image" ${m.type==='image'?'selected':''}>Image</option>
       <option value="video" ${m.type==='video'?'selected':''}>Video</option>
     </select>
     <input value="${esc(m.path)}" placeholder="images/products/.../file.webp or https://..." onchange="window._mediaDraft[${i}].path=this.value">
+    ${m.type==='video'?`<input value="${esc(m.poster||'')}" placeholder="poster image URL (optional)" onchange="window._mediaDraft[${i}].poster=this.value" style="max-width:160px">`:''}
+    <span class="mediaSourceTag" title="${isStorage?'Stored in Supabase Storage':'Git-repo path or external URL'}">${isStorage?'☁️ Storage':'📁 Git/URL'}</span>
+    <button type="button" title="${isPrimary?'This is the primary (product-card) image':'Set as primary'}" class="${isPrimary?'primaryBtn active':'primaryBtn'}" onclick="setPrimaryMediaRow(${i})">${isPrimary?'★ Primary':'☆ Set primary'}</button>
     <button type="button" title="Move up" onclick="moveMediaRow(${i},-1)">↑</button>
     <button type="button" title="Move down" onclick="moveMediaRow(${i},1)">↓</button>
     <button type="button" onclick="window._mediaDraft.splice(${i},1);renderMediaRows()">×</button>
-  </div>`).join('') : '<div class="empty smallEmpty">No media yet — add at least one image.</div>';
+  </div>`}).join('') : '<div class="empty smallEmpty">No media yet — add at least one image.</div>';
 }
 function mediaEditorMarkup(){
-  return `<div class="formSection"><h3>Media</h3><p>Any number of images/videos, in any order. A local repo path (e.g. <code>images/products/peanut-chutney/hero.webp</code>) or a full external <code>https://</code> URL both work identically — the storefront doesn't care which.</p>
+  return `<div class="formSection"><h3>Media</h3><p>Any number of images/videos, in any order. Use <b>+ Add Photo</b>/<b>+ Add Video</b> to upload a real file straight into Supabase Storage (the <code>product-media</code> bucket — recommended, this is the Workstream 3 architecture), or <b>+ Add Media (URL)</b> to reference an existing Git-repo path or external <code>https://</code> URL — both work identically on the storefront and can be mixed freely during migration.</p>
+  <div class="mediaUploadRow">
+    <label class="outline uploadBtn">📷 + Add Photo<input type="file" accept="image/webp,image/jpeg,image/png,image/avif" style="display:none" onchange="uploadMediaFile(event,'image')"></label>
+    <label class="outline uploadBtn">🎬 + Add Video<input type="file" accept="video/mp4,video/webm" style="display:none" onchange="uploadMediaFile(event,'video')"></label>
+    <button type="button" class="outline" onclick="addMediaRow()">+ Add Media (URL)</button>
+  </div>
+  <div id="mediaUploadStatus" class="mediaUploadStatus"></div>
   <div id="mediaRows">${mediaRowsMarkup()}</div>
-  <button type="button" class="outline" onclick="addMediaRow()">+ Add Media</button>
   </div>`;
 }
 function renderMediaRows(){const box=document.getElementById('mediaRows');if(box)box.innerHTML=mediaRowsMarkup()}
-function addMediaRow(){window._mediaDraft.push({type:'image',path:''});renderMediaRows()}
+function addMediaRow(){window._mediaDraft.push({type:'image',path:'',poster:'',primary:false});renderMediaRows()}
 function moveMediaRow(i,dir){const list=window._mediaDraft;const j=i+dir;if(j<0||j>=list.length)return;[list[i],list[j]]=[list[j],list[i]];renderMediaRows()}
+function setPrimaryMediaRow(i){(window._mediaDraft||[]).forEach((m,j)=>{m.primary=(j===i)});renderMediaRows()}
+// Workstream 3.13 — real file upload into Supabase Storage's
+// `product-media` bucket (see supabase_migration_product_media_storage.sql),
+// instead of Admin having to already have a hosted URL to type in. The
+// resulting public URL is inserted as a new media row automatically —
+// same downstream shape (`media_url`) as a hand-typed Git path or
+// external URL, so nothing else in admin.js/app.js needs to know the
+// difference (spec 3.14: "the application should never need to know
+// where the image is stored").
+async function uploadMediaFile(evt, kind){
+  const file = evt.target.files?.[0]; if(!file) return;
+  const statusEl = document.getElementById('mediaUploadStatus');
+  const typedId = document.getElementById('pId')?.value.trim() || document.getElementById('cId')?.value.trim();
+  const owner = (typedId ? (document.getElementById('cId') && !document.getElementById('pId') ? 'combo-'+typedId : typedId) : window._mediaOwnerId) || 'unassigned';
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g,'-').toLowerCase();
+  const path = `${owner}/${kind==='video'?'videos/':''}${Date.now()}-${safeName}`;
+  if(statusEl) statusEl.textContent = `Uploading ${file.name}…`;
+  const {error: upErr} = await sb.storage.from('product-media').upload(path, file, {cacheControl:'31536000', upsert:false});
+  if(upErr){
+    if(statusEl) statusEl.textContent = '';
+    toast('Upload failed: '+upErr.message+' — has supabase_migration_product_media_storage.sql been run, and does this bucket exist yet?');
+    evt.target.value='';
+    return;
+  }
+  const {data:pub} = sb.storage.from('product-media').getPublicUrl(path);
+  window._mediaDraft.push({type:kind, path:pub.publicUrl, poster:'', primary:false});
+  renderMediaRows();
+  if(statusEl) statusEl.textContent = `Uploaded ${file.name}.`;
+  evt.target.value='';
+}
 
 function catName(id){return data.categories.find(c=>c.id===id)?.name||id||'Uncategorised'}
 function product(id){return data.products.find(p=>p.id===id)}
@@ -967,7 +1013,8 @@ async function productsPage(){
 function productForm(id=null){
  const p=id?product(id):{id:'',sku:'',name:'',short:'',description:'',category:data.categories[0]?.id||'',categories:[],active:true,best:false,media:[],mealTags:[],rating:0,reviewCount:0,variants:[]};
  const selected=p.categories?.length?p.categories:[p.category].filter(Boolean);
- window._mediaDraft=structuredClone(p.media||[]).map(m=>({type:m.type,path:m.path}));
+ window._mediaDraft=structuredClone(p.media||[]).map(m=>({type:m.type,path:m.path,poster:m.poster||'',primary:!!m.isPrimary}));
+ window._mediaOwnerId=p.id||'new-product';
  openModal(`<div class="eyebrow">PRODUCT</div><h2>${id?'Edit product':'Add product'}</h2>
  <div class="formGrid">
  <label>Product ID<input id="pId" value="${esc(p.id)}" placeholder="peanut-chutney" ${id?'disabled':''}></label>
@@ -1051,7 +1098,8 @@ async function combosPage(){
 }
 function comboForm(id=null){
  const c=id?data.combos.find(x=>x.id===id):{id:'',name:'',short:'',price:0,mrp:0,active:true,items:[],media:[]};
- window._mediaDraft=structuredClone(c.media||[]).map(m=>({type:m.type,path:m.path}));
+ window._mediaDraft=structuredClone(c.media||[]).map(m=>({type:m.type,path:m.path,poster:m.poster||'',primary:!!m.isPrimary}));
+ window._mediaOwnerId=c.id?('combo-'+c.id):'new-combo';
  openModal(`<div class="eyebrow">COMBO</div><h2>${id?'Edit combo':'Add combo'}</h2><div class="formGrid"><label>Combo ID<input id="cId" value="${esc(c.id)}" ${id?'disabled':''}></label><label>Name<input id="cName" value="${esc(c.name)}"></label><label>Price<input id="cPrice" type="number" value="${c.price}"></label><label>MRP<input id="cMrp" type="number" value="${c.mrp}"></label><label class="fullLabel">Description<textarea id="cShort" rows="3">${esc(c.short||'')}</textarea></label></div><div class="formSection"><h3>Combo items</h3><div id="comboItems"></div><button class="outline" onclick="addComboItemRow()">+ Add item</button></div>${mediaEditorMarkup()}<label class="checkOnly"><input id="cActive" type="checkbox" ${c.active?'checked':''}> Combo visible</label><button class="gold full" onclick="saveCombo('${id?esc(id):''}')">Save combo</button>`);window._comboDraft=structuredClone(c.items||[]);renderComboRows()}
 function addComboItemRow(){window._comboDraft.push({productId:data.products[0]?.id||'',variantId:data.products[0]?.variants?.[0]?.id||'',qty:1});renderComboRows()}
 function renderComboRows(){const box=document.getElementById('comboItems');if(!box)return;box.innerHTML=(window._comboDraft||[]).map((it,i)=>{const p=product(it.productId);const opts=(p?.variants||[]).filter(v=>v.active).map(v=>`<option value="${v.id}" ${v.id===it.variantId?'selected':''}>${esc(v.label)} — ${money(v.price)}</option>`).join('');return `<div class="comboItemForm"><select onchange="comboProductChanged(${i},this.value)">${data.products.filter(p=>p.active).map(p=>`<option value="${p.id}" ${p.id===it.productId?'selected':''}>${esc(p.name)}</option>`).join('')}</select><select onchange="window._comboDraft[${i}].variantId=this.value">${opts}</select><input type="number" min="1" value="${it.qty}" onchange="window._comboDraft[${i}].qty=Number(this.value||1)"><button onclick="window._comboDraft.splice(${i},1);renderComboRows()">×</button></div>`}).join('')||'<div class="empty smallEmpty">Add products to this combo.</div>'}
@@ -1434,13 +1482,15 @@ async function couponsPage(){
   const {data:rows,error}=await sb.from('coupons').select('*').order('created_at',{ascending:false});
   if(error) return `<section class="panel"><div class="empty">Could not load coupons: ${esc(error.message)}. Has supabase_migration_coupons.sql been run?</div></section>`;
   data._coupons=rows||[];
-  return `<section class="panel"><div class="catalogWarning" style="border-color:#8a6a1a;background:#fdf6e3"><b>⚠️ Admin management only in V32.6</b><p>Coupons can be created/edited/enabled here and are validated server-side (<code>public.validate_coupon</code>). Applying a coupon at checkout is <b>not yet wired into the storefront</b> in this release — see <code>CHANGELOG_V32.6.md</code> for why and what a follow-up release needs to do.</p></div>
+  await fetchProducts(); await fetchCategories(); // needed for the applicable-products/categories checkboxes in couponForm()
+  return `<section class="panel"><div class="catalogWarning" style="border-color:#1a7a3d;background:#e9f7ee"><b>✅ Live on the storefront (V32.12)</b><p>Coupons are created/edited/enabled here and validated server-side (<code>public.validate_coupon</code>) — nothing new there. As of V32.12, they're also fully wired into the storefront: the floating offer button, the homepage announcement ticker, and the Cart's "Apply coupon" dropdown all read from Supabase automatically, and <code>place_order()</code> re-validates any applied code server-side (including the product/category restrictions below) before an order is ever created. See <code>CHANGELOG_V32.12.md</code>.</p></div>
   <div class="panelHead"><div><h2>Coupons &amp; Offers</h2><p>Percentage or fixed discounts, with optional date range, minimum order value, usage limits, and product/category restrictions.</p></div><button class="gold" onclick="couponForm()">+ Add coupon</button></div>
-  <div class="comboAdmin">${(rows||[]).map(c=>`<article><span class="typeTag">${esc(c.discount_type.toUpperCase())}</span><h3>${esc(c.code)} — ${esc(c.name)}</h3><p>${esc(c.description||'')}</p><strong>${c.discount_type==='percentage'?c.discount_value+'% off':money(c.discount_value)+' off'}</strong><small>Min order ${money(c.min_order_value||0)}${c.max_discount?' · Max discount '+money(c.max_discount):''}${c.usage_limit?' · Limit '+c.usage_limit+' uses':''} · ${c.active?'Active':'Disabled'}</small><div class="cardActions"><button class="outline" onclick="couponForm('${esc(c.id)}')">Edit</button><button class="outline" onclick="toggleCouponActive('${esc(c.id)}',${!c.active})">${c.active?'Disable':'Enable'}</button><button class="outline dangerBtn" onclick="deleteCoupon('${esc(c.id)}')">Delete</button></div></article>`).join('')||'<div class="empty smallEmpty">No coupons yet.</div>'}</div>
+  <div class="comboAdmin">${(rows||[]).map(c=>`<article><span class="typeTag">${esc(c.discount_type.toUpperCase())}</span><h3>${esc(c.code)} — ${esc(c.name)}</h3><p>${esc(c.description||'')}</p><strong>${c.discount_type==='percentage'?c.discount_value+'% off':money(c.discount_value)+' off'}</strong><small>Min order ${money(c.min_order_value||0)}${c.max_discount?' · Max discount '+money(c.max_discount):''}${c.usage_limit?' · Limit '+c.usage_limit+' uses':''} · ${c.active?'Active':'Disabled'}${(c.applicable_products?.length)?' · '+c.applicable_products.length+' product(s) only':''}${(c.applicable_categories?.length)?' · '+c.applicable_categories.length+' categor'+(c.applicable_categories.length===1?'y':'ies')+' only':''}</small><div class="cardActions"><button class="outline" onclick="couponForm('${esc(c.id)}')">Edit</button><button class="outline" onclick="toggleCouponActive('${esc(c.id)}',${!c.active})">${c.active?'Disable':'Enable'}</button><button class="outline dangerBtn" onclick="deleteCoupon('${esc(c.id)}')">Delete</button></div></article>`).join('')||'<div class="empty smallEmpty">No coupons yet.</div>'}</div>
   </section>`;
 }
 function couponForm(id=null){
-  const c=id?(data._coupons||[]).find(x=>x.id===id):{code:'',name:'',description:'',active:true,start_date:'',end_date:'',discount_type:'percentage',discount_value:'',min_order_value:0,max_discount:'',usage_limit:'',per_customer_limit:1};
+  const c=id?(data._coupons||[]).find(x=>x.id===id):{code:'',name:'',description:'',active:true,start_date:'',end_date:'',discount_type:'percentage',discount_value:'',min_order_value:0,max_discount:'',usage_limit:'',per_customer_limit:1,applicable_products:[],applicable_categories:[]};
+  const selProducts = c.applicable_products||[], selCategories = c.applicable_categories||[];
   openModal(`<div class="eyebrow">COUPON</div><h2>${id?'Edit coupon':'Add coupon'}</h2>
   <div class="formGrid">
     <label>Code * <input id="cpCode" value="${esc(c.code)}" placeholder="WELCOME10" style="text-transform:uppercase"></label>
@@ -1455,6 +1505,8 @@ function couponForm(id=null){
     <label>Start date (optional)<input id="cpStart" type="date" value="${c.start_date?String(c.start_date).slice(0,10):''}"></label>
     <label>End date (optional)<input id="cpEnd" type="date" value="${c.end_date?String(c.end_date).slice(0,10):''}"></label>
   </div>
+  <div class="formSection"><h3>Product restriction (optional)</h3><p>Leave nothing checked to allow every product. If any are checked, this coupon only applies when <b>every</b> item in the cart is one of these (server-enforced — see <code>public.validate_coupon</code>).</p><div class="checkGrid">${(data.products||[]).map(p=>`<label><input type="checkbox" class="cpProducts" value="${esc(p.id)}" ${selProducts.includes(p.id)?'checked':''}> ${esc(p.name)}</label>`).join('')||'<span class="tiny">No products yet.</span>'}</div></div>
+  <div class="formSection"><h3>Category restriction (optional)</h3><p>Leave nothing checked to allow every category. If both product and category restrictions are set, the cart must satisfy both.</p><div class="checkGrid">${(data.categories||[]).map(cat=>`<label><input type="checkbox" class="cpCategories" value="${esc(cat.id)}" ${selCategories.includes(cat.id)?'checked':''}> ${esc(cat.name)}</label>`).join('')||'<span class="tiny">No categories yet.</span>'}</div></div>
   <label class="checkOnly"><input id="cpActive" type="checkbox" ${c.active!==false?'checked':''}> Active</label>
   <button class="gold full" onclick="saveCoupon('${id?esc(id):''}')">Save coupon</button>`);
 }
@@ -1471,7 +1523,9 @@ async function saveCoupon(id){
     per_customer_limit:document.getElementById('cpPerCustomer').value?Number(document.getElementById('cpPerCustomer').value):null,
     start_date:document.getElementById('cpStart').value||null,
     end_date:document.getElementById('cpEnd').value||null,
-    active:document.getElementById('cpActive').checked
+    active:document.getElementById('cpActive').checked,
+    applicable_products:[...document.querySelectorAll('.cpProducts:checked')].map(x=>x.value),
+    applicable_categories:[...document.querySelectorAll('.cpCategories:checked')].map(x=>x.value)
   };
   if(!row.code||!row.name||!row.discount_value){ toast('Code, name, and discount value are required'); return; }
   const {error}=id?await sb.from('coupons').update(row).eq('id',id):await sb.from('coupons').insert(row);
