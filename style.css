@@ -401,6 +401,28 @@ footer a:hover{color:#fff}
 .couponApplied button{background:none;border:0;color:var(--brand-dark);font-weight:700;text-decoration:underline;font-size:12px}
 .line.discount span,.line.discount b{color:#1a7a3d}
 
+/* ---------- V32.12.1: offer threshold nudge + locked/unlocked offers panel (spec 2) ---------- */
+.offerNudge{background:var(--brand-soft);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px;font-size:13px;font-weight:600;color:var(--brand-dark);line-height:1.5}
+.linkBtn{background:none;border:0;padding:0;color:var(--brand-dark);font-weight:700;text-decoration:underline;font-size:12px;cursor:pointer}
+.offersLink{display:block;margin-top:8px}
+.offerCard.locked{opacity:.72}
+.offerCard.unlocked{border-color:#1a7a3d;background:#eefbf0}
+.offerCard .lockNote{display:inline-block;margin-top:6px;font-size:12px;font-weight:700;color:var(--ink-soft)}
+.offerCard button.btn{margin-top:8px}
+
+/* ---------- V32.12.1: cart cross-sell recommendations (spec 3) ---------- */
+.cartRecs:empty{display:none}
+.cartRecsInner{padding:12px 18px;border-top:1px dashed var(--line-soft)}
+.cartRecsTitle{display:block;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:8px}
+.cartRecsRow{display:flex;flex-direction:column;gap:8px}
+.cartRecCard{display:flex;align-items:center;gap:10px;background:var(--surface-2);border-radius:var(--radius-sm);padding:8px 10px}
+.cartRecCard img{width:40px;height:40px;border-radius:8px;object-fit:cover;flex:none}
+.cartRecCard div{flex:1;min-width:0}
+.cartRecCard b{display:block;font-size:12.5px;color:var(--brand-dark);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cartRecCard small{font-size:11.5px;color:var(--ink-soft)}
+.cartRecCard button{background:var(--brand);color:#fff;border:0;width:28px;height:28px;border-radius:50%;flex:none;cursor:pointer}
+
+
 /* ---------- Mobile bottom cart bar ---------- */
 #mobileCartBar{
   position:fixed;left:12px;right:12px;bottom:calc(var(--bottomnav-h) + var(--safe-b) + 10px);z-index:56;
