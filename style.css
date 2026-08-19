@@ -107,20 +107,24 @@ h1,h2,h3{font-family:var(--font-display);font-weight:600;letter-spacing:-.01em;c
 .announcementTrack span{font-size:12px;font-weight:600;letter-spacing:.05em;padding:0 2px}
 @keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 
-/* ---------- Brand/promo gallery (V32.6, item 3) ----------
-   Reuses the exact marquee technique above (duplicated track,
-   translateX(-50%) loop) — purely visual, no links, no click
-   handlers on the images themselves. Hidden entirely via inline
-   style/display when there are no images (see renderBrandGallery()
-   in app.js); a single image renders statically with no animation. */
-.brandGallerySection{padding:22px 0;background:var(--surface-2,#f6efe4);overflow:hidden}
-.galleryViewport{width:100%;overflow:hidden;mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
-.galleryTrack{display:flex;gap:14px;width:max-content}
-.galleryTrack.isAnimating{animation:galleryMarquee var(--gallery-marquee-duration,32s) linear infinite}
-.galleryTrack:hover{animation-play-state:paused}
-.galleryTrack img{height:220px;width:auto;border-radius:var(--radius-lg,16px);object-fit:cover;pointer-events:none;user-select:none;display:block}
-@keyframes galleryMarquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-@media (max-width:959px){.galleryTrack img{height:160px}}
+/* ---------- Gallery (V32.3) ----------
+   Real slideshow (fade transitions + dots), replacing the V32.6
+   continuous marquee. Slides are absolutely positioned/stacked and
+   cross-fade via opacity — only `.active` is visible/interactive,
+   which also keeps a not-yet-active <video> or <img> out of the way
+   without unmounting it (see gallerySetIndex() in app.js). Hidden
+   entirely via inline style/display when there are no active items. */
+.gallerySection{padding:22px 0;background:var(--surface-2,#f6efe4)}
+.galleryStage{position:relative;width:100%;max-width:900px;margin:0 auto;aspect-ratio:16/9;border-radius:var(--radius-lg,16px);overflow:hidden;background:#00000010}
+.gallerySlides{position:absolute;inset:0}
+.gallerySlide{position:absolute;inset:0;opacity:0;transition:opacity .6s ease;pointer-events:none}
+.gallerySlide.active{opacity:1;pointer-events:auto}
+.gallerySlide img,.gallerySlide video{width:100%;height:100%;object-fit:cover;display:block;user-select:none}
+.galleryCaption{position:absolute;left:0;right:0;bottom:0;padding:10px 16px;background:linear-gradient(0deg,#0009,transparent);color:#fff;font-size:12.5px;font-weight:600}
+.galleryDots{display:flex;justify-content:center;gap:8px;margin-top:12px}
+.galleryDots button{width:8px;height:8px;border-radius:99px;border:none;background:#00000030;padding:0;cursor:pointer}
+.galleryDots button.active{background:var(--gold,#c8963e);width:22px;border-radius:99px;transition:width .25s ease}
+@media (max-width:959px){.galleryStage{aspect-ratio:4/3;border-radius:var(--radius-md,12px)}}
 
 .vacationBanner{background:var(--danger);color:#fff;text-align:center;font-weight:700;font-size:13px;padding:10px 16px}
 

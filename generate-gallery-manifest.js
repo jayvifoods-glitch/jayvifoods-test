@@ -2,6 +2,24 @@
 /* =========================================================
    Jayvi Foods — Brand gallery manifest generator (V32.6, item 3)
 
+   ⚠ DEPRECATED as of V32.3 — kept only per the brief's explicit
+   instruction not to delete existing gallery assets/scripts outright
+   (spec 19). The customer-facing gallery is no longer driven by
+   images/gallery/manifest.json — it now reads Admin-managed items from
+   Supabase (public.gallery_media, `gallery-media` Storage bucket; see
+   supabase_migration_v32_3.sql and renderBrandGallery() in app.js).
+   This script and images/gallery/ are left in place, unused, for
+   reference/rollback only. images/gallery/manifest.json was already an
+   empty `[]` at the time of this release, so there was no live gallery
+   content to migrate. Do not add new images to images/gallery/ or run
+   this script expecting it to affect the storefront — it no longer
+   does. Manage the gallery from Admin → Gallery instead.
+   ========================================================= */
+
+/* =========================================================
+   Jayvi Foods — Brand gallery manifest generator (V32.6, item 3)
+   [Original V32.6 documentation below, preserved for reference.]
+
    WHY THIS SCRIPT EXISTS (please read before assuming it can be
    skipped): this is a static site with no server and no build step.
    A static site genuinely cannot ask its own web server "what files

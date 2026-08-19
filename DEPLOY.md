@@ -1,5 +1,71 @@
 # Jayvi Foods v32.3 — A–AA implementation pass
 
+## ✅ V32.3 — General/Product announcements, announcement media redesign + delete, new Admin Gallery (Supabase-backed slideshow)
+
+**Read this section first.** See **`CHANGELOG_V32.3.md`** for the full,
+itemized release notes and **`supabase_migration_v32_3.sql`** for the
+schema changes.
+
+### 1. SQL migration (Supabase SQL Editor) — run this one, after everything already applied
+
+```
+supabase_migration_v32_3.sql
+```
+
+Apply it **after** every existing `supabase_migration_*.sql` in this
+project, in particular after
+`supabase_migration_settings_announcements_reviews.sql` and
+`supabase_migration_v32_12_1.sql` (both touch `public.announcements`
+and the `announcement-media` bucket that this file builds on). It is
+additive/idempotent throughout — safe to run more than once. It:
+- Adds `announcements.announcement_type` (`general`/`product`) and
+  `announcements.target_type` (`product`/`combo`), backfills existing
+  rows from their existing `product_id`/`combo_id`, and adds a CHECK
+  constraint enforcing the pairing.
+- Creates `public.gallery_media` (+ RLS) and the new `gallery-media`
+  Storage bucket (+ public-read/admin-write policies) for the new
+  Admin → Gallery feature.
+
+**Before running against a project with real data:** run the
+verification queries at the bottom of the migration file first on a
+staging copy if possible, and read the comment directly above the
+backfill `update` statements — they're written to be safe/idempotent,
+but you should still confirm your real `announcements` rows end up
+with the `announcement_type`/`target_type` you expect afterward.
+
+**Requires live Supabase testing (cannot be verified offline) — see
+`CHANGELOG_V32.3.md`'s "Offline vs. live testing" section for the full
+list.**
+
+### 2. Storage — new bucket
+
+The migration creates the `gallery-media` bucket for you
+(`insert into storage.buckets ... on conflict do nothing`) with public
+read + admin write policies, mirroring the existing
+`announcement-media` bucket. No manual Storage console steps should be
+required — but confirm the bucket exists and is public after running
+the migration:
+
+```sql
+select id, public from storage.buckets where id in ('announcement-media','gallery-media');
+```
+
+### 3. Static files — redeploy
+
+Everything else in this release is static-file/JS: `admin.js`,
+`admin.html`, `admin.css`, `app.js`, `index.html`, `style.css`,
+`generate-gallery-manifest.js` (header comment only). Redeploy the
+static site as usual (Git push / your existing hosting flow) — no
+Edge Function changes in this release.
+
+### 4. Gallery content
+
+There is nothing to migrate from `images/gallery/` —
+`images/gallery/manifest.json` was already empty. Add gallery content
+from **Admin → Gallery** after this release is live.
+
+---
+
 ## ✅ V32.12.1 — Password reset fix, coupon/cart sales UX, stale-state checkout revalidation, admin orders search, product-deletion cleanup, announcement media, scalability pass
 
 **Read this section first — it supersedes nothing below, it's additive

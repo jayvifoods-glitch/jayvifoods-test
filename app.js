@@ -631,7 +631,13 @@ async function loadSettingsAnnouncementsReviewsFromSupabase(){
     CONFIG.announcements=(dbAnn||[]).sort((a,b)=>(a.display_order||0)-(b.display_order||0)).map(a=>({
       id:a.id, label:a.label, title:a.title, em:a.em, text:a.text,
       image:a.image, mediaType:a.media_type||'image', posterUrl:a.poster_url||'',
-      showPrice:a.show_price, actionType:a.action_type, actionTarget:a.action_target,
+      showPrice:a.show_price,
+      // V32.3 (spec 3): the explicit product/combo ASSOCIATION, separate
+      // from actionType/actionTarget (only the click destination for a
+      // General announcement's optional CTA — see heroShow() below).
+      announcementType:a.announcement_type||(a.product_id||a.combo_id?'product':'general'),
+      targetType:a.target_type||(a.combo_id?'combo':a.product_id?'product':''),
+      actionType:a.action_type, actionTarget:a.action_target,
       productId:a.product_id||'', comboId:a.combo_id||'', active:a.active, order:a.display_order||0
     }));
     CONFIG.reviews=(dbRev||[]).sort((a,b)=>(a.display_order||0)-(b.display_order||0)).map(r=>({
@@ -664,6 +670,13 @@ function sync(){
   categories=(CONFIG.categories||[]).filter(c=>c.enabled).sort((a,b)=>a.order-b.order);
   mealTagList=(CONFIG.mealTags||[]).filter(t=>t.enabled).sort((a,b)=>a.order-b.order);
   if($('topShipping')) $('topShipping').textContent=`FREE SHIPPING ABOVE ${money(CONFIG.store.freeShippingThreshold)}`;
+  // V32.3 fix (spec 20.C): the duplicate (aria-hidden, for the seamless
+  // marquee loop) and the "Free delivery" trust-badge both had the same
+  // ₹599 hardcoded independently of `topShipping` above, so changing
+  // the threshold in Store Settings only ever updated one of the three
+  // on-page copies. All three now come from the same CONFIG.store value.
+  if($('topShippingDup')) $('topShippingDup').textContent=`FREE SHIPPING ABOVE ${money(CONFIG.store.freeShippingThreshold)}`;
+  if($('trustFreeDelivery')) $('trustFreeDelivery').textContent=`Above ${money(CONFIG.store.freeShippingThreshold)}`;
 }
 function getProduct(id){return products.find(p=>p.id===id)}
 function getCombo(id){return (CONFIG.combos||[]).find(c=>c.id===id&&c.active)}
@@ -929,51 +942,92 @@ async function renderFooterSocialLinks(){
   }
 }
 
-/* ---------- Brand/promo gallery (V32.6, item 3) ----------
-   Independent of the product-media architecture on purpose — this is
-   general brand/promo imagery (customer photos, ads, festival
-   banners), never a product. The ONLY place any filename from
-   images/gallery/ is ever listed is the generated manifest.json (see
-   generate-gallery-manifest.js) — this function never hardcodes a
-   single image name, and a brand-new .webp file becomes part of the
-   rotation automatically once the manifest is regenerated and
-   deployed, with no code change. No image is ever clickable/linked. */
+/* ---------- Gallery (V32.3) ----------
+   Replaces the V32.6 Git/manifest.json-based brand marquee (images/gallery/
+   + generate-gallery-manifest.js — the existing images/gallery/manifest.json
+   was already an empty [] with nothing to migrate) with an Admin-managed,
+   Supabase Storage-backed gallery (spec 11-18). Unlike the old marquee,
+   this supports images AND videos mixed freely, has a real slideshow
+   instead of a continuous scroll, and only ever loads/plays the ONE
+   video that's currently on screen (spec 23: never preload several
+   large videos at once). */
+let galleryItems=[], galleryIndex=0, galleryTimer=null;
 async function renderBrandGallery(){
-  const section=$('brandGallery'), track=$('galleryTrack');
+  const section=$('brandGallery'), track=$('gallerySlides'), dotsEl=$('galleryDots');
   if(!section||!track) return;
-  let files=[];
   try{
-    const res=await fetch('images/gallery/manifest.json',{cache:'no-store'});
-    if(!res.ok) throw new Error('manifest.json not found ('+res.status+')');
-    files=await res.json();
-    if(!Array.isArray(files)) throw new Error('manifest.json is not a list');
+    const {data:rows,error}=await sb.from('gallery_media').select('*').eq('active',true).order('display_order',{ascending:true});
+    if(error) throw error;
+    galleryItems=(rows||[]).filter(g=>g && g.media_url);
   }catch(err){
-    // No manifest yet, empty list, or a fetch hiccup — hide gracefully
-    // rather than show a broken/empty section. This is expected and
-    // silent until images/gallery/ actually has content.
+    // Migration not yet run, or a transient fetch failure — hide
+    // gracefully rather than show a broken/empty section, same
+    // fail-safe spirit as the old manifest.json fetch.
+    console.warn('Gallery: could not load active items from Supabase — hiding section:', err?.message||err);
     section.style.display='none';
     return;
   }
-  files=files.filter(Boolean);
-  if(!files.length){ section.style.display='none'; return; }
+  clearInterval(galleryTimer);
+  if(!galleryItems.length){ section.style.display='none'; track.innerHTML=''; if(dotsEl)dotsEl.innerHTML=''; return; }
 
-  const imgTag=f=>`<img src="images/gallery/${escapeHtml(f)}" alt="" loading="lazy">`;
-  if(files.length===1){
-    // A single image: show it once, statically — no loop, nothing to rotate.
-    track.classList.remove('isAnimating');
-    track.style.removeProperty('--gallery-marquee-duration');
-    track.innerHTML=imgTag(files[0]);
-  }else{
-    // Multiple images: duplicate the list once for a seamless loop
-    // (same technique as the existing announcement ticker), speed
-    // scaled to the number of images so more photos don't just fly by
-    // faster.
-    track.innerHTML=files.map(imgTag).join('')+files.map(imgTag).join('');
-    track.style.setProperty('--gallery-marquee-duration',Math.max(18,files.length*6)+'s');
-    track.classList.add('isAnimating');
+  track.innerHTML=galleryItems.map((g,i)=>{
+    const cap=g.caption?`<span class="galleryCaption">${escapeHtml(g.caption)}</span>`:'';
+    if(g.media_type==='video'){
+      // Only the first (initially-active) slide gets a real `src` —
+      // every other video slide starts empty and is only given its
+      // real URL the moment it actually becomes active (see
+      // gallerySetIndex()), so a gallery of several videos never
+      // downloads more than one at a time.
+      return `<div class="gallerySlide${i===0?' active':''}" data-i="${i}"><video ${g.poster_url?`poster="${escapeHtml(g.poster_url)}"`:''} playsinline muted preload="${i===0?'auto':'none'}" ${i===0?`src="${escapeHtml(g.media_url)}"`:''} data-src="${escapeHtml(g.media_url)}"></video>${cap}</div>`;
+    }
+    return `<div class="gallerySlide${i===0?' active':''}" data-i="${i}"><img src="${escapeHtml(g.media_url)}" alt="${escapeHtml(g.caption||'')}" loading="${i===0?'eager':'lazy'}" decoding="async" onerror="this.closest('.gallerySlide')?.remove()">${cap}</div>`;
+  }).join('');
+
+  if(dotsEl){
+    if(galleryItems.length>1){
+      dotsEl.style.display='';
+      dotsEl.innerHTML=galleryItems.map((_,i)=>`<button class="${i===0?'active':''}" onclick="gallerySetIndex(${i})" aria-label="Show gallery item ${i+1}"></button>`).join('');
+    } else {
+      dotsEl.style.display='none'; dotsEl.innerHTML='';
+    }
   }
   section.style.display='';
+  galleryIndex=0;
+  // Spec 17: 1-2 items never get an awkward auto-rotating animation —
+  // a single item is simply static, two items still get a gentle
+  // rotation (there's nothing "awkward" about a 2-item slideshow, only
+  // about an infinite marquee loop of 1-2 images, which is what this
+  // replaces). Many items stay performant because only the active
+  // slide's video (if any) is ever actually loaded — see above.
+  if(galleryItems.length>1) startGalleryTimer();
 }
+function startGalleryTimer(){
+  clearInterval(galleryTimer);
+  galleryTimer=setInterval(()=>{ gallerySetIndex((galleryIndex+1)%galleryItems.length); }, 4500);
+}
+function gallerySetIndex(i){
+  const track=$('gallerySlides'); if(!track||!galleryItems.length) return;
+  galleryIndex=i;
+  track.querySelectorAll('.gallerySlide').forEach((el,idx)=>{
+    const item=galleryItems[idx];
+    el.classList.toggle('active', idx===i);
+    if(!item) return;
+    if(idx===i && item.media_type==='video'){
+      const v=el.querySelector('video');
+      if(v && !v.getAttribute('src')){ v.src=v.dataset.src; v.load(); }
+      v?.play?.().catch(()=>{});
+      // Spec 17: "pause/appropriate handling for video" — don't yank
+      // the slideshow forward mid-clip; resume auto-rotation once this
+      // video actually finishes.
+      clearInterval(galleryTimer);
+      if(v) v.onended=()=>{ if(galleryItems.length>1) startGalleryTimer(); };
+    } else if(item.media_type==='video'){
+      el.querySelector('video')?.pause?.();
+    }
+  });
+  document.querySelectorAll('#galleryDots button').forEach((d,idx)=>d.classList.toggle('active', idx===i));
+}
+
 
 /* ---------- Reviews ---------- */
 async function renderReviews(){
@@ -1054,21 +1108,39 @@ function heroShow(){
   const a=(CONFIG.announcements||[]).filter(x=>x.active).sort((x,y)=>x.order-y.order);
   if(!a.length||!$('heroLabel'))return;
   const s=a[heroIndex%a.length];
-  const p=s.productId?getProduct(s.productId):null, combo=s.comboId?getCombo(s.comboId):null;
+  // V32.3 (spec 3/8/9): announcementType/targetType is the explicit
+  // "does this belong to a product?" relationship — separate from the
+  // old actionType/actionTarget click-action columns, which now only
+  // describe a General announcement's optional CTA. isProductAnn drives
+  // the price badge, the media fallback, and the click destination;
+  // a General announcement never shows a price and never silently
+  // opens a product it isn't actually linked to.
+  const isProductAnn = s.announcementType==='product';
+  const p = isProductAnn && s.targetType!=='combo' && s.productId ? getProduct(s.productId) : null;
+  const combo = isProductAnn && s.targetType==='combo' && s.comboId ? getCombo(s.comboId) : null;
+  // Spec 9: "Associated product deleted/deactivated — handle
+  // gracefully, don't leave a broken link" — getProduct()/getCombo()
+  // already only return active, existing items, so p/combo end up
+  // null here exactly when the link is stale; everything below treats
+  // that the same as "no association" rather than erroring.
+  const linkBroken = isProductAnn && !p && !combo;
   $('heroLabel').textContent=s.label;
   $('heroTitle').innerHTML=`${escapeHtml(s.title)}<br><em>${escapeHtml(s.em)}</em>`;
   $('heroDesc').textContent=s.text;
-  $('heroPrice').textContent=money(p?getVariant(p,variantKey(p.id)).price:combo?.price||0);
-  // V32.12.1 fix (spec 13): Admin-configured announcement media
-  // (`s.image`, now with `s.mediaType`) now actually takes PRIORITY
-  // over the product/combo fallback image, as required — previously
-  // this line unconditionally used `p?.image||combo?.image||...` and
-  // silently ignored `s.image`/`s.mediaType` even though the database
-  // column already existed, so an uploaded announcement photo/video
-  // never had any effect on the storefront. Video support is new:
-  // when mediaType is 'video', #heroVideo is shown and #heroImg is
-  // hidden; otherwise (image, or no announcement media configured —
-  // the exact same fallback as before) #heroImg is shown as usual.
+  const priceEl=$('heroPrice')?.closest('.heroPrice')||$('heroPrice');
+  if(isProductAnn && !linkBroken && s.showPrice!==false){
+    $('heroPrice').textContent=money(p?getVariant(p,variantKey(p.id)).price:combo?.price||0);
+    if(priceEl) priceEl.style.display='';
+  } else if(priceEl){
+    // General announcement, or a Product announcement whose showPrice
+    // is off, or whose link is broken: no price badge to show at all.
+    priceEl.style.display='none';
+  }
+  // Spec 8: custom media (if any) always takes priority. With none,
+  // a Product announcement falls back to its linked product/combo's
+  // own image; a General announcement (or a broken product link) just
+  // renders the same graceful default image everything else already
+  // uses — never a half-broken <img>.
   const heroImgEl=$('heroImg'), heroVideoEl=$('heroVideo');
   const usingUploadedVideo = !!s.image && s.mediaType==='video';
   if(usingUploadedVideo){
@@ -1080,14 +1152,32 @@ function heroShow(){
     heroVideoEl.style.display='none'; heroImgEl.style.display='block';
     heroImgEl.src = s.image || p?.image || combo?.image || 'images/hero/jayvi-products.webp';
   }
-  $('heroShop').onclick=()=>{
-    const type=s.actionType||(s.comboId?'combo':'product'), target=s.actionTarget||(s.comboId?s.comboId:s.productId);
-    if(type==='product'&&getProduct(target))openProduct(target);
-    else if(type==='combo'&&getCombo(target))$('combos').scrollIntoView({behavior:'smooth'});
-    else if(type==='shop')$('shop').scrollIntoView({behavior:'smooth'});
-    else if(type==='reviews')$('reviews').scrollIntoView({behavior:'smooth'});
-    else if(type==='url'&&s.actionTarget)window.location.href=s.actionTarget;
-  };
+  const heroShopBtn=$('heroShop');
+  if(heroShopBtn){
+    if(isProductAnn){
+      // Spec 9: clicking a Product announcement opens its associated
+      // product/combo directly — no separate "click action" choice.
+      if(linkBroken){ heroShopBtn.style.display='none'; }
+      else{
+        heroShopBtn.style.display='';
+        heroShopBtn.textContent = combo ? 'Shop combo' : 'Shop now';
+        heroShopBtn.onclick=()=>{ if(p) openProduct(p.id); else if(combo) $('combos')?.scrollIntoView({behavior:'smooth'}); };
+      }
+    } else {
+      // Spec 9: General announcement — optional CTA only.
+      const cta=s.actionType||'none';
+      if(cta==='none'||( cta==='url' && !s.actionTarget)){ heroShopBtn.style.display='none'; }
+      else{
+        heroShopBtn.style.display='';
+        heroShopBtn.textContent='Shop now';
+        heroShopBtn.onclick=()=>{
+          if(cta==='shop') $('shop')?.scrollIntoView({behavior:'smooth'});
+          else if(cta==='reviews') $('reviews')?.scrollIntoView({behavior:'smooth'});
+          else if(cta==='url' && s.actionTarget) window.location.href=s.actionTarget;
+        };
+      }
+    }
+  }
   $('heroDots').innerHTML=a.map((_,i)=>`<button class="${i===heroIndex?'active':''}" onclick="heroIndex=${i};heroShow();restartHero()"></button>`).join('');
   const g=document.querySelector('.heroGrid');
   g.classList.remove('heroChange'); void g.offsetWidth; g.classList.add('heroChange');

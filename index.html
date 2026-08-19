@@ -10,13 +10,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link rel="stylesheet" href="style.css?v=32.12">
+<link rel="stylesheet" href="style.css?v=32.3">
 </head>
 <body>
 
 <div class="topbar" aria-label="Store announcements"><div class="announcementViewport"><div class="announcementTrack" id="announcementTrack">
   <span id="topOffer" class="topOfferSpan" style="display:none"></span><span id="topShipping">FREE SHIPPING ABOVE ₹599</span><span>FRESHLY PACKED</span><span>DELIVERED ACROSS INDIA</span><span>PURELY TRADITIONAL · SIMPLY DELICIOUS</span>
-  <span id="topOfferDup" class="topOfferSpan" aria-hidden="true" style="display:none"></span><span aria-hidden="true">FREE SHIPPING ABOVE ₹599</span><span aria-hidden="true">FRESHLY PACKED</span><span aria-hidden="true">DELIVERED ACROSS INDIA</span><span aria-hidden="true">PURELY TRADITIONAL · SIMPLY DELICIOUS</span>
+  <span id="topOfferDup" class="topOfferSpan" aria-hidden="true" style="display:none"></span><span id="topShippingDup" aria-hidden="true">FREE SHIPPING ABOVE ₹599</span><span aria-hidden="true">FRESHLY PACKED</span><span aria-hidden="true">DELIVERED ACROSS INDIA</span><span aria-hidden="true">PURELY TRADITIONAL · SIMPLY DELICIOUS</span>
 </div></div></div>
 
 <div id="vacationBanner" class="vacationBanner" style="display:none"></div>
@@ -72,21 +72,24 @@
   </div></section>
 
   <section class="trust"><div class="wrap trustGrid">
-    <div><i class="fa-solid fa-truck-fast"></i><b>Free delivery</b><small>Above ₹599</small></div>
+    <div><i class="fa-solid fa-truck-fast"></i><b>Free delivery</b><small id="trustFreeDelivery">Above ₹599</small></div>
     <div><i class="fa-solid fa-box-open"></i><b>Freshly packed</b><small>Made for everyday meals</small></div>
     <div><i class="fa-solid fa-leaf"></i><b>Traditional flavours</b><small>From Jayvi's kitchen</small></div>
     <div><i class="fa-brands fa-whatsapp"></i><b>Need help?</b><small>Chat with Jayvi's team</small></div>
   </div></section>
 
-  <!-- V32.6 (item 3): brand/promo gallery — purely visual, no clicks,
-       no product navigation. Populated entirely from
-       images/gallery/manifest.json (see generate-gallery-manifest.js);
-       hidden automatically by renderBrandGallery() in app.js when that
-       list is empty, so an un-populated gallery never shows a broken
-       or empty section. Independent of the product-media architecture
-       — this has nothing to do with Supabase or any product. -->
-  <section class="brandGallerySection" id="brandGallery" style="display:none">
-    <div class="galleryViewport"><div class="galleryTrack" id="galleryTrack"></div></div>
+  <!-- V32.3: Admin-managed, Supabase-Storage-backed gallery (replaces
+       the V32.6 Git/manifest.json brand marquee) — populated from
+       public.gallery_media via renderBrandGallery() in app.js, which
+       hides this section entirely when there are no active items, so
+       an empty gallery never shows a broken/blank section. Supports
+       any mix of images and videos; a real slideshow (fade + dots),
+       not a continuously-scrolling marquee. -->
+  <section class="gallerySection" id="brandGallery" style="display:none">
+    <div class="galleryStage">
+      <div class="gallerySlides" id="gallerySlides"></div>
+    </div>
+    <div class="galleryDots" id="galleryDots"></div>
   </section>
 
   <section class="lightSection" id="bestsellers"><div class="wrap">
@@ -173,7 +176,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script src="supabase-config.js?v=32.12"></script>
-<script src="app.js?v=32.12"></script>
+<script src="supabase-config.js?v=32.3"></script>
+<script src="app.js?v=32.3"></script>
 </body>
 </html>

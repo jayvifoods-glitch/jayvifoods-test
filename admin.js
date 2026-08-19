@@ -580,7 +580,14 @@ async function fetchAnnouncements(){
   const announcements=(rows||[]).map(a=>({
     id:a.id, label:a.label||'', title:a.title||'', em:a.em||'', text:a.text||'',
     image:a.image||'', mediaType:a.media_type||'image', posterUrl:a.poster_url||'',
-    showPrice:a.show_price, actionType:a.action_type||'product', actionTarget:a.action_target||'',
+    showPrice:a.show_price,
+    // V32.3 (spec 3): announcementType/targetType are the explicit
+    // "does this announcement belong to a product?" relationship —
+    // separate from actionType/actionTarget below, which is only the
+    // CLICK destination for a *general* announcement's optional CTA.
+    announcementType:a.announcement_type||(a.product_id?'product':a.combo_id?'product':'general'),
+    targetType:a.target_type||(a.product_id?'product':a.combo_id?'combo':''),
+    actionType:a.action_type||'product', actionTarget:a.action_target||'',
     productId:a.product_id||'', comboId:a.combo_id||'', active:a.active, order:a.display_order||0
   }));
   data.announcements=announcements;
@@ -590,11 +597,49 @@ async function saveAnnouncementToSupabase(a){
   const {error}=await sb.from('announcements').upsert({
     id:a.id, label:a.label, title:a.title, em:a.em, text:a.text, image:a.image||'',
     media_type:a.mediaType||'image', poster_url:a.posterUrl||'',
-    show_price:a.showPrice!==false, action_type:a.actionType, action_target:a.actionTarget,
+    show_price:a.showPrice!==false,
+    announcement_type:a.announcementType||'general', target_type:a.targetType||null,
+    action_type:a.actionType, action_target:a.actionTarget,
     product_id:a.productId||null, combo_id:a.comboId||null, active:a.active, display_order:a.order
   });
   if(error){ toast('Could not save announcement: '+error.message); return false; }
   return true;
+}
+// V32.3 (spec 6): safe Storage cleanup for announcement media, same
+// "never delete a file another row still references" philosophy as
+// cleanupOrphanedMedia() (products/combos) — see there for the full
+// rationale. Announcements only ever have ONE media file (image OR
+// video, never both) held in image/poster_url, so this checks both
+// columns against every OTHER announcement row before removing
+// anything from the announcement-media bucket.
+const ANNOUNCEMENT_STORAGE_PREFIX = SUPABASE_URL.replace(/\/$/,'') + '/storage/v1/object/public/announcement-media/';
+function announcementStoragePathFromUrl(url){
+  if(!url || typeof url !== 'string' || !url.startsWith(ANNOUNCEMENT_STORAGE_PREFIX)) return null;
+  try{ return decodeURIComponent(url.slice(ANNOUNCEMENT_STORAGE_PREFIX.length)); }catch{ return null; }
+}
+async function cleanupAnnouncementMedia(urls, keepAnnouncementId){
+  const set = new Set((urls||[]).filter(Boolean));
+  for(const url of set){
+    const path = announcementStoragePathFromUrl(url);
+    if(!path) continue; // external URL / legacy path — never touched
+    let q = sb.from('announcements').select('id',{count:'exact',head:true}).or(`image.eq.${url},poster_url.eq.${url}`);
+    if(keepAnnouncementId) q = q.neq('id', keepAnnouncementId);
+    const {count} = await q;
+    if(count && count>0) continue; // still referenced by another announcement — leave the file in Storage
+    const {error:rmErr} = await sb.storage.from('announcement-media').remove([path]);
+    if(rmErr) console.warn('Could not remove orphaned announcement Storage file (left in place, no data was lost):', path, rmErr.message);
+  }
+}
+async function deleteAnnouncement(id){
+  const a = data.announcements.find(x=>x.id===id);
+  if(!a) return;
+  if(!confirm('Delete this announcement?')) return;
+  const oldUrls = [a.image, a.posterUrl].filter(Boolean);
+  const {error} = await sb.from('announcements').delete().eq('id',id);
+  if(error){ toast('Could not delete announcement: '+error.message); return; }
+  await cleanupAnnouncementMedia(oldUrls, null);
+  toast('Announcement deleted');
+  render();
 }
 async function fetchCuratedReviews(){
   const {data:rows,error}=await sb.from('curated_reviews').select('*').order('display_order',{ascending:true});
@@ -772,6 +817,7 @@ async function render(){title.textContent=tab==='variants'?'Variants & sizes':ta
  if(tab==='categories')h=await categoriesPage();
  if(tab==='mealtags')h=await mealTagsPage();
  if(tab==='homepage')h=await homepagePage();
+ if(tab==='gallery')h=await galleryPage();
  if(tab==='pincodes')h=await pincodesPage();
  if(tab==='coupons')h=await couponsPage();
  if(tab==='social')h=await socialLinksPage();
@@ -1262,9 +1308,22 @@ async function saveCategory(i){
   if(!ok)return;
   closeModal();render();
 }
-async function homepagePage(){await fetchAnnouncements();return `<section class="panel">${liveCatalogNote()}<div class="panelHead"><div><h2>Homepage announcements</h2><p>Each slide has an explicit click action. The target is selected based on the action instead of entering a hidden URL target.</p></div><button class="gold" onclick="announcementForm()">+ Add announcement</button></div><div class="announcementAdmin">${data.announcements.sort((a,b)=>(a.order||0)-(b.order||0)).map((s,i)=>`<article><div class="announcementInfo"><span class="typeTag">${esc(s.label||'ANNOUNCEMENT')}</span><h3>${esc(s.title||'')}</h3><p>${esc(s.text||'')}</p><small>Action: ${esc(s.actionType|| (s.productId?'Open product':s.comboId?'Open combo':'Shop'))}</small></div><div class="cardActions"><button class="outline" onclick="announcementForm(${i})">Edit</button></div></article>`).join('')}</div></section>`}
-function announcementForm(index=-1){const s=index>=0?data.announcements[index]:{id:'',label:'',title:'',em:'',text:'',actionType:'product',actionTarget:'',active:true,order:data.announcements.length+1};openModal(`<div class="eyebrow">HOMEPAGE ANNOUNCEMENT</div><h2>${index<0?'Add announcement':'Edit announcement'}</h2><div class="formGrid"><label>Label<input id="aLabel" value="${esc(s.label)}"></label><label>Title<input id="aTitle" value="${esc(s.title)}"></label><label>Emphasis<input id="aEm" value="${esc(s.em)}"></label><label>Display position<input id="aOrder" type="number" value="${s.order||1}"></label><label class="fullLabel">Message<textarea id="aText" rows="3">${esc(s.text||'')}</textarea></label><label>Click action<select id="aAction" onchange="renderAnnouncementTarget()"><option value="product" ${s.actionType==='product'?'selected':''}>Open product</option><option value="combo" ${s.actionType==='combo'?'selected':''}>Open combo</option><option value="shop" ${s.actionType==='shop'?'selected':''}>Open Shop</option><option value="reviews" ${s.actionType==='reviews'?'selected':''}>Open Reviews</option><option value="url" ${s.actionType==='url'?'selected':''}>Open external link</option></select></label><div id="aTargetWrap"></div></div><label class="checkOnly"><input id="aActive" type="checkbox" ${s.active?'checked':''}> Active</label><button class="gold full" onclick="saveAnnouncement(${index})">Save announcement</button>`);window._announcementDraft=s;renderAnnouncementTarget()}
-function saveAnnouncement(i){const type=document.getElementById('aAction').value,target=document.getElementById('aTarget')?.value||'';const s={id:document.getElementById('aId')?.value||('ann-'+Date.now().toString(36)),label:document.getElementById('aLabel').value.trim(),title:document.getElementById('aTitle').value.trim(),em:document.getElementById('aEm').value.trim(),text:document.getElementById('aText').value.trim(),actionType:type,actionTarget:target,productId:type==='product'?target:'',comboId:type==='combo'?target:'',active:document.getElementById('aActive').checked,order:Number(document.getElementById('aOrder').value||1)};if(i<0)data.announcements.push(s);else data.announcements[i]=s;persist();closeModal();render()}
+async function homepagePage(){await fetchAnnouncements();return `<section class="panel">${liveCatalogNote()}<div class="panelHead"><div><h2>Homepage announcements</h2><p>General announcements need no product. Product announcements are explicitly linked to a product or combo, which is used for both the click destination and the media fallback.</p></div><button class="gold" onclick="announcementForm()">+ Add announcement</button></div><div class="announcementAdmin">${data.announcements.sort((a,b)=>(a.order||0)-(b.order||0)).map((s,i)=>{
+  const isProduct=s.announcementType==='product';
+  const targetName=isProduct?(s.targetType==='combo'?(combo(s.comboId)?.name||'(deleted combo)'):(product(s.productId)?.name||'(deleted product)')):'';
+  return `<article><div class="announcementInfo"><span class="typeTag">${isProduct?'PRODUCT':'GENERAL'}</span><span class="typeTag">${esc(s.label||'ANNOUNCEMENT')}</span><h3>${esc(s.title||'')}</h3><p>${esc(s.text||'')}</p><small>${isProduct?`Linked to: ${esc(targetName)}`:`CTA: ${esc(s.actionType==='none'||!s.actionType?'None':s.actionType)}`} · ${s.mediaType==='video'?'🎬 Video':s.image?'🖼️ Image':'No media'} · ${s.active?'Active':'Inactive'}</small></div><div class="cardActions"><button class="outline" onclick="announcementForm(${i})">Edit</button><button class="outline dangerBtn" onclick="deleteAnnouncement('${esc(s.id)}')">Delete</button></div></article>`;
+}).join('')||'<div class="empty smallEmpty">No announcements yet.</div>'}</div></section>`}
+function combo(id){return data.combos.find(c=>c.id===id)}
+// NOTE (V32.3): announcementForm()/saveAnnouncement() used to be
+// (re-)defined twice more further down this file, each patch replacing
+// the previous release's version — the same "override at the bottom"
+// pattern this codebase has used for every incremental release. V32.3
+// removes those superseded, dead definitions (they referenced
+// renderAnnouncementTarget(), a function that was called but never
+// actually defined anywhere in V32.12.1 — a pre-existing bug this
+// release also fixes) and defines the real, current versions in one
+// place, further down, alongside the new General/Product + single-media
+// UI (spec 3-8) and deleteAnnouncement() (spec 6).
 let _reviewsTab='pending', _reviewsSort='newest', _reviewsSearch='', _reviewsOffset=0;
 const REVIEWS_PAGE_SIZE=20;
 async function fetchWebsiteReviews(reset=true){
@@ -1871,39 +1930,100 @@ requireAdminSession().then(async ok=>{ if(ok){ await fetchProducts(); await fetc
 /* Jayvi Foods V22 Admin polish */
 (function(){
 'use strict';
-const oldAnn=window.announcementForm;
+// V32.3 — full rewrite of the announcement form (spec 3-8): explicit
+// General/Product typing (decoupled from the click-action concept),
+// a proper single-media upload/preview/replace/remove UI matching
+// Product → Media, and safe Storage cleanup on delete/replace.
 window.announcementForm=function(index=-1){
- const s=index>=0?data.announcements[index]:{id:'',label:'',title:'',em:'',text:'',image:'',mediaType:'image',posterUrl:'',showPrice:true,actionType:'product',actionTarget:'',active:true,order:data.announcements.length+1};
- openModal(`<div class="eyebrow">HOMEPAGE ANNOUNCEMENT</div><h2>${index<0?'Add announcement':'Edit announcement'}</h2><div class="formGrid"><label>Label<input id="aLabel" value="${esc(s.label||'')}"></label><label>Title<input id="aTitle" value="${esc(s.title||'')}"></label><label>Emphasis<input id="aEm" value="${esc(s.em||'')}"></label><label>Display position<input id="aOrder" type="number" value="${s.order||1}"></label><label class="fullLabel">Message<textarea id="aText" rows="3">${esc(s.text||'')}</textarea></label><label>Click action<select id="aAction" onchange="renderAnnouncementTarget()"><option value="product" ${s.actionType==='product'?'selected':''}>Open product</option><option value="combo" ${s.actionType==='combo'?'selected':''}>Open combo</option><option value="shop" ${s.actionType==='shop'?'selected':''}>Open Shop</option><option value="reviews" ${s.actionType==='reviews'?'selected':''}>Open Reviews</option><option value="url" ${s.actionType==='url'?'selected':''}>Open external link</option></select></label><label class="checkOnly"><input id="aShowPrice" type="checkbox" ${s.showPrice!==false?'checked':''}> Show price badge</label><div id="aTargetWrap"></div></div>
-<div class="mediaBlock">
-  <b>Announcement media <small class="v22-admin-help">Spec 13: uploaded photo/video takes priority over the linked product/combo's own image; leave empty to keep using the product/combo image as before.</small></b>
-  <div class="mediaUploadRow">
-    <label class="outline small">Upload image<input type="file" accept="image/*" style="display:none" onchange="uploadAnnouncementFile(event,'image')"></label>
-    <label class="outline small">Upload video<input type="file" accept="video/*" style="display:none" onchange="uploadAnnouncementFile(event,'video')"></label>
-  </div>
-  <label class="fullLabel">Announcement image / video path or URL<input id="aImage" value="${esc(s.image||'')}" placeholder="images/hero/announcement.webp or https://..." oninput="window._annDraft=window._annDraft||{};window._annDraft.image=this.value.trim();window._annDraft.mediaType=window._annDraft.mediaType||'${s.mediaType||'image'}';renderAnnouncementMediaPreview()"><small class="v22-admin-help">Optional. If empty, the linked product/combo image is used.</small></label>
-  <div id="aMediaUploadStatus" class="mediaUploadStatus"></div>
-  <div id="aMediaPreview"></div>
-  ${s.image?`<button type="button" class="outline small" onclick="document.getElementById('aImage').value='';window._annDraft.image='';window._annDraft.posterUrl='';renderAnnouncementMediaPreview()">Remove media</button>`:''}
-</div>
-<label class="checkOnly"><input id="aActive" type="checkbox" ${s.active!==false?'checked':''}> Active</label><button class="gold full" onclick="saveAnnouncement(${index})">Save announcement</button>`);
+ const s=index>=0?data.announcements[index]:{id:'',label:'',title:'',em:'',text:'',image:'',mediaType:'image',posterUrl:'',showPrice:true,announcementType:'general',targetType:'',actionType:'shop',actionTarget:'',productId:'',comboId:'',active:true,order:data.announcements.length+1};
  window._announcementDraft=s;
  window._annDraft={image:s.image||'',mediaType:s.mediaType||'image',posterUrl:s.posterUrl||''};
- renderAnnouncementTarget();
+ openModal(`<div class="eyebrow">HOMEPAGE ANNOUNCEMENT</div><h2>${index<0?'Add announcement':'Edit announcement'}</h2><div class="formGrid"><label>Label<input id="aLabel" value="${esc(s.label||'')}"></label><label>Title<input id="aTitle" value="${esc(s.title||'')}"></label><label>Emphasis<input id="aEm" value="${esc(s.em||'')}"></label><label>Display position<input id="aOrder" type="number" value="${s.order||1}"></label><label class="fullLabel">Message<textarea id="aText" rows="3">${esc(s.text||'')}</textarea></label></div>
+<div class="formSection">
+  <h3>Announcement type</h3>
+  <p>A General announcement (e.g. "Independence Day special") needs no product. A Product announcement (e.g. "Peanut Chutney — perfect for breakfast") is explicitly linked to one product or combo — that link drives both the click destination and the media fallback, separate from any custom media below.</p>
+  <label class="checkOnly"><input type="radio" name="aType" value="general" ${s.announcementType!=='product'?'checked':''} onchange="renderAnnouncementTypeFields()"> General announcement</label>
+  <label class="checkOnly"><input type="radio" name="aType" value="product" ${s.announcementType==='product'?'checked':''} onchange="renderAnnouncementTypeFields()"> Product announcement</label>
+  <div id="aTypeFields" class="formGrid" style="margin-top:10px"></div>
+</div>
+<div class="formSection">
+  <h3>Announcement media</h3>
+  <p>Optional. One image <b>or</b> one video — never both. If a Product announcement has no custom media, the linked product/combo's own image is used automatically.</p>
+  <div id="aMediaBlockInner"></div>
+  <div id="aMediaUploadStatus" class="mediaUploadStatus"></div>
+</div>
+<label class="checkOnly"><input id="aShowPrice" type="checkbox" ${s.showPrice!==false?'checked':''}> Show price badge (Product announcements only)</label>
+<label class="checkOnly"><input id="aActive" type="checkbox" ${s.active!==false?'checked':''}> Active</label>
+<button class="gold full" onclick="saveAnnouncement(${index})">Save announcement</button>`);
+ renderAnnouncementTypeFields();
  renderAnnouncementMediaPreview();
 };
-function renderAnnouncementMediaPreview(){
-  const box=document.getElementById('aMediaPreview'); if(!box)return;
-  const d=window._annDraft||{};
-  if(!d.image){ box.innerHTML=''; return; }
-  box.innerHTML = d.mediaType==='video'
-    ? `<video src="${esc(d.image)}" ${d.posterUrl?`poster="${esc(d.posterUrl)}"`:''} controls style="max-width:220px;border-radius:8px"></video>`
-    : `<img src="${esc(d.image)}" alt="" style="max-width:220px;border-radius:8px">`;
+// Renders the "type-specific" half of the form: for Product, a
+// Product/Combo sub-choice + the matching select (spec 3: the
+// association is explicit and separate from any click-action idea);
+// for General, an optional CTA link (spec 9: "General announcement —
+// it can have an optional CTA/link").
+function renderAnnouncementTypeFields(){
+  const box=document.getElementById('aTypeFields'); if(!box) return;
+  const type=document.querySelector('input[name="aType"]:checked')?.value||'general';
+  const s=window._announcementDraft||{};
+  if(type==='product'){
+    const targetType=document.querySelector('input[name="aTargetType"]:checked')?.value || s.targetType || (s.comboId?'combo':'product');
+    const productOptions=(data.products||[]).filter(p=>p.active).map(p=>`<option value="${esc(p.id)}" ${p.id===s.productId?'selected':''}>${esc(p.name)}</option>`).join('');
+    const comboOptions=(data.combos||[]).filter(c=>c.active).map(c=>`<option value="${esc(c.id)}" ${c.id===s.comboId?'selected':''}>${esc(c.name)}</option>`).join('');
+    box.innerHTML=`
+      <label class="checkOnly"><input type="radio" name="aTargetType" value="product" ${targetType!=='combo'?'checked':''} onchange="renderAnnouncementTypeFields()"> Product</label>
+      <label class="checkOnly"><input type="radio" name="aTargetType" value="combo" ${targetType==='combo'?'checked':''} onchange="renderAnnouncementTypeFields()"> Combo</label>
+      <label class="fullLabel">Select ${targetType==='combo'?'combo':'product'}<select id="aTargetSelect">${(targetType==='combo'?comboOptions:productOptions)||'<option value="">No active items</option>'}</select></label>
+      <p class="v22-admin-help">Clicking this announcement opens the selected ${targetType==='combo'?'combo':'product'} directly.</p>`;
+  } else {
+    const cta=s.announcementType==='product'?'shop':(s.actionType||'shop');
+    box.innerHTML=`
+      <label class="fullLabel">Optional link (CTA)<select id="aCtaType" onchange="updateCtaTargetVisibility()">
+        <option value="none" ${cta==='none'?'selected':''}>None</option>
+        <option value="shop" ${cta==='shop'?'selected':''}>Open Shop</option>
+        <option value="reviews" ${cta==='reviews'?'selected':''}>Open Reviews</option>
+        <option value="url" ${cta==='url'?'selected':''}>External link</option>
+      </select></label>
+      <div id="aCtaTargetWrap" class="fullLabel">${cta==='url'?`<label class="fullLabel">Link URL<input id="aCtaTarget" value="${esc(s.actionType==='url'?(s.actionTarget||''):'')}" placeholder="https://..."></label>`:''}</div>`;
+  }
 }
-// Same Storage upload pattern as uploadMediaFile() for products/combos
-// (spec 13: "similar to the media upload experience we now have for
-// Products/Combos"), into a dedicated 'announcement-media' bucket —
-// see supabase_migration_v32_12_1.sql for the bucket + policies.
+function updateCtaTargetVisibility(){
+  const type=document.getElementById('aCtaType')?.value;
+  const wrap=document.getElementById('aCtaTargetWrap'); if(!wrap) return;
+  wrap.innerHTML = type==='url' ? `<label class="fullLabel">Link URL<input id="aCtaTarget" placeholder="https://..."></label>` : '';
+}
+// Single-media preview/replace/remove UI (spec 4) — mirrors the visual
+// language of Product → Media but enforces the "one image OR one
+// video, never both, never multiple" rule structurally: there is only
+// ever one slot, so there is nothing to add once it's filled, only
+// Replace or Remove.
+function renderAnnouncementMediaPreview(){
+  const box=document.getElementById('aMediaBlockInner'); if(!box) return;
+  const d=window._annDraft||{};
+  if(!d.image){
+    box.innerHTML=`<div class="mediaUploadRow">
+      <label class="outline uploadBtn">📷 + Add Photo<input type="file" accept="image/webp,image/jpeg,image/png,image/avif" style="display:none" onchange="uploadAnnouncementFile(event,'image')"></label>
+      <label class="outline uploadBtn">🎬 + Add Video<input type="file" accept="video/mp4,video/webm" style="display:none" onchange="uploadAnnouncementFile(event,'video')"></label>
+    </div>`;
+    return;
+  }
+  const preview = d.mediaType==='video'
+    ? `<video src="${esc(d.image)}" ${d.posterUrl?`poster="${esc(d.posterUrl)}"`:''} controls style="max-width:220px;max-height:220px;border-radius:8px;display:block"></video>`
+    : `<img src="${esc(d.image)}" alt="" style="max-width:220px;max-height:220px;border-radius:8px;display:block">`;
+  box.innerHTML=`<div class="mediaSinglePreview">${preview}<div class="mediaUploadRow">
+      <label class="outline small uploadBtn">Replace<input type="file" accept="${d.mediaType==='video'?'video/mp4,video/webm':'image/webp,image/jpeg,image/png,image/avif'}" style="display:none" onchange="uploadAnnouncementFile(event,'${d.mediaType}')"></label>
+      <button type="button" class="outline small dangerBtn" onclick="removeAnnouncementMedia()">Remove</button>
+    </div></div>`;
+}
+function removeAnnouncementMedia(){ window._annDraft.image=''; window._annDraft.mediaType='image'; window._annDraft.posterUrl=''; renderAnnouncementMediaPreview(); }
+// Same Storage upload pattern as uploadMediaFile() for products/combos,
+// into the dedicated 'announcement-media' bucket — see
+// supabase_migration_v32_12_1.sql for the bucket + policies. The old
+// file (if any) is left in Storage until Save actually succeeds, at
+// which point saveAnnouncement() below cleans it up if it's no longer
+// referenced anywhere (spec 6/7: safe replace, no orphan-deleting on
+// a cancelled edit).
 async function uploadAnnouncementFile(evt,kind){
   const file=evt.target.files?.[0]; if(!file) return;
   const statusEl=document.getElementById('aMediaUploadStatus');
@@ -1913,17 +2033,171 @@ async function uploadAnnouncementFile(evt,kind){
   const {error:upErr}=await sb.storage.from('announcement-media').upload(path,file,{cacheControl:'31536000',upsert:false});
   if(upErr){
     if(statusEl) statusEl.textContent='';
-    toast('Upload failed: '+upErr.message+' - has supabase_migration_v32_12_1.sql been run, and does the announcement-media bucket exist yet?');
+    toast('Upload failed: '+upErr.message+' - has supabase_migration_v32_12_1.sql / supabase_migration_v32_3.sql been run, and does the announcement-media bucket exist yet?');
     evt.target.value=''; return;
   }
   const {data:pub}=sb.storage.from('announcement-media').getPublicUrl(path);
-  window._annDraft=window._annDraft||{}; window._annDraft.image=pub.publicUrl; window._annDraft.mediaType=kind;
-  const imgInput=document.getElementById('aImage'); if(imgInput) imgInput.value=pub.publicUrl;
+  window._annDraft={image:pub.publicUrl, mediaType:kind, posterUrl:''};
   renderAnnouncementMediaPreview();
   if(statusEl) statusEl.textContent=`Uploaded ${file.name}.`;
   evt.target.value='';
 }
-window.saveAnnouncement=async function(i){const type=document.getElementById('aAction').value,target=document.getElementById('aTarget')?.value||'';const d=window._annDraft||{};const s={id:data.announcements[i]?.id||('ann-'+Date.now().toString(36)),label:document.getElementById('aLabel').value.trim(),title:document.getElementById('aTitle').value.trim(),em:document.getElementById('aEm').value.trim(),text:document.getElementById('aText').value.trim(),image:(document.getElementById('aImage').value.trim())||d.image||'',mediaType:d.mediaType||'image',posterUrl:d.posterUrl||'',showPrice:document.getElementById('aShowPrice').checked,actionType:type,actionTarget:target,productId:type==='product'?target:'',comboId:type==='combo'?target:'',active:document.getElementById('aActive').checked,order:Number(document.getElementById('aOrder').value||1)};const ok=await saveAnnouncementToSupabase(s);if(!ok)return;closeModal();render()};
+window.saveAnnouncement=async function(i){
+  const type=document.querySelector('input[name="aType"]:checked')?.value||'general';
+  const d=window._annDraft||{};
+  const prev=window._announcementDraft||{};
+  let productId='',comboId='',targetType='',actionType='shop',actionTarget='';
+  if(type==='product'){
+    targetType=document.querySelector('input[name="aTargetType"]:checked')?.value||'product';
+    const targetId=document.getElementById('aTargetSelect')?.value||'';
+    if(!targetId){ toast('Select a product or combo for a Product announcement'); return; }
+    if(targetType==='combo') comboId=targetId; else productId=targetId;
+    actionType=targetType; actionTarget=targetId;
+  } else {
+    actionType=document.getElementById('aCtaType')?.value||'none';
+    actionTarget=actionType==='url'?(document.getElementById('aCtaTarget')?.value.trim()||''):'';
+  }
+  const s={
+    id:data.announcements[i]?.id||prev.id||('ann-'+Date.now().toString(36)),
+    label:document.getElementById('aLabel').value.trim(),
+    title:document.getElementById('aTitle').value.trim(),
+    em:document.getElementById('aEm').value.trim(),
+    text:document.getElementById('aText').value.trim(),
+    image:d.image||'', mediaType:d.mediaType||'image', posterUrl:d.posterUrl||'',
+    showPrice:document.getElementById('aShowPrice').checked,
+    announcementType:type, targetType:type==='product'?targetType:'',
+    actionType, actionTarget, productId, comboId,
+    active:document.getElementById('aActive').checked,
+    order:Number(document.getElementById('aOrder').value||1)
+  };
+  if(!s.label||!s.title){ toast('Label and title are required'); return; }
+  const ok=await saveAnnouncementToSupabase(s);
+  if(!ok) return;
+  // Old media that got replaced/removed above is only cleaned up NOW,
+  // after the row that pointed to it has already been updated — see
+  // cleanupAnnouncementMedia() for why this is safe against shared use.
+  const oldImage=prev.image||'', oldPoster=prev.posterUrl||'';
+  if(oldImage && oldImage!==s.image) await cleanupAnnouncementMedia([oldImage,oldPoster]);
+  closeModal(); render();
+};
+// =====================================================================
+// V32.3 — Gallery (spec 11-18): Admin-managed, Supabase-Storage-backed
+// general visual content (customer photos, food/menu/festival/brand
+// photos). Separate from Products/Combos/Announcements/Reviews.
+// Supports multiple images AND videos, mixed freely, each with its own
+// display order and active flag — unlike announcements' single-media
+// rule, there is no cap here.
+// =====================================================================
+async function fetchGalleryMedia(){
+  const {data:rows,error}=await sb.from('gallery_media').select('*').order('display_order',{ascending:true});
+  if(error){ toast('Could not load gallery: '+error.message); return []; }
+  const items=(rows||[]).map(g=>({id:g.id, type:g.media_type, url:g.media_url, poster:g.poster_url||'', caption:g.caption||'', order:g.display_order||0, active:g.active}));
+  data.gallery=items;
+  return items;
+}
+const GALLERY_STORAGE_PREFIX = SUPABASE_URL.replace(/\/$/,'') + '/storage/v1/object/public/gallery-media/';
+function galleryStoragePathFromUrl(url){
+  if(!url || typeof url !== 'string' || !url.startsWith(GALLERY_STORAGE_PREFIX)) return null;
+  try{ return decodeURIComponent(url.slice(GALLERY_STORAGE_PREFIX.length)); }catch{ return null; }
+}
+// Same "never delete a file another row still references" safety used
+// for product/combo/announcement media (spec 18: "never blindly delete
+// shared Storage objects").
+async function cleanupGalleryMedia(urls, keepId){
+  const set=new Set((urls||[]).filter(Boolean));
+  for(const url of set){
+    const path=galleryStoragePathFromUrl(url);
+    if(!path) continue; // external URL — never touched
+    let q=sb.from('gallery_media').select('id',{count:'exact',head:true}).or(`media_url.eq.${url},poster_url.eq.${url}`);
+    if(keepId) q=q.neq('id',keepId);
+    const {count}=await q;
+    if(count && count>0) continue;
+    const {error:rmErr}=await sb.storage.from('gallery-media').remove([path]);
+    if(rmErr) console.warn('Could not remove orphaned gallery Storage file (left in place, no data was lost):', path, rmErr.message);
+  }
+}
+async function galleryPage(){
+  await fetchGalleryMedia();
+  const items=(data.gallery||[]).slice().sort((a,b)=>(a.order||0)-(b.order||0));
+  return `<section class="panel">${liveCatalogNote()}<div class="panelHead"><div><h2>Gallery</h2><p>General visual content shown on the homepage slideshow — customer photos, food/menu photos, festival or brand photos. Any mix of images and videos, in the order below.</p></div></div>
+  <div class="mediaUploadRow">
+    <label class="outline uploadBtn">📷 + Add Photos<input type="file" accept="image/webp,image/jpeg,image/png,image/avif" multiple style="display:none" onchange="uploadGalleryFiles(event,'image')"></label>
+    <label class="outline uploadBtn">🎬 + Add Video<input type="file" accept="video/mp4,video/webm" multiple style="display:none" onchange="uploadGalleryFiles(event,'video')"></label>
+  </div>
+  <div id="galleryUploadStatus" class="mediaUploadStatus"></div>
+  <div class="galleryAdminGrid">${items.map((g,i)=>`
+    <div class="galleryAdminCard">
+      ${g.type==='video'?`<video src="${esc(g.url)}" ${g.poster?`poster="${esc(g.poster)}"`:''} controls preload="metadata"></video>`:`<img src="${esc(g.url)}" alt="${esc(g.caption)}" loading="lazy">`}
+      <div class="galleryAdminMeta">
+        <input class="galleryCaption" value="${esc(g.caption)}" placeholder="Optional caption" onchange="updateGalleryCaption('${esc(g.id)}',this.value)">
+        <div class="galleryAdminRow">
+          <label class="checkOnly"><input type="checkbox" ${g.active?'checked':''} onchange="toggleGalleryActive('${esc(g.id)}',this.checked)"> Active</label>
+          <small>${i+1} / ${items.length}</small>
+        </div>
+        <div class="cardActions">
+          <button class="outline" ${i===0?'disabled':''} onclick="moveGalleryItem('${esc(g.id)}',-1)" title="Move earlier">↑</button>
+          <button class="outline" ${i===items.length-1?'disabled':''} onclick="moveGalleryItem('${esc(g.id)}',1)" title="Move later">↓</button>
+          <button class="outline dangerBtn" onclick="deleteGalleryItem('${esc(g.id)}')">Delete</button>
+        </div>
+      </div>
+    </div>`).join('')||'<div class="empty smallEmpty">No gallery items yet — add photos or a video above.</div>'}
+  </div></section>`;
+}
+// Real file upload straight into Supabase Storage's `gallery-media`
+// bucket, same pattern as uploadMediaFile()/uploadAnnouncementFile() —
+// multiple files at once are supported (spec 14), each becomes its own
+// row with the next available display_order.
+async function uploadGalleryFiles(evt,kind){
+  const files=Array.from(evt.target.files||[]); if(!files.length) return;
+  const statusEl=document.getElementById('galleryUploadStatus');
+  let order=(data.gallery||[]).reduce((m,g)=>Math.max(m,g.order||0),0);
+  for(const file of files){
+    order+=1;
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'-').toLowerCase();
+    const path=`${kind==='video'?'videos/':'images/'}${Date.now()}-${order}-${safeName}`;
+    if(statusEl) statusEl.textContent=`Uploading ${file.name}…`;
+    const {error:upErr}=await sb.storage.from('gallery-media').upload(path,file,{cacheControl:'31536000',upsert:false});
+    if(upErr){ toast('Upload failed for '+file.name+': '+upErr.message+' — has supabase_migration_v32_3.sql been run, and does the gallery-media bucket exist yet?'); continue; }
+    const {data:pub}=sb.storage.from('gallery-media').getPublicUrl(path);
+    const {error:insErr}=await sb.from('gallery_media').insert({media_type:kind, media_url:pub.publicUrl, poster_url:'', caption:'', display_order:order, active:true});
+    if(insErr) toast('Uploaded but could not save gallery row for '+file.name+': '+insErr.message);
+  }
+  if(statusEl) statusEl.textContent='';
+  evt.target.value='';
+  render();
+}
+async function updateGalleryCaption(id,val){
+  const {error}=await sb.from('gallery_media').update({caption:val.trim()}).eq('id',id);
+  if(error) toast('Could not save caption: '+error.message);
+}
+async function toggleGalleryActive(id,val){
+  const {error}=await sb.from('gallery_media').update({active:val}).eq('id',id);
+  if(error){ toast('Could not update: '+error.message); }
+  render();
+}
+async function moveGalleryItem(id,dir){
+  const items=(data.gallery||[]).slice().sort((a,b)=>(a.order||0)-(b.order||0));
+  const idx=items.findIndex(g=>g.id===id);
+  const j=idx+dir;
+  if(idx<0||j<0||j>=items.length) return;
+  const a=items[idx], b=items[j];
+  const [oa,ob]=[a.order,b.order];
+  await Promise.all([
+    sb.from('gallery_media').update({display_order:ob}).eq('id',a.id),
+    sb.from('gallery_media').update({display_order:oa}).eq('id',b.id)
+  ]);
+  render();
+}
+async function deleteGalleryItem(id){
+  const g=(data.gallery||[]).find(x=>x.id===id); if(!g) return;
+  if(!confirm('Delete this gallery item?')) return;
+  const oldUrls=[g.url,g.poster].filter(Boolean);
+  const {error}=await sb.from('gallery_media').delete().eq('id',id);
+  if(error){ toast('Could not delete gallery item: '+error.message); return; }
+  await cleanupGalleryMedia(oldUrls,null);
+  toast('Gallery item deleted');
+  render();
+}
 function polish(){document.querySelectorAll('.cardActions button').forEach(b=>b.classList.add('v22-action'));document.querySelectorAll('.reviewAdmin article,.announcementAdmin article').forEach(x=>x.classList.add('v22-admin-card'))}
 new MutationObserver(polish).observe(document.getElementById('app'),{childList:true,subtree:true});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',polish);else polish();

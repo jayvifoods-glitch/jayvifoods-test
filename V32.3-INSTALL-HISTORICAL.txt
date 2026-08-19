@@ -1,0 +1,47 @@
+[RENAMED, header added — no other content changed]
+This file was originally named "V32.3-INSTALL.txt". It documents a
+HISTORICAL release from earlier in this project (it predates V32.4 —
+see CHANGELOG_V32.4.md, which refers back to it as "V32.3, item J").
+Its SQL files (supabase_migration_order_state_machine.sql,
+supabase_migration_reviews_featured.sql) and admin-login.html removal
+were already applied long ago and are unrelated to the CURRENT release,
+which reuses the same "V32.3" version label per explicit client
+instruction. This file has been renamed (not edited otherwise, per the
+instruction not to alter historical files) to remove that naming
+collision. For the CURRENT release, use CHANGELOG_V32.3.md and the
+"V32.3" section of DEPLOY.md instead — do not follow the steps below.
+Original content follows, unchanged:
+
+----------------------------------------------------------------------
+
+JAYVI FOODS — V32.3 WEBSITE RELEASE (Complete A-AA implementation pass)
+
+Full changelog, the A-AA re-verification summary, migration order, and
+a workflow-level verification checklist are all in DEPLOY.md — read it
+before deploying. This is the largest release in the project so far.
+
+BEFORE DEPLOYING:
+1. supabase-config.js — unchanged, already configured from prior rounds.
+2. Run these 2 NEW SQL files in SQL Editor, in this exact order (after
+   everything from prior rounds is already applied):
+     supabase_migration_order_state_machine.sql
+     supabase_migration_reviews_featured.sql
+3. admin-login.html has been REMOVED — if your web server or CDN caches
+   old pages, purge that URL specifically so it 404s cleanly rather
+   than serving a stale page.
+4. Google Maps API key still not configured (needs your action) — see
+   DEPLOY.md's "C" section for exact API names to enable.
+5. Edge Functions (email notifications, admin password reset) still
+   need deploying — same as last round, commands unchanged, see
+   DEPLOY.md.
+6. Read DEPLOY.md's verification checklist in full before considering
+   this production-ready — several items are code-complete but not yet
+   live-tested from this side.
+
+UPLOAD RULE:
+Replace the complete repository contents with this package. Do not mix
+older v15-v32.2 files. Keep the entire images/ folder.
+
+GitHub Pages:
+- Branch: main
+- Folder: / (root)
