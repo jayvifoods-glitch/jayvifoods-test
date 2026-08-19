@@ -230,3 +230,20 @@ header h1{font:600 38px 'Fraunces',Georgia,serif;margin:6px 0}
   .modal h2{font-size:26px}
   .v22-action{min-width:76px!important;font-size:11px!important}
 }
+
+/* ---------- V32.12.1: Admin Orders search/filter/sort (spec 11) ---------- */
+.ordersToolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
+.ordersToolbar input[type="search"]{flex:1 1 220px;min-width:160px;border:1px solid var(--line,#ddd);border-radius:8px;padding:8px 12px;font-size:13px}
+.ordersToolbar select{border:1px solid var(--line,#ddd);border-radius:8px;padding:8px 10px;font-size:13px}
+.ordersToolbar label.tiny{display:flex;flex-direction:column;font-size:11px;color:#888;gap:2px}
+.ordersToolbar label.tiny input{border:1px solid var(--line,#ddd);border-radius:8px;padding:6px 8px;font-size:12px}
+@media(max-width:760px){ .ordersToolbar{flex-direction:column;align-items:stretch} }
+
+/* ---------- V32.12.1: Announcement media upload (spec 13) ---------- */
+.mediaBlock{margin-top:14px;padding:14px;border:1px dashed #ccc;border-radius:10px}
+.mediaBlock > b{display:block;margin-bottom:8px}
+.mediaBlock > b small{display:block;font-weight:400;margin-top:4px}
+.mediaUploadRow{display:flex;gap:10px;margin-bottom:10px}
+.mediaUploadRow label{cursor:pointer}
+#aMediaPreview img,#aMediaPreview video{display:block;margin-top:8px}
+.mediaUploadStatus{font-size:12px;color:#888;min-height:16px}

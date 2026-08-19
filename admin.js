@@ -579,7 +579,8 @@ async function fetchAnnouncements(){
   if(error){ toast('Could not load announcements: '+error.message); return []; }
   const announcements=(rows||[]).map(a=>({
     id:a.id, label:a.label||'', title:a.title||'', em:a.em||'', text:a.text||'',
-    image:a.image||'', showPrice:a.show_price, actionType:a.action_type||'product', actionTarget:a.action_target||'',
+    image:a.image||'', mediaType:a.media_type||'image', posterUrl:a.poster_url||'',
+    showPrice:a.show_price, actionType:a.action_type||'product', actionTarget:a.action_target||'',
     productId:a.product_id||'', comboId:a.combo_id||'', active:a.active, order:a.display_order||0
   }));
   data.announcements=announcements;
@@ -588,6 +589,7 @@ async function fetchAnnouncements(){
 async function saveAnnouncementToSupabase(a){
   const {error}=await sb.from('announcements').upsert({
     id:a.id, label:a.label, title:a.title, em:a.em, text:a.text, image:a.image||'',
+    media_type:a.mediaType||'image', poster_url:a.posterUrl||'',
     show_price:a.showPrice!==false, action_type:a.actionType, action_target:a.actionTarget,
     product_id:a.productId||null, combo_id:a.comboId||null, active:a.active, display_order:a.order
   });
@@ -776,6 +778,14 @@ async function render(){title.textContent=tab==='variants'?'Variants & sizes':ta
  if(tab==='reviews')h=await reviewsPage();
  if(tab==='settings')h=await settingsPage();
  app.innerHTML=h;
+ // V32.12.1: setOrdersFilter('q', ...) re-renders on every keystroke
+ // (same simple pattern as every other filter here) — restore focus +
+ // cursor position on the search box afterward so typing doesn't
+ // visibly kick focus out of the field after each character.
+ if(tab==='orders' && ordersUi._searchFocused){
+   const box = document.querySelector('.ordersToolbar input[type="search"]');
+   if(box){ box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+ }
 }
 // V32.6 (item 11): one single, documented definition of "counts as a
 // successful sale" — used everywhere revenue/sales/product-sales are
@@ -801,9 +811,64 @@ async function dashboard(){
   const topList=Object.entries(top).sort((a,b)=>b[1]-a[1]).slice(0,5);
   return `<section class="kpis"><article><small>ORDERS TODAY</small><b>${todayOrders.length}</b><span>${todaySales?money(todaySales):'No sales yet'}</span></article><article><small>TOTAL ORDERS</small><b>${os.length}</b><span>${delivered} delivered</span></article><article><small>SALES</small><b>${money(sales)}</b><span>Confirmed/fulfilled orders only — excludes pending payment, failed, cancelled, and refunded</span></article><article><small>REFUNDED</small><b>${money(refunded)}</b><span>Refund pending + refunded</span></article><article><small>REGISTERED CUSTOMERS</small><b>${cs.length}</b><span>Excludes guests</span></article><article><small>PENDING ORDERS</small><b>${pending}</b><span>Need attention</span></article></section><div class="dashboardGrid"><section class="panel wide"><div class="panelHead"><div><h2>Latest orders</h2><p>Your operational view: customer, amount, payment and current status.</p></div><button class="gold" onclick="setTab('orders')">View all orders →</button></div>${os.length?`<div class="orderTable"><div class="orderHead"><span>Order</span><span>Customer</span><span>Amount</span><span>Payment</span><span>Status</span></div>${os.slice(0,10).map(o=>`<button class="orderLine" onclick="orderView('${esc(o.order_number)}')"><span><b>${esc(o.order_number)}</b><small>${new Date(o.created_at).toLocaleDateString('en-IN')}</small></span><span><b>${esc(o.guest_name||'Guest')}</b><small>${esc(o.guest_phone||'')}</small></span><strong>${money(o.total)}</strong><span>${esc(o.payment_method||'')}</span><span class="statusTag">${esc(o.status||'')}</span></button>`).join('')}</div>`:'<div class="empty">No orders yet.</div>'}</section><section class="panel"><div class="panelHead"><div><h2>Top products</h2><p>Based on live Supabase orders (revenue-counted statuses only).</p></div></div>${topList.length?topList.map(x=>`<div class="metricRow"><span>${esc(x[0])}</span><b>${x[1]} sold</b></div>`).join(''):'<div class="empty smallEmpty">No sales data yet.</div>'}</section><section class="panel"><div class="panelHead"><div><h2>Store operations</h2><p>Quick controls that affect ordering.</p></div><button class="outline" onclick="setTab('settings')">Open settings</button></div><div class="operation"><span>Vacation mode</span><b class="${data.store.vacationMode?'danger':'good'}">${data.store.vacationMode?'ON — ordering paused':'OFF — ordering open'}</b></div><div class="operation"><span>UPI</span><b class="good">${data.store.upiEnabled===false?'OFF':'ON'}</b></div><div class="operation"><span>COD</span><b>${data.store.codEnabled===false?'OFF':'ON'}</b></div><div class="operation"><span>Razorpay</span><b>${data.store.razorpayEnabled?'ON':'OFF'}</b></div><div class="operation"><span>OTP login</span><b>${data.store.otpEnabled?'ON':'OFF — future'}</b></div></section></div>`;
 }
+// V32.12.1 (spec 11 — "Admin Orders — Search / Filter / Sort").
+// Deliberately client-side over the already-fetched fetchOrders()
+// result (same data source as before, no new query shape) — order
+// volumes here are still small enough that this stays simple and fast;
+// SCALABILITY_REVIEW.md flags server-side pagination/filtering as the
+// next step once volume grows past what's comfortable to fetch in one
+// shot. State lives in a small module-level object so it survives
+// between render() calls (e.g. after Refresh) without needing to touch
+// every other admin.js render path.
+const ordersUi = { q:'', status:'', payment:'', from:'', to:'', sort:'newest' };
+function applyOrdersUi(rows){
+  let out = rows.slice();
+  const q = ordersUi.q.trim().toLowerCase();
+  if(q){
+    out = out.filter(o =>
+      String(o.order_number||'').toLowerCase().includes(q) ||
+      String(o.guest_name||'').toLowerCase().includes(q) ||
+      String(o.guest_phone||'').toLowerCase().includes(q) ||
+      String(o.guest_email||'').toLowerCase().includes(q)
+    );
+  }
+  if(ordersUi.status) out = out.filter(o=>o.status===ordersUi.status);
+  if(ordersUi.payment) out = out.filter(o=>o.payment_status===ordersUi.payment);
+  if(ordersUi.from) out = out.filter(o=>new Date(o.created_at) >= new Date(ordersUi.from+'T00:00:00'));
+  if(ordersUi.to) out = out.filter(o=>new Date(o.created_at) <= new Date(ordersUi.to+'T23:59:59'));
+  switch(ordersUi.sort){
+    case 'oldest': out.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)); break;
+    case 'highest': out.sort((a,b)=>Number(b.total||0)-Number(a.total||0)); break;
+    case 'lowest': out.sort((a,b)=>Number(a.total||0)-Number(b.total||0)); break;
+    case 'status': out.sort((a,b)=>String(a.status||'').localeCompare(String(b.status||''))); break;
+    default: out.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)); // newest
+  }
+  return out;
+}
+function setOrdersFilter(field,val){ ordersUi[field]=val; ordersUi._searchFocused = (field==='q'); render(); }
 async function ordersPage(){
   const os=await fetchOrders();
-  return `<section class="panel"><div class="panelHead"><div><h2>Orders</h2><p>Guest and registered orders are shown together. Open an order for the full customer, payment and delivery view.</p></div><div class="filterPills"><button class="outline" onclick="render()">Refresh</button></div></div>${os.length?`<div class="orderTable fullTable"><div class="orderHead"><span>Order</span><span>Customer</span><span>Amount</span><span>Payment</span><span>Status</span></div>${os.map(o=>`<button class="orderLine" onclick="orderView('${esc(o.order_number)}')"><span><b>${esc(o.order_number)}</b><small>${new Date(o.created_at).toLocaleDateString('en-IN')}</small></span><span><b>${esc(o.guest_name||'Guest')}</b><small>${esc(o.guest_phone||'')}</small></span><strong>${money(o.total)}</strong><span>${esc(o.payment_method||'')}</span><span class="statusTag">${esc(o.status||'')}</span></button>`).join('')}</div>`:'<div class="empty">No orders found.</div>'}</section>`;
+  const statuses=[...new Set(os.map(o=>o.status).filter(Boolean))].sort();
+  const paymentStatuses=[...new Set(os.map(o=>o.payment_status).filter(Boolean))].sort();
+  const filtered = applyOrdersUi(os);
+  return `<section class="panel"><div class="panelHead"><div><h2>Orders</h2><p>Guest and registered orders are shown together. Open an order for the full customer, payment and delivery view.</p></div><div class="filterPills"><button class="outline" onclick="render()">Refresh</button></div></div>
+  <div class="ordersToolbar">
+    <input type="search" placeholder="Search order ID, name, phone…" value="${esc(ordersUi.q)}" oninput="setOrdersFilter('q', this.value)">
+    <select onchange="setOrdersFilter('status', this.value)"><option value="">All statuses</option>${statuses.map(s=>`<option value="${esc(s)}" ${ordersUi.status===s?'selected':''}>${esc(s)}</option>`).join('')}</select>
+    <select onchange="setOrdersFilter('payment', this.value)"><option value="">All payment statuses</option>${paymentStatuses.map(s=>`<option value="${esc(s)}" ${ordersUi.payment===s?'selected':''}>${esc(s)}</option>`).join('')}</select>
+    <label class="tiny">From<input type="date" value="${esc(ordersUi.from)}" onchange="setOrdersFilter('from', this.value)"></label>
+    <label class="tiny">To<input type="date" value="${esc(ordersUi.to)}" onchange="setOrdersFilter('to', this.value)"></label>
+    <select onchange="setOrdersFilter('sort', this.value)">
+      <option value="newest" ${ordersUi.sort==='newest'?'selected':''}>Newest first</option>
+      <option value="oldest" ${ordersUi.sort==='oldest'?'selected':''}>Oldest first</option>
+      <option value="highest" ${ordersUi.sort==='highest'?'selected':''}>Highest order value</option>
+      <option value="lowest" ${ordersUi.sort==='lowest'?'selected':''}>Lowest order value</option>
+      <option value="status" ${ordersUi.sort==='status'?'selected':''}>Status</option>
+    </select>
+    ${(ordersUi.q||ordersUi.status||ordersUi.payment||ordersUi.from||ordersUi.to)?`<button class="outline" onclick="ordersUi.q='';ordersUi.status='';ordersUi.payment='';ordersUi.from='';ordersUi.to='';render()">Clear filters</button>`:''}
+  </div>
+  <p class="tiny muted">${filtered.length} of ${os.length} order${os.length===1?'':'s'}</p>
+  ${filtered.length?`<div class="orderTable fullTable"><div class="orderHead"><span>Order</span><span>Customer</span><span>Amount</span><span>Payment</span><span>Status</span></div>${filtered.map(o=>`<button class="orderLine" onclick="orderView('${esc(o.order_number)}')"><span><b>${esc(o.order_number)}</b><small>${new Date(o.created_at).toLocaleDateString('en-IN')}</small></span><span><b>${esc(o.guest_name||'Guest')}</b><small>${esc(o.guest_phone||'')}</small></span><strong>${money(o.total)}</strong><span>${esc(o.payment_method||'')}</span><span class="statusTag">${esc(o.status||'')}</span></button>`).join('')}</div>`:'<div class="empty">No orders match these filters.</div>'}</section>`;
 }
 async function orderView(orderNumber){
   const o = await fetchOrder(orderNumber);
@@ -1070,12 +1135,49 @@ async function saveProduct(existingId){
  if(!ok) return;
  closeModal();render();
 }
+// V32.12.1 (spec 12 — "Product Deletion Must Clean Up Associated
+// Data"). public.product_media rows already cascade-delete with their
+// parent product/combo (foreign keys with ON DELETE CASCADE — see
+// supabase_migration_product_catalog.sql) — that part needed no
+// change. What was missing: the actual Storage OBJECTS those rows
+// pointed at (uploaded via uploadMediaFile() above, into the
+// 'product-media' bucket) were never removed, only the database rows
+// referencing them — Postgres has no visibility into Supabase Storage
+// to cascade against automatically.
+//
+// Fixed by capturing every Storage-hosted media_url/poster_url BEFORE
+// the delete, then — spec 12's explicit safety requirement — checking
+// whether each exact file is still referenced by ANY other
+// product_media row (shared/reused media) before removing it from
+// Storage. External URLs and legacy Git-committed paths (anything not
+// under this project's public Storage URL) are never touched here at
+// all, matching the "do not blindly delete shared media" instruction.
+const STORAGE_PUBLIC_PREFIX = SUPABASE_URL.replace(/\/$/,'') + '/storage/v1/object/public/product-media/';
+function storagePathFromUrl(url){
+  if(!url || typeof url !== 'string' || !url.startsWith(STORAGE_PUBLIC_PREFIX)) return null;
+  try{ return decodeURIComponent(url.slice(STORAGE_PUBLIC_PREFIX.length)); }catch{ return null; }
+}
+async function cleanupOrphanedMedia(mediaRows){
+  const urls = new Set();
+  (mediaRows||[]).forEach(r=>{ if(r.media_url) urls.add(r.media_url); if(r.poster_url) urls.add(r.poster_url); });
+  for(const url of urls){
+    const path = storagePathFromUrl(url);
+    if(!path) continue; // external URL / legacy Git path — never touched, per spec 12
+    const { count } = await sb.from('product_media').select('id',{count:'exact',head:true}).or(`media_url.eq.${url},poster_url.eq.${url}`);
+    if(count && count>0) continue; // still referenced by another product/combo's media — leave the file in Storage
+    const { error: rmErr } = await sb.storage.from('product-media').remove([path]);
+    if(rmErr) console.warn('Could not remove orphaned Storage file (left in place, no data was lost):', path, rmErr.message);
+  }
+}
 function deleteProduct(id){
- if(!confirm('Delete this product? This also deletes its media rows and cannot be undone.')) return;
- sb.from('products').delete().eq('id',id).then(({error})=>{
+ if(!confirm('Delete this product? This also deletes its media rows and, where the file isn\'t used elsewhere, its uploaded media. This cannot be undone.')) return;
+ (async()=>{
+   const {data:mediaRows} = await sb.from('product_media').select('media_url,poster_url').eq('product_id',id);
+   const {error} = await sb.from('products').delete().eq('id',id);
    if(error){ toast('Could not delete: '+error.message); return; }
+   await cleanupOrphanedMedia(mediaRows||[]);
    render();
- });
+ })();
 }
 async function variantsPage(){
  await fetchProducts();
@@ -1113,11 +1215,14 @@ async function saveCombo(existingId){
  closeModal();render();
 }
 function deleteCombo(id){
- if(!confirm('Delete this combo? This also deletes its media rows and cannot be undone.')) return;
- sb.from('combos').delete().eq('id',id).then(({error})=>{
+ if(!confirm('Delete this combo? This also deletes its media rows and, where the file isn\'t used elsewhere, its uploaded media. This cannot be undone.')) return;
+ (async()=>{
+   const {data:mediaRows} = await sb.from('product_media').select('media_url,poster_url').eq('combo_id',id);
+   const {error} = await sb.from('combos').delete().eq('id',id);
    if(error){ toast('Could not delete: '+error.message); return; }
+   await cleanupOrphanedMedia(mediaRows||[]);
    render();
- });
+ })();
 }
 async function mealTagsPage(){
  await fetchMealTags();
@@ -1159,7 +1264,6 @@ async function saveCategory(i){
 }
 async function homepagePage(){await fetchAnnouncements();return `<section class="panel">${liveCatalogNote()}<div class="panelHead"><div><h2>Homepage announcements</h2><p>Each slide has an explicit click action. The target is selected based on the action instead of entering a hidden URL target.</p></div><button class="gold" onclick="announcementForm()">+ Add announcement</button></div><div class="announcementAdmin">${data.announcements.sort((a,b)=>(a.order||0)-(b.order||0)).map((s,i)=>`<article><div class="announcementInfo"><span class="typeTag">${esc(s.label||'ANNOUNCEMENT')}</span><h3>${esc(s.title||'')}</h3><p>${esc(s.text||'')}</p><small>Action: ${esc(s.actionType|| (s.productId?'Open product':s.comboId?'Open combo':'Shop'))}</small></div><div class="cardActions"><button class="outline" onclick="announcementForm(${i})">Edit</button></div></article>`).join('')}</div></section>`}
 function announcementForm(index=-1){const s=index>=0?data.announcements[index]:{id:'',label:'',title:'',em:'',text:'',actionType:'product',actionTarget:'',active:true,order:data.announcements.length+1};openModal(`<div class="eyebrow">HOMEPAGE ANNOUNCEMENT</div><h2>${index<0?'Add announcement':'Edit announcement'}</h2><div class="formGrid"><label>Label<input id="aLabel" value="${esc(s.label)}"></label><label>Title<input id="aTitle" value="${esc(s.title)}"></label><label>Emphasis<input id="aEm" value="${esc(s.em)}"></label><label>Display position<input id="aOrder" type="number" value="${s.order||1}"></label><label class="fullLabel">Message<textarea id="aText" rows="3">${esc(s.text||'')}</textarea></label><label>Click action<select id="aAction" onchange="renderAnnouncementTarget()"><option value="product" ${s.actionType==='product'?'selected':''}>Open product</option><option value="combo" ${s.actionType==='combo'?'selected':''}>Open combo</option><option value="shop" ${s.actionType==='shop'?'selected':''}>Open Shop</option><option value="reviews" ${s.actionType==='reviews'?'selected':''}>Open Reviews</option><option value="url" ${s.actionType==='url'?'selected':''}>Open external link</option></select></label><div id="aTargetWrap"></div></div><label class="checkOnly"><input id="aActive" type="checkbox" ${s.active?'checked':''}> Active</label><button class="gold full" onclick="saveAnnouncement(${index})">Save announcement</button>`);window._announcementDraft=s;renderAnnouncementTarget()}
-function renderAnnouncementTarget(){const type=document.getElementById('aAction')?.value, s=window._announcementDraft||{};let h='';if(type==='product')h=`<label>Product<select id="aTarget">${data.products.map(p=>`<option value="${p.id}" ${(s.productId||s.actionTarget)===p.id?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label>`;else if(type==='combo')h=`<label>Combo<select id="aTarget">${data.combos.map(c=>`<option value="${c.id}" ${(s.comboId||s.actionTarget)===c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label>`;else if(type==='url')h=`<label>External URL<input id="aTarget" value="${esc(s.actionTarget||'')}" placeholder="https://..."></label>`;document.getElementById('aTargetWrap').innerHTML=h}
 function saveAnnouncement(i){const type=document.getElementById('aAction').value,target=document.getElementById('aTarget')?.value||'';const s={id:document.getElementById('aId')?.value||('ann-'+Date.now().toString(36)),label:document.getElementById('aLabel').value.trim(),title:document.getElementById('aTitle').value.trim(),em:document.getElementById('aEm').value.trim(),text:document.getElementById('aText').value.trim(),actionType:type,actionTarget:target,productId:type==='product'?target:'',comboId:type==='combo'?target:'',active:document.getElementById('aActive').checked,order:Number(document.getElementById('aOrder').value||1)};if(i<0)data.announcements.push(s);else data.announcements[i]=s;persist();closeModal();render()}
 let _reviewsTab='pending', _reviewsSort='newest', _reviewsSearch='', _reviewsOffset=0;
 const REVIEWS_PAGE_SIZE=20;
@@ -1483,7 +1587,7 @@ async function couponsPage(){
   if(error) return `<section class="panel"><div class="empty">Could not load coupons: ${esc(error.message)}. Has supabase_migration_coupons.sql been run?</div></section>`;
   data._coupons=rows||[];
   await fetchProducts(); await fetchCategories(); // needed for the applicable-products/categories checkboxes in couponForm()
-  return `<section class="panel"><div class="catalogWarning" style="border-color:#1a7a3d;background:#e9f7ee"><b>✅ Live on the storefront (V32.12)</b><p>Coupons are created/edited/enabled here and validated server-side (<code>public.validate_coupon</code>) — nothing new there. As of V32.12, they're also fully wired into the storefront: the floating offer button, the homepage announcement ticker, and the Cart's "Apply coupon" dropdown all read from Supabase automatically, and <code>place_order()</code> re-validates any applied code server-side (including the product/category restrictions below) before an order is ever created. See <code>CHANGELOG_V32.12.md</code>.</p></div>
+  return `<section class="panel"><div class="catalogWarning" style="border-color:#1a7a3d;background:#e9f7ee"><b>✅ Live on the storefront</b><p>Coupons you create, edit, enable or disable here take effect immediately for customers — no redeploy needed. Every discount is checked on our server at the moment an order is placed, so an expired, disabled, over-used, or restricted coupon can never actually be applied, even if a customer's screen hadn't refreshed yet. Customers see active offers on the homepage banner, a floating offer button, and a dropdown in Cart that only lists offers their current cart actually qualifies for.</p></div>
   <div class="panelHead"><div><h2>Coupons &amp; Offers</h2><p>Percentage or fixed discounts, with optional date range, minimum order value, usage limits, and product/category restrictions.</p></div><button class="gold" onclick="couponForm()">+ Add coupon</button></div>
   <div class="comboAdmin">${(rows||[]).map(c=>`<article><span class="typeTag">${esc(c.discount_type.toUpperCase())}</span><h3>${esc(c.code)} — ${esc(c.name)}</h3><p>${esc(c.description||'')}</p><strong>${c.discount_type==='percentage'?c.discount_value+'% off':money(c.discount_value)+' off'}</strong><small>Min order ${money(c.min_order_value||0)}${c.max_discount?' · Max discount '+money(c.max_discount):''}${c.usage_limit?' · Limit '+c.usage_limit+' uses':''} · ${c.active?'Active':'Disabled'}${(c.applicable_products?.length)?' · '+c.applicable_products.length+' product(s) only':''}${(c.applicable_categories?.length)?' · '+c.applicable_categories.length+' categor'+(c.applicable_categories.length===1?'y':'ies')+' only':''}</small><div class="cardActions"><button class="outline" onclick="couponForm('${esc(c.id)}')">Edit</button><button class="outline" onclick="toggleCouponActive('${esc(c.id)}',${!c.active})">${c.active?'Disable':'Enable'}</button><button class="outline dangerBtn" onclick="deleteCoupon('${esc(c.id)}')">Delete</button></div></article>`).join('')||'<div class="empty smallEmpty">No coupons yet.</div>'}</div>
   </section>`;
@@ -1688,7 +1792,7 @@ async function settingsPage(){
  return `<section class="settingsGrid">
  <article class="settingCard"><span class="typeTag">STORE OPERATIONS</span><h2>Ordering</h2>
  <label class="toggleRow"><span>Vacation mode<small>Pause ordering without changing product stock.</small></span><input id="setVacation" type="checkbox" ${s.vacationMode?'checked':''}></label>
- <label class="toggleRow"><span>Delivery enabled<small>Master switch (V32.5): OFF blocks PIN verification/checkout storefront-wide with "Delivery is currently disabled." Separate from, and checked before, individual state/PIN serviceability.</small></span><input id="setDeliveryEnabled" type="checkbox" ${s.deliveryMode==='india'?'checked':''}></label>
+ <label class="toggleRow"><span>Delivery enabled<small>Master switch — OFF stops checkout storefront-wide with "Delivery is currently unavailable. Please try again later." (checked both when a PIN is verified and again, server-side, when the order is placed). Separate from, and checked before, individual state/PIN serviceability below.</small></span><input id="setDeliveryEnabled" type="checkbox" ${s.deliveryMode==='india'?'checked':''}></label>
  <label>Vacation message<textarea id="setVacationMsg" rows="3">${esc(s.vacationMessage||'')}</textarea></label>
  <div class="two"><label>Delivery minimum days<input id="setMin" type="number" min="1" value="${s.deliveryMinDays||4}"></label><label>Delivery maximum days<input id="setMax" type="number" min="1" value="${s.deliveryMaxDays||8}"></label></div>
  <div class="two"><label>Free shipping above<input id="setFree" type="number" value="${s.freeShippingThreshold||599}"></label><label>Shipping charge<input id="setShip" type="number" value="${s.shippingFlat||49}"></label></div>
@@ -1769,11 +1873,57 @@ requireAdminSession().then(async ok=>{ if(ok){ await fetchProducts(); await fetc
 'use strict';
 const oldAnn=window.announcementForm;
 window.announcementForm=function(index=-1){
- const s=index>=0?data.announcements[index]:{id:'',label:'',title:'',em:'',text:'',image:'',showPrice:true,actionType:'product',actionTarget:'',active:true,order:data.announcements.length+1};
- openModal(`<div class="eyebrow">HOMEPAGE ANNOUNCEMENT</div><h2>${index<0?'Add announcement':'Edit announcement'}</h2><div class="formGrid"><label>Label<input id="aLabel" value="${esc(s.label||'')}"></label><label>Title<input id="aTitle" value="${esc(s.title||'')}"></label><label>Emphasis<input id="aEm" value="${esc(s.em||'')}"></label><label>Display position<input id="aOrder" type="number" value="${s.order||1}"></label><label class="fullLabel">Message<textarea id="aText" rows="3">${esc(s.text||'')}</textarea></label><label class="fullLabel">Announcement image path / URL<input id="aImage" value="${esc(s.image||'')}" placeholder="images/hero/announcement.webp or https://..."><small class="v22-admin-help">Optional. If empty, the linked product/combo image is used.</small></label><label>Click action<select id="aAction" onchange="renderAnnouncementTarget()"><option value="product" ${s.actionType==='product'?'selected':''}>Open product</option><option value="combo" ${s.actionType==='combo'?'selected':''}>Open combo</option><option value="shop" ${s.actionType==='shop'?'selected':''}>Open Shop</option><option value="reviews" ${s.actionType==='reviews'?'selected':''}>Open Reviews</option><option value="url" ${s.actionType==='url'?'selected':''}>Open external link</option></select></label><label class="checkOnly"><input id="aShowPrice" type="checkbox" ${s.showPrice!==false?'checked':''}> Show price badge</label><div id="aTargetWrap"></div></div><label class="checkOnly"><input id="aActive" type="checkbox" ${s.active!==false?'checked':''}> Active</label><button class="gold full" onclick="saveAnnouncement(${index})">Save announcement</button>`);
- window._announcementDraft=s;renderAnnouncementTarget();
+ const s=index>=0?data.announcements[index]:{id:'',label:'',title:'',em:'',text:'',image:'',mediaType:'image',posterUrl:'',showPrice:true,actionType:'product',actionTarget:'',active:true,order:data.announcements.length+1};
+ openModal(`<div class="eyebrow">HOMEPAGE ANNOUNCEMENT</div><h2>${index<0?'Add announcement':'Edit announcement'}</h2><div class="formGrid"><label>Label<input id="aLabel" value="${esc(s.label||'')}"></label><label>Title<input id="aTitle" value="${esc(s.title||'')}"></label><label>Emphasis<input id="aEm" value="${esc(s.em||'')}"></label><label>Display position<input id="aOrder" type="number" value="${s.order||1}"></label><label class="fullLabel">Message<textarea id="aText" rows="3">${esc(s.text||'')}</textarea></label><label>Click action<select id="aAction" onchange="renderAnnouncementTarget()"><option value="product" ${s.actionType==='product'?'selected':''}>Open product</option><option value="combo" ${s.actionType==='combo'?'selected':''}>Open combo</option><option value="shop" ${s.actionType==='shop'?'selected':''}>Open Shop</option><option value="reviews" ${s.actionType==='reviews'?'selected':''}>Open Reviews</option><option value="url" ${s.actionType==='url'?'selected':''}>Open external link</option></select></label><label class="checkOnly"><input id="aShowPrice" type="checkbox" ${s.showPrice!==false?'checked':''}> Show price badge</label><div id="aTargetWrap"></div></div>
+<div class="mediaBlock">
+  <b>Announcement media <small class="v22-admin-help">Spec 13: uploaded photo/video takes priority over the linked product/combo's own image; leave empty to keep using the product/combo image as before.</small></b>
+  <div class="mediaUploadRow">
+    <label class="outline small">Upload image<input type="file" accept="image/*" style="display:none" onchange="uploadAnnouncementFile(event,'image')"></label>
+    <label class="outline small">Upload video<input type="file" accept="video/*" style="display:none" onchange="uploadAnnouncementFile(event,'video')"></label>
+  </div>
+  <label class="fullLabel">Announcement image / video path or URL<input id="aImage" value="${esc(s.image||'')}" placeholder="images/hero/announcement.webp or https://..." oninput="window._annDraft=window._annDraft||{};window._annDraft.image=this.value.trim();window._annDraft.mediaType=window._annDraft.mediaType||'${s.mediaType||'image'}';renderAnnouncementMediaPreview()"><small class="v22-admin-help">Optional. If empty, the linked product/combo image is used.</small></label>
+  <div id="aMediaUploadStatus" class="mediaUploadStatus"></div>
+  <div id="aMediaPreview"></div>
+  ${s.image?`<button type="button" class="outline small" onclick="document.getElementById('aImage').value='';window._annDraft.image='';window._annDraft.posterUrl='';renderAnnouncementMediaPreview()">Remove media</button>`:''}
+</div>
+<label class="checkOnly"><input id="aActive" type="checkbox" ${s.active!==false?'checked':''}> Active</label><button class="gold full" onclick="saveAnnouncement(${index})">Save announcement</button>`);
+ window._announcementDraft=s;
+ window._annDraft={image:s.image||'',mediaType:s.mediaType||'image',posterUrl:s.posterUrl||''};
+ renderAnnouncementTarget();
+ renderAnnouncementMediaPreview();
 };
-window.saveAnnouncement=async function(i){const type=document.getElementById('aAction').value,target=document.getElementById('aTarget')?.value||'';const s={id:data.announcements[i]?.id||('ann-'+Date.now().toString(36)),label:document.getElementById('aLabel').value.trim(),title:document.getElementById('aTitle').value.trim(),em:document.getElementById('aEm').value.trim(),text:document.getElementById('aText').value.trim(),image:document.getElementById('aImage').value.trim(),showPrice:document.getElementById('aShowPrice').checked,actionType:type,actionTarget:target,productId:type==='product'?target:'',comboId:type==='combo'?target:'',active:document.getElementById('aActive').checked,order:Number(document.getElementById('aOrder').value||1)};const ok=await saveAnnouncementToSupabase(s);if(!ok)return;closeModal();render()};
+function renderAnnouncementMediaPreview(){
+  const box=document.getElementById('aMediaPreview'); if(!box)return;
+  const d=window._annDraft||{};
+  if(!d.image){ box.innerHTML=''; return; }
+  box.innerHTML = d.mediaType==='video'
+    ? `<video src="${esc(d.image)}" ${d.posterUrl?`poster="${esc(d.posterUrl)}"`:''} controls style="max-width:220px;border-radius:8px"></video>`
+    : `<img src="${esc(d.image)}" alt="" style="max-width:220px;border-radius:8px">`;
+}
+// Same Storage upload pattern as uploadMediaFile() for products/combos
+// (spec 13: "similar to the media upload experience we now have for
+// Products/Combos"), into a dedicated 'announcement-media' bucket —
+// see supabase_migration_v32_12_1.sql for the bucket + policies.
+async function uploadAnnouncementFile(evt,kind){
+  const file=evt.target.files?.[0]; if(!file) return;
+  const statusEl=document.getElementById('aMediaUploadStatus');
+  const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'-').toLowerCase();
+  const path=`${Date.now()}-${safeName}`;
+  if(statusEl) statusEl.textContent=`Uploading ${file.name}...`;
+  const {error:upErr}=await sb.storage.from('announcement-media').upload(path,file,{cacheControl:'31536000',upsert:false});
+  if(upErr){
+    if(statusEl) statusEl.textContent='';
+    toast('Upload failed: '+upErr.message+' - has supabase_migration_v32_12_1.sql been run, and does the announcement-media bucket exist yet?');
+    evt.target.value=''; return;
+  }
+  const {data:pub}=sb.storage.from('announcement-media').getPublicUrl(path);
+  window._annDraft=window._annDraft||{}; window._annDraft.image=pub.publicUrl; window._annDraft.mediaType=kind;
+  const imgInput=document.getElementById('aImage'); if(imgInput) imgInput.value=pub.publicUrl;
+  renderAnnouncementMediaPreview();
+  if(statusEl) statusEl.textContent=`Uploaded ${file.name}.`;
+  evt.target.value='';
+}
+window.saveAnnouncement=async function(i){const type=document.getElementById('aAction').value,target=document.getElementById('aTarget')?.value||'';const d=window._annDraft||{};const s={id:data.announcements[i]?.id||('ann-'+Date.now().toString(36)),label:document.getElementById('aLabel').value.trim(),title:document.getElementById('aTitle').value.trim(),em:document.getElementById('aEm').value.trim(),text:document.getElementById('aText').value.trim(),image:(document.getElementById('aImage').value.trim())||d.image||'',mediaType:d.mediaType||'image',posterUrl:d.posterUrl||'',showPrice:document.getElementById('aShowPrice').checked,actionType:type,actionTarget:target,productId:type==='product'?target:'',comboId:type==='combo'?target:'',active:document.getElementById('aActive').checked,order:Number(document.getElementById('aOrder').value||1)};const ok=await saveAnnouncementToSupabase(s);if(!ok)return;closeModal();render()};
 function polish(){document.querySelectorAll('.cardActions button').forEach(b=>b.classList.add('v22-action'));document.querySelectorAll('.reviewAdmin article,.announcementAdmin article').forEach(x=>x.classList.add('v22-admin-card'))}
 new MutationObserver(polish).observe(document.getElementById('app'),{childList:true,subtree:true});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',polish);else polish();

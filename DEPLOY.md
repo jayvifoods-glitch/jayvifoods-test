@@ -1,5 +1,118 @@
 # Jayvi Foods v32.3 — A–AA implementation pass
 
+## ✅ V32.12.1 — Password reset fix, coupon/cart sales UX, stale-state checkout revalidation, admin orders search, product-deletion cleanup, announcement media, scalability pass
+
+**Read this section first — it supersedes nothing below, it's additive
+on top of V32.12.** See **`CHANGELOG_V32.12.1.md`** for the full,
+itemized release notes (what changed, what was preserved, what still
+needs your live testing) and **`SCALABILITY_REVIEW.md`** for the
+architecture review requested this round.
+
+### 1. SQL migration (Supabase SQL Editor) — run this one, in order after everything already applied
+
+```
+supabase_migration_v32_12_1.sql
+```
+
+Apply it **after** every existing `supabase_migration_*.sql` in this
+project (in particular `order_state_machine.sql`, `coupons.sql`,
+`coupon_checkout.sql`, `settings_announcements_reviews.sql`,
+`product_media_storage.sql`). It is additive/idempotent throughout
+(`create or replace`, `if not exists`, `on conflict do nothing`) — safe
+to run more than once. It:
+- Replaces `place_order()` with a version that also re-checks
+  **Vacation Mode**, the **delivery-enabled** master switch, and every
+  item's **live price/active status** server-side, atomically, before
+  creating the order (closes the stale-browser-state gap from spec
+  items 6/16). Same function signature — no change needed anywhere
+  that calls it.
+- Adds `announcements.media_type`/`announcements.poster_url` and
+  creates the `announcement-media` Storage bucket + RLS policies (for
+  the new photo/video upload in Admin → Homepage).
+- Adds a handful of additive indexes (`orders.status`,
+  `orders.payment_status`, `orders.guest_phone`, etc.) supporting the
+  new Admin Orders search/filter/sort and the existing coupon-usage
+  lookups — see `SCALABILITY_REVIEW.md`.
+
+**Requires live Supabase testing (cannot be verified offline) — do not
+treat these as confirmed until you've run them against your project:**
+- `place_order()` actually rejecting an order when Vacation Mode /
+  delivery-enabled is flipped mid-session, or when a product's price
+  changed since the cart was built.
+- The `announcement-media` Storage bucket/policies actually allowing
+  upload + public read end to end.
+- The `pg_trgm` index for Admin Orders search (the migration wraps this
+  in a `do $$ ... exception when others ...` block specifically so the
+  rest of the migration still completes even if your plan can't enable
+  the extension — search still works without it, just without the
+  index).
+
+### 2. Edge Function — redeploy `admin-reset-password`
+
+The actual root cause of the live-tested 403 (*"the database/admin
+account has already been verified independently... yet the function
+returns 403"*) was found and fixed — **not a database/RLS/role
+problem**. See `CHANGELOG_V32.12.1.md` for the full explanation. The
+fix is entirely inside `supabase_functions/admin-reset-password/index.ts`
+— redeploy it:
+```
+supabase functions deploy admin-reset-password
+```
+Then retry the exact live test that failed (fresh admin login → Reset
+password on a test customer). The function now also writes safe,
+secret-free diagnostic log lines (`supabase functions logs
+admin-reset-password`) at each decision point, so if it fails again for
+any reason, the logs will show exactly where, instead of another silent
+403.
+
+### 3. Storefront/Admin files — same static-site deploy as every prior release
+
+No new build step, no new environment variables. Deploy `app.js`,
+`admin.js`, `index.html`, `help.html`, `legal.html`, `style.css`,
+`admin.css`, and the new `config-lite.js` together (bump the `?v=`
+cache-busting query string on script/stylesheet tags in `index.html`/
+`help.html`/`legal.html`/`admin.html`, same as every prior release, so
+browsers fetch the new files rather than a cached copy).
+
+### 4. What to test yourself after deploying (offline-testable items were already exercised — see CHANGELOG — but live confirmation is still yours to do)
+
+- Add a single ₹155 item with a ₹199-minimum 10%-off coupon active →
+  confirm the cart shows the "Add ₹44 more to unlock" nudge, and that
+  "View all active offers" shows it visually locked with the same
+  remaining amount.
+- Apply a coupon on a ₹300 cart, then reduce quantity below the
+  coupon's minimum → confirm it's automatically removed with the
+  "...was removed because your cart is now below ₹199" message, and
+  that Subtotal/Discount/Total/mobile cart bar/checkout summary all
+  update together, nothing stale.
+- Add a product to the cart → confirm a "You may also like" strip
+  appears in the cart drawer with up to 3 relevant products and a
+  working Add button.
+- Open checkout with an old tab, flip Vacation Mode ON from Admin in
+  another tab, come back and click Checkout without refreshing →
+  confirm it's blocked with "We're currently not accepting orders...";
+  repeat for the "Delivery enabled" switch.
+- Help & Support and Policies & Legal → confirm the free-delivery
+  threshold and delivery-timeline text match Store Settings exactly,
+  and change Store Settings → confirm both pages pick up the new value
+  on next load without a code change.
+- Policies & Legal → confirm no website version is shown anywhere on
+  that page.
+- Admin → Orders → confirm search (order ID/name/phone), status/payment
+  filters, date range, and all 5 sort options work and combine
+  correctly, and "Clear filters" resets them.
+- Admin → delete a product that has uploaded (Storage-hosted) media not
+  used anywhere else → confirm the Storage file is actually gone from
+  the `product-media` bucket afterward; delete a product whose media is
+  *shared* with another product/combo (if you have such a case) →
+  confirm that shared file is **not** deleted.
+- Admin → Homepage → add an announcement, upload an image, then a
+  video, confirm the preview updates and the homepage hero actually
+  shows the uploaded media (not the linked product's own image) once
+  saved.
+
+---
+
 ## ✅ V32.12 — Coupons wired to storefront, password reset deployment, media → Supabase Storage
 
 **Post-review correction pass applied — read this box first.** After

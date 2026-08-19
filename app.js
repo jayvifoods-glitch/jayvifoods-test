@@ -630,7 +630,8 @@ async function loadSettingsAnnouncementsReviewsFromSupabase(){
 
     CONFIG.announcements=(dbAnn||[]).sort((a,b)=>(a.display_order||0)-(b.display_order||0)).map(a=>({
       id:a.id, label:a.label, title:a.title, em:a.em, text:a.text,
-      image:a.image, showPrice:a.show_price, actionType:a.action_type, actionTarget:a.action_target,
+      image:a.image, mediaType:a.media_type||'image', posterUrl:a.poster_url||'',
+      showPrice:a.show_price, actionType:a.action_type, actionTarget:a.action_target,
       productId:a.product_id||'', comboId:a.combo_id||'', active:a.active, order:a.display_order||0
     }));
     CONFIG.reviews=(dbRev||[]).sort((a,b)=>(a.display_order||0)-(b.display_order||0)).map(r=>({
@@ -1058,7 +1059,27 @@ function heroShow(){
   $('heroTitle').innerHTML=`${escapeHtml(s.title)}<br><em>${escapeHtml(s.em)}</em>`;
   $('heroDesc').textContent=s.text;
   $('heroPrice').textContent=money(p?getVariant(p,variantKey(p.id)).price:combo?.price||0);
-  $('heroImg').src=p?.image||combo?.image||'images/hero/jayvi-products.webp';
+  // V32.12.1 fix (spec 13): Admin-configured announcement media
+  // (`s.image`, now with `s.mediaType`) now actually takes PRIORITY
+  // over the product/combo fallback image, as required — previously
+  // this line unconditionally used `p?.image||combo?.image||...` and
+  // silently ignored `s.image`/`s.mediaType` even though the database
+  // column already existed, so an uploaded announcement photo/video
+  // never had any effect on the storefront. Video support is new:
+  // when mediaType is 'video', #heroVideo is shown and #heroImg is
+  // hidden; otherwise (image, or no announcement media configured —
+  // the exact same fallback as before) #heroImg is shown as usual.
+  const heroImgEl=$('heroImg'), heroVideoEl=$('heroVideo');
+  const usingUploadedVideo = !!s.image && s.mediaType==='video';
+  if(usingUploadedVideo){
+    heroVideoEl.src=s.image;
+    if(s.posterUrl) heroVideoEl.poster=s.posterUrl;
+    heroVideoEl.style.display='block'; heroImgEl.style.display='none';
+    heroVideoEl.play?.().catch(()=>{});
+  } else {
+    heroVideoEl.style.display='none'; heroImgEl.style.display='block';
+    heroImgEl.src = s.image || p?.image || combo?.image || 'images/hero/jayvi-products.webp';
+  }
   $('heroShop').onclick=()=>{
     const type=s.actionType||(s.comboId?'combo':'product'), target=s.actionTarget||(s.comboId?s.comboId:s.productId);
     if(type==='product'&&getProduct(target))openProduct(target);
@@ -1117,9 +1138,33 @@ function renderFloatingOffer(){
   $('offerFloatLabel').textContent = activeOffers.length===1 ? offerLabel(activeOffers[0]) : 'Offers';
   btn.style.display='flex';
 }
+// V32.12.1 (spec 2/3/17): "View all active offers" now shows every
+// offer's LOCK STATE relative to the customer's current cart — not
+// just a flat list — so the offer itself becomes a sales motivator
+// ("Add ₹44 more to unlock") rather than only a validation mechanism.
+// Deliberately uses the cart subtotal only (not the restriction-aware
+// list_eligible_offers_for_cart() RPC) so this panel can render
+// instantly from data already in memory; a coupon that's unlockable by
+// subtotal but still product/category-restricted will correctly be
+// rejected as a preview by applyCouponFromCart() below if selected,
+// same as any other ineligible attempt.
 function openOffersPanel(){
+  const sub = cart.length ? cartTotals().sub : 0;
   $('offersPanelList').innerHTML = activeOffers.length
-    ? activeOffers.map(o=>`<div class="offerCard"><b>${escapeHtml(o.code)} — ${offerLabel(o)}</b><p>${escapeHtml(o.description||o.name||'')}${o.min_order_value?` · Min order ${money(o.min_order_value)}`:''}</p></div>`).join('')
+    ? activeOffers.map(o=>{
+        const min = o.min_order_value||0;
+        const unlocked = !cart.length ? false : sub >= min;
+        const remaining = money(Math.max(0, min - sub));
+        return `<div class="offerCard ${cart.length ? (unlocked?'unlocked':'locked') : ''}">
+          <b>${escapeHtml(o.code)} — ${offerLabel(o)}${unlocked?' unlocked!':''}</b>
+          <p>${escapeHtml(o.description||o.name||'')}${min?` · Min order ${money(min)}`:''}</p>
+          ${cart.length
+            ? (unlocked
+                ? `<button type="button" class="btn light small" onclick="applyCouponFromCart('${escapeHtml(o.code)}');closeOffersPanel();openCart()">Apply to my cart</button>`
+                : `<span class="lockNote">🔒 Add ${remaining} more to unlock</span>`)
+            : ''}
+        </div>`;
+      }).join('')
     : '<div class="empty smallEmpty">No active offers right now.</div>';
   $('offersOverlay').classList.add('open'); document.body.classList.add('modalOpen');
 }
@@ -1175,6 +1220,13 @@ async function applyCouponFromCart(code){
   appliedCoupon = {
     code: code.toUpperCase(), coupon_id: row.coupon_id,
     name: meta?.name||'', discountType: meta?.discount_type||null,
+    // V32.12.1 fix (spec 4): minOrderValue is now stored on the applied
+    // coupon itself so renderCart()/revalidateAppliedCoupon() below can
+    // tell, on every subsequent render, whether the CURRENT subtotal
+    // still qualifies — previously nothing about the coupon's own
+    // minimum was kept after applying it, so a cart that dropped below
+    // threshold after applying just kept showing the stale discount.
+    minOrderValue: Number(meta?.min_order_value||0),
     discountAmount: Number(row.discount_amount)
   };
   saveCoupon(appliedCoupon);
@@ -1195,6 +1247,54 @@ function currentDiscount(sub){
   if(!appliedCoupon) return 0;
   if(appliedCoupon.discountAmount>sub){ return sub; }
   return appliedCoupon.discountAmount;
+}
+// V32.12.1 fix (spec 4 — "Coupon Must Automatically Become Invalid When
+// Cart Changes"). Every renderCart() now calls this once (see
+// renderCart() below). It re-runs the SAME server-side validate_coupon()
+// used for the original "Apply coupon" preview, against the CURRENT
+// subtotal and CURRENT cart contents (product/category ids), and if the
+// coupon no longer qualifies for ANY reason — subtotal dropped below its
+// minimum, a restricted product was removed, it expired, it was disabled
+// by Admin, or its usage limit was reached by someone else in the
+// meantime — it is cleared immediately with the exact wording spec 4
+// requires, rather than silently staying applied with a stale discount.
+// This is intentionally the single place this happens (not one bespoke
+// check per scenario), per spec 16's "review these as a single
+// stale-state consistency problem."
+let _revalidatingCoupon = false;
+async function revalidateAppliedCoupon(){
+  if(!appliedCoupon || _revalidatingCoupon) return;
+  _revalidatingCoupon = true;
+  try{
+    const t=cartTotals();
+    const {productIds,categoryIds} = cartProductAndCategoryIds();
+    const phone = currentProfile?.phone || null;
+    const {data,error} = await sb.rpc('validate_coupon',{p_code:appliedCoupon.code,p_subtotal:t.sub,p_customer_phone:phone,p_product_ids:productIds,p_category_ids:categoryIds});
+    const row = Array.isArray(data)?data[0]:data;
+    if(error || !row || !row.valid){
+      const wasCode = appliedCoupon.code;
+      const min = appliedCoupon.minOrderValue||0;
+      appliedCoupon=null; saveCoupon(null);
+      const reason = row?.reason || '';
+      const msg = /minimum order value/i.test(reason) || (min && t.sub<min)
+        ? `${wasCode} was removed because your cart is now below ₹${min}.`
+        : `${wasCode} was removed — it no longer applies to your cart.`;
+      showToast(msg);
+      renderCart(); updateCheckoutSummary();
+    } else if(Number(row.discount_amount) !== appliedCoupon.discountAmount){
+      // Discount can legitimately change (e.g. a percentage coupon
+      // against a new subtotal) without becoming invalid — keep it in
+      // sync so Subtotal/Discount/Delivery/Total/mobile bar/checkout
+      // summary never show a stale number.
+      appliedCoupon.discountAmount = Number(row.discount_amount);
+      saveCoupon(appliedCoupon);
+      renderCart(); updateCheckoutSummary();
+    }
+  }catch(err){
+    console.warn('Could not revalidate applied coupon (leaving it as-is until the next render):', err?.message||err);
+  }finally{
+    _revalidatingCoupon = false;
+  }
 }
 // V32.12.1 fix: the dropdown now shows only offers that are ELIGIBLE
 // FOR THIS CART right now — restriction-aware (product/category) and
@@ -1221,17 +1321,42 @@ async function refreshEligibleCartOffers(){
   const box=document.getElementById('cartCouponBox');
   if(box && cart.length && !appliedCoupon) box.innerHTML = couponSectionMarkup();
 }
+// V32.12.1 (spec 2 — "Show Available Offers Even When Cart Is Not
+// Eligible"). When no offer currently qualifies, this no longer just
+// falls through to a flat "No offers eligible" line — it finds the
+// SINGLE closest-to-unlock marketing offer (smallest remaining amount)
+// and shows it as a concrete nudge ("🎁 10% OFF available! Add ₹44 more
+// to unlock this offer."), with a "View all active offers" action that
+// opens the full locked/unlocked list (openOffersPanel(), above).
+// Deliberately computed off activeOffers (the marketing list) rather
+// than the restriction-aware eligibleCartOffers, since the entire point
+// here is offers the cart does NOT yet qualify for by subtotal — this
+// is a nudge, not a guarantee of applicability; the actual "Apply"
+// action always re-validates server-side regardless (applyCouponFromCart()).
+function nearestLockedOffer(sub){
+  const locked = activeOffers.filter(o=>(o.min_order_value||0) > sub);
+  if(!locked.length) return null;
+  return locked.sort((a,b)=>(a.min_order_value-sub)-(b.min_order_value-sub))[0];
+}
 function couponSectionMarkup(){
   const t=cartTotals();
   if(appliedCoupon){
     return `<div class="couponSection"><div class="couponApplied"><b>Coupon applied: ${escapeHtml(appliedCoupon.code)} · Discount ${money(currentDiscount(t.sub))}</b><button onclick="removeAppliedCoupon()">Remove coupon</button></div></div>`;
   }
   const eligible = eligibleCartOffers;
-  return `<div class="couponSection"><label><b>Apply coupon</b>
+  let nudge = '';
+  if(!eligible.length){
+    const near = nearestLockedOffer(t.sub);
+    if(near){
+      const remaining = money(Math.max(0,(near.min_order_value||0)-t.sub));
+      nudge = `<div class="offerNudge">🎁 ${offerLabel(near)} available!<br>Add ${remaining} more to unlock this offer. <button type="button" class="linkBtn" onclick="openOffersPanel()">View all active offers</button></div>`;
+    }
+  }
+  return `<div class="couponSection">${nudge}<label><b>Apply coupon</b>
     <select id="couponSelect" onchange="this.value&&applyCouponFromCart(this.value)">
       <option value="">${eligible.length?'Select an offer…':(activeOffers.length?'No offers eligible for the items in your cart':'No offers available right now')}</option>
       ${eligible.map(o=>`<option value="${escapeHtml(o.code)}">${escapeHtml(o.code)} – ${offerLabel(o)}</option>`).join('')}
-    </select></label></div>`;
+    </select></label>${activeOffers.length?`<button type="button" class="linkBtn offersLink" onclick="openOffersPanel()">View all active offers</button>`:''}</div>`;
 }
 
 /* ---------- Cart ---------- */
@@ -1319,7 +1444,10 @@ function renderCart(){
     let couponBox=document.getElementById('cartCouponBox');
     if(!couponBox){ couponBox=document.createElement('div'); couponBox.id='cartCouponBox'; foot.insertBefore(couponBox, foot.firstChild); }
     couponBox.innerHTML = cart.length ? couponSectionMarkup() : '';
-    if(cart.length) refreshEligibleCartOffers(); // async — re-renders just #cartCouponBox when it resolves (see refreshEligibleCartOffers)
+    if(cart.length){
+      refreshEligibleCartOffers(); // async — re-renders just #cartCouponBox when it resolves (see refreshEligibleCartOffers)
+      revalidateAppliedCoupon(); // async — clears a now-ineligible applied coupon with the required message (spec 4)
+    }
   }
   $('cartItems').innerHTML=cart.length?cart.map(x=>{
     const d=cartItemDetails(x);
@@ -1327,8 +1455,45 @@ function renderCart(){
     return `<div class="cartItem"><img src="${a.src}"${a.srcset?` srcset="${a.srcset}" sizes="${a.sizes}"`:''} loading="lazy" decoding="async" alt=""><div><b>${escapeHtml(d.name)}</b><small>${escapeHtml(d.label)} · ${money(d.price)}</small>
       <div class="qty"><button onclick="changeQty('${x.key}',-1)">−</button><span>${x.qty}</span><button onclick="changeQty('${x.key}',1)">+</button><button onclick="removeCart('${x.key}')">Remove</button></div></div></div>`;
   }).join(''):`<div class="emptyCart"><i class="fa-solid fa-bag-shopping"></i><h3>Your bag is empty</h3><p>Add a Jayvi favourite to get started.</p></div>`;
+  const recsBox = $('cartRecs'); if(recsBox) recsBox.innerHTML = cart.length ? cartRecsMarkup() : '';
   updateMobileCartBar(count,Math.max(0,t.total-discount));
   updateBottomNavBadge(count);
+}
+// V32.12.1 (spec 3 — "Encourage Customers to Increase Cart Value").
+// Deliberately simple, deterministic logic per spec ("do not build an
+// AI recommendation engine"): rank every sellable product NOT already
+// in the cart by how many of its categories/meal-tags overlap with
+// what's already in the cart (complementary/same-category first),
+// then fall back to bestsellers to fill up to 3 — never random, never
+// a network call, so it's instant and works fully offline/from the
+// in-memory catalogue like everything else in this section.
+function cartRecommendations(){
+  if(!cart.length) return [];
+  const inCart = new Set();
+  cart.forEach(x=>{ if(x.type==='product') inCart.add(x.productId); else if(x.type==='combo'){ const c=getCombo(x.comboId); (c?.items||[]).forEach(it=>inCart.add(it.productId)); } });
+  const cartCategories = new Set(), cartMealTags = new Set();
+  cart.forEach(x=>{
+    if(x.type==='combo'){ const c=getCombo(x.comboId); (c?.items||[]).forEach(it=>{ const p=getProduct(it.productId); if(p){ if(p.category)cartCategories.add(p.category); (p.mealTags||[]).forEach(m=>cartMealTags.add(m)); } }); }
+    else { const p=getProduct(x.productId); if(p){ if(p.category)cartCategories.add(p.category); (p.mealTags||[]).forEach(m=>cartMealTags.add(m)); } }
+  });
+  const candidates = products.filter(p=>!inCart.has(p.id));
+  const score = p=>{
+    let s=0;
+    if(p.category && cartCategories.has(p.category)) s+=2; // same category — likely complementary (e.g. another chutney)
+    s += (p.mealTags||[]).filter(m=>cartMealTags.has(m)).length; // shared meal occasion (breakfast/lunch/dinner pairing)
+    if(p.best) s+=1; // mild bestseller nudge as a tiebreaker/fallback, never the primary signal
+    return s;
+  };
+  return candidates.map(p=>({p,s:score(p)})).sort((a,b)=>b.s-a.s).slice(0,3).map(x=>x.p);
+}
+function cartRecsMarkup(){
+  const recs = cartRecommendations();
+  if(!recs.length) return '';
+  return `<div class="cartRecsInner"><b class="cartRecsTitle">You may also like</b><div class="cartRecsRow">${recs.map(p=>{
+    const v=getVariant(p,variantKey(p.id)); if(!v) return '';
+    const a=responsiveImgAttrs(p.image,'56px');
+    return `<div class="cartRecCard"><img src="${a.src}" loading="lazy" decoding="async" alt=""><div><b>${escapeHtml(p.name)}</b><small>${money(v.price)}</small></div><button type="button" onclick="addToCart('${p.id}','${v.id}')" aria-label="Add ${escapeHtml(p.name)} to cart"><i class="fa-solid fa-plus"></i></button></div>`;
+  }).join('')}</div></div>`;
 }
 function openCart(){$('cartOverlay').classList.add('open');document.body.classList.add('modalOpen');renderCart()}
 function closeCart(){$('cartOverlay').classList.remove('open');document.body.classList.remove('modalOpen')}
@@ -1660,6 +1825,55 @@ async function deleteAddress(id){
 /* ---------- Checkout ---------- */
 let checkoutPinInfo = null; // set by verifyPincode() once a PIN is confirmed serviceable; drives both displayed AND charged shipping (item B) and the dynamic ETA shown (item H) — never two different numbers for the same thing.
 
+// V32.12.1 (spec 6/16 — "Live Configuration Changes Must Be Respected
+// Before Checkout" / "Stale-State Review"). CONFIG.store is only ever
+// as fresh as the last full page load — a customer who opens the site,
+// adds items, then leaves the tab open for a while is looking at
+// whatever CONFIG.store said at load time, even if Admin has since
+// flipped Vacation Mode or Delivery Enabled. The browser/cart is
+// explicitly NOT the source of truth (spec 6's own stated principle),
+// so this re-reads the two checkout-gating fields directly from
+// Supabase — a single small `select` rather than the full settings/
+// announcements/reviews fetch — at the two moments that actually
+// matter: opening checkout, and the instant before placeOrder() submits.
+// This is a best-effort UX improvement, NOT the authoritative check —
+// place_order() itself (see supabase_migration_v32_12_1.sql) re-checks
+// vacation_mode/delivery_mode server-side, atomically, at the moment the
+// order row is actually created, so there is no real race condition even
+// if this client-side check is skipped (offline, request failure, etc).
+async function fetchLiveCheckoutGate(){
+  try{
+    const {data,error} = await sb.from('store_settings').select('vacation_mode,vacation_message,delivery_mode').eq('id','default').maybeSingle();
+    if(error || !data) return null;
+    return { vacationMode: !!data.vacation_mode, vacationMessage: data.vacation_message, deliveryMode: data.delivery_mode };
+  }catch(err){
+    console.warn('Could not re-check live store configuration before checkout — proceeding with last-known settings (place_order() still enforces this server-side):', err?.message||err);
+    return null;
+  }
+}
+// Returns true (and shows the right message) if checkout should be
+// BLOCKED right now. Silently allows checkout to proceed if the live
+// check itself couldn't be reached (fail open on the client — the
+// server-side check in place_order() is the real backstop).
+async function checkoutIsBlockedByLiveConfig(){
+  const live = await fetchLiveCheckoutGate();
+  if(!live) return false;
+  if(live.vacationMode){
+    showToast(live.vacationMessage || "We're currently not accepting orders. Please try again when ordering resumes.");
+    CONFIG.store.vacationMode = true; CONFIG.store.vacationMessage = live.vacationMessage; applyVacation();
+    return true;
+  }
+  if(live.deliveryMode !== 'india'){
+    showToast('Delivery is currently unavailable. Please try again later.');
+    CONFIG.store.deliveryMode = live.deliveryMode;
+    return true;
+  }
+  // Keep CONFIG in sync even when neither gate is tripped, so the rest
+  // of the checkout UI (banners, disabled buttons) reflects reality too.
+  CONFIG.store.vacationMode = false; CONFIG.store.deliveryMode = live.deliveryMode;
+  return false;
+}
+
 function effectiveShipping(t){
   // V32.5 fix (Priority 3, item 8): free delivery above the configured
   // threshold must apply across every state/PIN, per the explicit
@@ -1694,6 +1908,11 @@ function updateCheckoutSummary(){
 async function openCheckout(){
   if(CONFIG.store.vacationMode){showToast(CONFIG.store.vacationMessage||'Ordering is temporarily paused.');return}
   if(!cart.length){showToast('Your cart is empty');return}
+  // V32.12.1 (spec 6): re-check live config BEFORE opening checkout at
+  // all, not just the possibly-stale CONFIG.store value above — a
+  // customer who kept the tab open across an Admin change should see
+  // the block here, not get all the way to the payment form first.
+  if(await checkoutIsBlockedByLiveConfig()) return;
   closeCart();
   checkoutPinInfo = null;
   const t=cartTotals();
@@ -1747,7 +1966,7 @@ const PIN_NOT_SERVICEABLE_MSG = 'Delivery is currently unavailable to this PIN c
 async function verifyPincode(){
   const pin=$('coPin').value.trim(), status=$('pinStatus');
   if(!/^\d{6}$/.test(pin)){status.className='pinStatus bad';status.textContent='Enter a 6-digit Indian PIN code.';return}
-  if(CONFIG.store.deliveryMode!=='india'){status.className='pinStatus bad';status.textContent='Delivery is currently disabled.';return}
+  if(CONFIG.store.deliveryMode!=='india'){status.className='pinStatus bad';status.textContent='Delivery is currently unavailable. Please try again later.';return}
   status.className='pinStatus';status.textContent='Checking delivery availability…';
   checkoutPinInfo = null;
   const {data, error} = await sb.rpc('check_pincode', {p_pincode:pin});
@@ -1834,6 +2053,12 @@ function makeOrderNumber(){
 }
 async function placeOrder(e){
   e.preventDefault();
+  // V32.12.1 (spec 6/16): re-check live config again right before
+  // submitting — the checkout form can legitimately sit open for a
+  // while (address entry, PIN verification, reading payment options),
+  // so the check at openCheckout() alone isn't enough to catch a
+  // change made WHILE checkout was already open.
+  if(await checkoutIsBlockedByLiveConfig()) return;
   const pin=$('coPin').value.trim();
   if(!/^\d{6}$/.test(pin)){verifyPincode();showToast('Please verify your 6-digit PIN');return}
   // V32.5 fix (Priority 1, item 1): checkoutPinInfo is only populated by
