@@ -824,14 +824,6 @@ async function render(){title.textContent=tab==='variants'?'Variants & sizes':ta
  if(tab==='reviews')h=await reviewsPage();
  if(tab==='settings')h=await settingsPage();
  app.innerHTML=h;
- // V32.12.1: setOrdersFilter('q', ...) re-renders on every keystroke
- // (same simple pattern as every other filter here) — restore focus +
- // cursor position on the search box afterward so typing doesn't
- // visibly kick focus out of the field after each character.
- if(tab==='orders' && ordersUi._searchFocused){
-   const box = document.querySelector('.ordersToolbar input[type="search"]');
-   if(box){ box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
- }
 }
 // V32.6 (item 11): one single, documented definition of "counts as a
 // successful sale" — used everywhere revenue/sales/product-sales are
@@ -866,18 +858,15 @@ async function dashboard(){
 // shot. State lives in a small module-level object so it survives
 // between render() calls (e.g. after Refresh) without needing to touch
 // every other admin.js render path.
-const ordersUi = { q:'', status:'', payment:'', from:'', to:'', sort:'newest' };
+const ordersUi = { status:'', payment:'', from:'', to:'', sort:'newest' };
 function applyOrdersUi(rows){
   let out = rows.slice();
-  const q = ordersUi.q.trim().toLowerCase();
-  if(q){
-    out = out.filter(o =>
-      String(o.order_number||'').toLowerCase().includes(q) ||
-      String(o.guest_name||'').toLowerCase().includes(q) ||
-      String(o.guest_phone||'').toLowerCase().includes(q) ||
-      String(o.guest_email||'').toLowerCase().includes(q)
-    );
-  }
+  // V32.13 (spec 2): the free-text Search box has been removed —
+  // re-rendering the whole Orders list on every keystroke (see the
+  // removed oninput handler this used to have) made typing unusable in
+  // live testing. Status/Payment/date filtering and Sort are untouched
+  // and still work exactly as before (this only fires on a dropdown
+  // change or date-picker close, not per-character).
   if(ordersUi.status) out = out.filter(o=>o.status===ordersUi.status);
   if(ordersUi.payment) out = out.filter(o=>o.payment_status===ordersUi.payment);
   if(ordersUi.from) out = out.filter(o=>new Date(o.created_at) >= new Date(ordersUi.from+'T00:00:00'));
@@ -891,7 +880,7 @@ function applyOrdersUi(rows){
   }
   return out;
 }
-function setOrdersFilter(field,val){ ordersUi[field]=val; ordersUi._searchFocused = (field==='q'); render(); }
+function setOrdersFilter(field,val){ ordersUi[field]=val; render(); }
 async function ordersPage(){
   const os=await fetchOrders();
   const statuses=[...new Set(os.map(o=>o.status).filter(Boolean))].sort();
@@ -899,7 +888,6 @@ async function ordersPage(){
   const filtered = applyOrdersUi(os);
   return `<section class="panel"><div class="panelHead"><div><h2>Orders</h2><p>Guest and registered orders are shown together. Open an order for the full customer, payment and delivery view.</p></div><div class="filterPills"><button class="outline" onclick="render()">Refresh</button></div></div>
   <div class="ordersToolbar">
-    <input type="search" placeholder="Search order ID, name, phone…" value="${esc(ordersUi.q)}" oninput="setOrdersFilter('q', this.value)">
     <select onchange="setOrdersFilter('status', this.value)"><option value="">All statuses</option>${statuses.map(s=>`<option value="${esc(s)}" ${ordersUi.status===s?'selected':''}>${esc(s)}</option>`).join('')}</select>
     <select onchange="setOrdersFilter('payment', this.value)"><option value="">All payment statuses</option>${paymentStatuses.map(s=>`<option value="${esc(s)}" ${ordersUi.payment===s?'selected':''}>${esc(s)}</option>`).join('')}</select>
     <label class="tiny">From<input type="date" value="${esc(ordersUi.from)}" onchange="setOrdersFilter('from', this.value)"></label>
@@ -911,7 +899,7 @@ async function ordersPage(){
       <option value="lowest" ${ordersUi.sort==='lowest'?'selected':''}>Lowest order value</option>
       <option value="status" ${ordersUi.sort==='status'?'selected':''}>Status</option>
     </select>
-    ${(ordersUi.q||ordersUi.status||ordersUi.payment||ordersUi.from||ordersUi.to)?`<button class="outline" onclick="ordersUi.q='';ordersUi.status='';ordersUi.payment='';ordersUi.from='';ordersUi.to='';render()">Clear filters</button>`:''}
+    ${(ordersUi.status||ordersUi.payment||ordersUi.from||ordersUi.to)?`<button class="outline" onclick="ordersUi.status='';ordersUi.payment='';ordersUi.from='';ordersUi.to='';render()">Clear filters</button>`:''}
   </div>
   <p class="tiny muted">${filtered.length} of ${os.length} order${os.length===1?'':'s'}</p>
   ${filtered.length?`<div class="orderTable fullTable"><div class="orderHead"><span>Order</span><span>Customer</span><span>Amount</span><span>Payment</span><span>Status</span></div>${filtered.map(o=>`<button class="orderLine" onclick="orderView('${esc(o.order_number)}')"><span><b>${esc(o.order_number)}</b><small>${new Date(o.created_at).toLocaleDateString('en-IN')}</small></span><span><b>${esc(o.guest_name||'Guest')}</b><small>${esc(o.guest_phone||'')}</small></span><strong>${money(o.total)}</strong><span>${esc(o.payment_method||'')}</span><span class="statusTag">${esc(o.status||'')}</span></button>`).join('')}</div>`:'<div class="empty">No orders match these filters.</div>'}</section>`;
@@ -1930,6 +1918,55 @@ requireAdminSession().then(async ok=>{ if(ok){ await fetchProducts(); await fetc
 /* Jayvi Foods V22 Admin polish */
 (function(){
 'use strict';
+// =====================================================================
+// V32.13 — CRITICAL FIX: every function below that is called from an
+// inline onclick="…"/onchange="…" HTML attribute (or, in galleryPage()'s
+// case, from render() outside this closure) MUST be reachable from the
+// global scope, because inline event-handler attributes are evaluated
+// against `window`, not against this IIFE's local scope. A plain
+// `function foo(){}` declared inside `(function(){ ... })()` is only a
+// local binding — it is invisible to inline HTML attributes and to code
+// outside this closure, even though it looks identical to a normal
+// top-level function declaration everywhere else in this file.
+//
+// This was the actual root cause of both V32.3 blockers reported after
+// live testing:
+//   - Announcement admin: clicking the General/Product radio, the
+//     Product/Combo sub-choice, or the CTA-type select all called
+//     onchange="renderAnnouncementTypeFields()" / "updateCtaTargetVisibility()"
+//     — both undefined in global scope, so the click silently did
+//     nothing (a ReferenceError thrown inside an inline handler doesn't
+//     crash the page, it just aborts that one handler). Same for
+//     onchange="uploadAnnouncementFile(...)" and
+//     onclick="removeAnnouncementMedia()" — the upload/replace/remove
+//     buttons visibly did nothing because the call never even reached
+//     Supabase Storage.
+//   - Gallery: render()'s dispatcher (`if(tab==='gallery')h=await
+//     galleryPage();`) lives OUTSIDE this closure and could not see
+//     galleryPage() either — calling it threw before render() ever
+//     reached `app.innerHTML=h`, leaving the "Loading…" placeholder
+//     (set at the top of render()) on screen forever, on every visit,
+//     regardless of whether there were 0 or 100 gallery rows.
+//
+// The fix is to explicitly re-export every such function onto `window`
+// (function DECLARATIONS are hoisted, so this works regardless of where
+// in the file each one is textually defined below). Nothing about how
+// these functions behave has changed — only their reachability.
+window.renderAnnouncementTypeFields = function(){ return renderAnnouncementTypeFields.apply(this, arguments); };
+window.updateCtaTargetVisibility = function(){ return updateCtaTargetVisibility.apply(this, arguments); };
+window.uploadAnnouncementFile = function(){ return uploadAnnouncementFile.apply(this, arguments); };
+window.removeAnnouncementMedia = function(){ return removeAnnouncementMedia.apply(this, arguments); };
+window.galleryPage = function(){ return galleryPage.apply(this, arguments); };
+window.uploadGalleryFiles = function(){ return uploadGalleryFiles.apply(this, arguments); };
+window.updateGalleryCaption = function(){ return updateGalleryCaption.apply(this, arguments); };
+window.toggleGalleryActive = function(){ return toggleGalleryActive.apply(this, arguments); };
+window.moveGalleryItem = function(){ return moveGalleryItem.apply(this, arguments); };
+window.deleteGalleryItem = function(){ return deleteGalleryItem.apply(this, arguments); };
+// (Wrapped in a tiny forwarding function, rather than
+// `window.foo = foo;`, purely so hoisting order can never matter here —
+// each wrapper only looks up the real function by name at CALL time,
+// well after every function declaration below has been hoisted.)
+
 // V32.3 — full rewrite of the announcement form (spec 3-8): explicit
 // General/Product typing (decoupled from the click-action concept),
 // a proper single-media upload/preview/replace/remove UI matching

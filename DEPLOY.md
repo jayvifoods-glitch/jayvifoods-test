@@ -1,4 +1,60 @@
-# Jayvi Foods v32.3 — A–AA implementation pass
+# Jayvi Foods v32.13 — A–AA implementation pass
+
+## ✅ V32.13 — Bug-fix release: Announcement admin + Gallery now actually work, Orders Search removed, version display fixed
+
+**Read this section first.** See **`CHANGELOG_V32.13.md`** for the
+full write-up, in particular §1, which explains the single root-cause
+JavaScript scoping bug behind both the Announcement admin and Gallery
+issues reported after V32.3's live test cycle.
+
+### 1. Database — nothing to run
+
+**No new SQL migration in this release.** Every issue reported was a
+frontend/admin wiring bug, not a schema problem —
+`supabase_migration_v32_3.sql` (already deployed and tested in your
+environment) is unchanged and does not need to be re-applied.
+
+### 2. Storage — nothing new
+
+No new buckets or bucket policy changes. The existing
+`announcement-media` and `gallery-media` buckets (from
+`supabase_migration_v32_12_1.sql` and `supabase_migration_v32_3.sql`
+respectively) are unchanged and reused as-is.
+
+### 3. Static files — redeploy
+
+`admin.js`, `admin.css`, `admin.html`, `index.html`, `legal.html`,
+`help.html`, `config-lite.js`, `VERSION.txt` all changed in this
+release (version bump + the admin.js/admin.css fixes — see
+`CHANGELOG_V32.13.md`'s "Files changed" section for the exact list).
+Redeploy the static site as usual. `app.js` is **unchanged** in this
+release.
+
+**Cache-busting note:** every `?v=32.3` query string was bumped to
+`?v=32.13` on the files that reference them — if your CDN/host caches
+aggressively, this should make the new `admin.js`/`admin.css` load
+without a manual cache purge, but purge anyway if you see stale
+behavior after deploying.
+
+### 4. What to test first
+
+Given the two blockers reported, prioritize re-testing in this order:
+1. Admin → Homepage: create a General announcement with an image,
+   save, reopen, confirm the image shows. Then a Product announcement
+   (and a Combo one, if you use combo-linked announcements), each with
+   media, Replace, and Remove.
+2. Admin → Gallery: confirm it no longer shows "Loading…" forever —
+   with zero rows it should show "No gallery items yet" with the
+   Add Photos/Add Video buttons available; add a few images and a
+   video and confirm reorder/Active-toggle/delete all work.
+3. Admin → Orders: confirm the Search box is gone, and that Sort
+   (Newest/Oldest/Highest/Lowest/Status) and the Status/Payment/date
+   filters still work.
+
+**Requires your live Supabase testing (cannot be verified offline) —
+see `CHANGELOG_V32.13.md`'s matching section for the full list.**
+
+---
 
 ## ✅ V32.3 — General/Product announcements, announcement media redesign + delete, new Admin Gallery (Supabase-backed slideshow)
 

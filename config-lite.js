@@ -1,5 +1,5 @@
 /* =========================================================
-   Jayvi Foods — config-lite.js (V32.12.1)
+   Jayvi Foods — config-lite.js (V32.13)
 
    help.html and legal.html are static pages that don't load the full
    app.js storefront bundle (they have no cart/catalogue/checkout to
