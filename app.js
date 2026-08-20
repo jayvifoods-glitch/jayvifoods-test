@@ -29,6 +29,7 @@ const EMBEDDED_CONFIG = {
     "upiId": "",
     "upiName": "Jayvi Foods",
     "upiQrImage": "",
+    "upiMc": "",
     "paymentNote": "Pay by UPI QR. Order moves to processing after payment verification.",
     "refundBusinessDays": 4,
     "announcementSpeed": "normal",
@@ -608,7 +609,7 @@ const STORE_FIELD_MAP = {
   whatsapp:'whatsapp', instagram:'instagram',
   razorpayKeyId:'razorpay_key_id', razorpayEnabled:'razorpay_enabled',
   upiEnabled:'upi_enabled', codEnabled:'cod_enabled', otpEnabled:'otp_enabled',
-  upiId:'upi_id', upiName:'upi_name', upiQrImage:'upi_qr_image',
+  upiId:'upi_id', upiName:'upi_name', upiQrImage:'upi_qr_image', upiMc:'upi_mc',
   paymentNote:'payment_note', refundBusinessDays:'refund_business_days',
   announcementSpeed:'announcement_speed', homepageReviewCount:'homepage_review_count',
   deliveryMode:'delivery_mode', paymentMode:'payment_mode', otpProvider:'otp_provider'
@@ -2226,8 +2227,37 @@ async function placeOrder(e){
   if(method==='upi') showUpiPayment(orderStub); else showOrderSuccess(orderStub);
   refreshProductViews(); renderCart();
 }
+// Resolves CONFIG.store.upiQrImage into something that actually loads
+// on the deployed GitHub Pages site. Historically this field only ever
+// held a bare repo-relative filename (e.g. "images/payments/jayvi-upi.webp"),
+// but that path doesn't exist in this repo — the real file lives at
+// "images/jayvi-upi.webp" — so the <img> silently failed and only the
+// alt text showed. This now accepts THREE shapes so the same Admin
+// field keeps working after the QR is uploaded through the Admin
+// upload widget (which stores a full Supabase Storage public URL,
+// same pattern as product/announcement/gallery media):
+//   1) a full http(s) URL (Supabase Storage or any other host) — used as-is
+//   2) a repo-relative path with a leading slash — leading slash is
+//      stripped, since GitHub Pages project sites are served from a
+//      subpath (e.g. https://user.github.io/repo/), and a leading
+//      slash would resolve to the domain root instead of the repo.
+//   3) a bare repo-relative path — used as-is, relative to index.html,
+//      exactly like every other image in this app (images/brand/...,
+//      images/products/...).
+function resolveUpiQrSrc(path){
+  const p = String(path||'').trim();
+  if(!p) return '';
+  if(/^https?:\/\//i.test(p)) return p;
+  return p.replace(/^\/+/, '');
+}
 function showUpiPayment(o){
-  const qr=CONFIG.store.upiQrImage?`<img class="upiQr" src="${CONFIG.store.upiQrImage}" alt="Jayvi Foods UPI QR">`:`<div class="upiQr placeholder"><b>UPI QR</b><span>Upload your Jayvi QR from Admin</span></div>`;
+  const qrSrc = resolveUpiQrSrc(CONFIG.store.upiQrImage);
+  // onerror swap: if the configured path/URL 404s (wrong filename,
+  // bucket object removed, etc.) show the same "ask Admin to upload"
+  // placeholder instead of a broken-image icon + alt text.
+  const qr = qrSrc
+    ? `<img class="upiQr" src="${escapeHtml(qrSrc)}" alt="Jayvi Foods UPI QR" onerror="this.outerHTML='&lt;div class=&quot;upiQr placeholder&quot;&gt;&lt;b&gt;UPI QR&lt;/b&gt;&lt;span&gt;QR image could not be loaded — check Admin &gt; Payment settings&lt;/span&gt;&lt;/div&gt;'">`
+    : `<div class="upiQr placeholder"><b>UPI QR</b><span>Upload your Jayvi QR from Admin</span></div>`;
   // Item G: on mobile, a "Pay with UPI app" deep link is offered above
   // the QR — tapping it hands off to whichever UPI app the customer
   // has installed via the standard upi://pay intent. On desktop there's
@@ -2237,17 +2267,37 @@ function showUpiPayment(o){
   // field below is always required either way; this is explicitly NOT
   // claiming automatic reference retrieval, which the current
   // architecture cannot do without a real payment gateway.
-  
-   const upiLink = CONFIG.store.upiId
-    ? `upi://pay?pa=${encodeURIComponent(CONFIG.store.upiId)}&pn=${encodeURIComponent(CONFIG.store.upiName||'Jayvi Foods')}&am=${encodeURIComponent(o.total)}&tn=${encodeURIComponent(o.order_number)}&cu=INR`
+  //
+  // Root cause of "receiver is not accepting payments on this UPI ID" /
+  // "Transaction not permitted to this VPA by the PSP": msjayvifoods.eazypay@icici
+  // is a MERCHANT (P2M) handle — ICICI's "eazypay" is their merchant
+  // collection product, not a personal/P2P handle — and NPCI-registered
+  // merchant VPAs are validated by the UPI app against the intent's own
+  // fields, not just the VPA. When a customer types the same VPA
+  // manually inside PhonePe/HDFC (a P2P-style flow), the app looks the
+  // VPA up itself and fills in the correct merchant details, so it
+  // works. But a generic `upi://pay` intent built without `mc` (Merchant
+  // Category Code) or a `tr` (unique transaction reference, distinct
+  // from `tn`) reads as an incomplete/invalid merchant transaction to
+  // the receiving PSP, which is exactly what both error messages mean —
+  // it is not an amount or order-number problem, which matches your
+  // testing. `am` is also now formatted to exactly 2 decimals, since
+  // some PSPs are strict about this.
+  //
+  // `mc` MUST be set to the actual Merchant Category Code ICICI/Eazypay
+  // assigned when this VPA was onboarded (Admin > Payment settings >
+  // "Merchant Category Code (MCC)") — this is not something we can
+  // guess from the app; ask ICICI Eazypay support or check the Eazypay
+  // merchant dashboard/onboarding paperwork for it. Until it's filled
+  // in, the link below still improves on the previous version (adds
+  // `tr`, drops nothing) but may continue to fail on apps that hard-
+  // require `mc` for this VPA type.
+  const amount = Number(o.total).toFixed(2);
+  const orderRef = String(o.order_number||'');
+  const upiLink = CONFIG.store.upiId
+    ? `upi://pay?pa=${encodeURIComponent(CONFIG.store.upiId)}&pn=${encodeURIComponent(CONFIG.store.upiName||'Jayvi Foods')}${CONFIG.store.upiMc?`&mc=${encodeURIComponent(CONFIG.store.upiMc)}`:''}&tr=${encodeURIComponent(orderRef)}&tn=${encodeURIComponent('Payment for '+orderRef)}&am=${encodeURIComponent(amount)}&cu=INR`
     : null;
-// const amount = Number(o.total).toFixed(2);
-// const orderRef = String(o.order_number || '');
 
-// const upiLink = CONFIG.store.upiId
-//   ? `upi://pay?pa=${encodeURIComponent(CONFIG.store.upiId)}&pn=${encodeURIComponent(CONFIG.store.upiName||'Jayvi Foods')}&tr=${encodeURIComponent(orderRef)}&tn=${encodeURIComponent('Payment for ' + orderRef)}&am=${encodeURIComponent(amount)}&cu=INR`
-//   : null;
-   
   const intentButton = (isMobile() && upiLink)
     ? `<a class="btn gold full" href="${upiLink}">Pay with UPI app →</a><p class="tiny" style="text-align:center;margin:8px 0">or scan the QR below</p>`
     : '';

@@ -22,6 +22,7 @@ const CONFIG_FALLBACK={
     "upiId": "",
     "upiName": "Jayvi Foods",
     "upiQrImage": "",
+    "upiMc": "",
     "paymentNote": "Pay by UPI QR. Order moves to processing after payment verification.",
     "refundBusinessDays": 4,
     "announcementSpeed": "normal",
@@ -549,7 +550,7 @@ const STORE_FIELD_MAP = {
   whatsapp:'whatsapp', instagram:'instagram',
   razorpayKeyId:'razorpay_key_id', razorpayEnabled:'razorpay_enabled',
   upiEnabled:'upi_enabled', codEnabled:'cod_enabled', otpEnabled:'otp_enabled',
-  upiId:'upi_id', upiName:'upi_name', upiQrImage:'upi_qr_image',
+  upiId:'upi_id', upiName:'upi_name', upiQrImage:'upi_qr_image', upiMc:'upi_mc',
   paymentNote:'payment_note', refundBusinessDays:'refund_business_days',
   announcementSpeed:'announcement_speed', homepageReviewCount:'homepage_review_count',
   deliveryMode:'delivery_mode', paymentMode:'payment_mode', otpProvider:'otp_provider'
@@ -1852,7 +1853,12 @@ async function settingsPage(){
  <label class="toggleRow"><span>Cash on Delivery<small>Show/hide COD at checkout.</small></span><input id="setCod" type="checkbox" ${s.codEnabled?'checked':''}></label>
  <label class="toggleRow"><span>Razorpay<small>Optional future gateway.</small></span><input id="setRazor" type="checkbox" ${s.razorpayEnabled?'checked':''}></label>
  <label>UPI ID<input id="setUpiId" value="${esc(s.upiId||'')}" placeholder="yourupi@bank"></label><label>UPI display name<input id="setUpiName" value="${esc(s.upiName||'Jayvi Foods')}"></label>
- <label>UPI QR filename<input id="setQr" value="${esc(s.upiQrImage||'')}" placeholder="images/payments/jayvi-upi.webp"></label>
+ <label>Merchant Category Code (MCC) <small class="v22-admin-help">Required for the "Pay with UPI app" deep link to work on this VPA — get it from ICICI/Eazypay onboarding (not something we can guess). Without it, some UPI apps reject the link with "receiver not accepting payments" / "not permitted by PSP" even though the same VPA works fine when paid to manually.</small><input id="setUpiMc" value="${esc(s.upiMc||'')}" placeholder="e.g. 5411" maxlength="4"></label>
+ <label>UPI QR code <small class="v22-admin-help">Upload the QR image below — it's stored in Supabase Storage and works on the live site regardless of repo file paths. You can still paste a path/URL directly in the field instead if you prefer.</small></label>
+ <div id="upiQrPreviewBox">${renderUpiQrPreview(s.upiQrImage||'')}</div>
+ <input id="setQr" value="${esc(s.upiQrImage||'')}" placeholder="images/jayvi-upi.webp or a full https:// URL" oninput="document.getElementById('upiQrPreviewBox').innerHTML=renderUpiQrPreview(this.value)">
+ <div id="upiQrUploadStatus" style="font-size:11px;color:#888;margin-top:4px"></div>
+ <label class="outline uploadBtn" style="margin-top:8px">📷 Upload QR image<input type="file" accept="image/webp,image/jpeg,image/png" style="display:none" onchange="uploadUpiQrFile(event)"></label>
  <label>Razorpay Key ID<input id="setRzp" value="${esc(s.razorpayKeyId||'')}" placeholder="Add later"></label>
  <button class="gold full" onclick="savePayments()">Save payment settings</button></article>
  <article class="settingCard"><span class="typeTag">CUSTOMER LOGIN</span><h2>Authentication</h2><div class="infoBox"><b>User ID = mobile number</b><p>Password login is active. OTP is a future option and can remain disabled until a provider is configured.</p></div>
@@ -1868,7 +1874,51 @@ async function settingsPage(){
  </section>`;
 }
 async function saveStoreOperations(){data.store.vacationMode=document.getElementById('setVacation').checked;data.store.deliveryMode=document.getElementById('setDeliveryEnabled').checked?'india':'disabled';data.store.vacationMessage=document.getElementById('setVacationMsg').value.trim();data.store.deliveryMinDays=Number(document.getElementById('setMin').value||4);data.store.deliveryMaxDays=Number(document.getElementById('setMax').value||8);data.store.freeShippingThreshold=Number(document.getElementById('setFree').value||599);data.store.shippingFlat=Number(document.getElementById('setShip').value||49);data.store.refundBusinessDays=Number(document.getElementById('setRefundDays').value||4);data.store.announcementSpeed=document.getElementById('setAnnouncementSpeed').value;data.store.homepageReviewCount=Number(document.getElementById('setReviewCount').value||6);const ok=await saveStoreSettingsToSupabase();if(!ok)return;render()}
-async function savePayments(){data.store.upiEnabled=document.getElementById('setUpi').checked;data.store.codEnabled=document.getElementById('setCod').checked;data.store.razorpayEnabled=document.getElementById('setRazor').checked;data.store.upiId=document.getElementById('setUpiId').value.trim();data.store.upiName=document.getElementById('setUpiName').value.trim();data.store.upiQrImage=document.getElementById('setQr').value.trim();data.store.razorpayKeyId=document.getElementById('setRzp').value.trim();const ok=await saveStoreSettingsToSupabase();if(!ok)return;render()}
+// Small preview so Admin can see immediately whether the configured
+// QR path/URL actually resolves to an image — same broken-path bug
+// (an admin-entered filename that doesn't match any real file/Storage
+// object) is now visible here instead of only being discovered by a
+// customer at checkout. Mirrors resolveUpiQrSrc()'s logic in app.js.
+function renderUpiQrPreview(raw){
+  // Inline-styled rather than relying on the .upiQr/.tiny classes,
+  // since those are defined in style.css (storefront), which
+  // admin.html/admin.css does not load — keeps this self-contained
+  // without pulling in an extra stylesheet just for this preview.
+  const boxStyle='max-width:180px;max-height:180px;border-radius:8px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;background:#f4f4f4;color:#888;font-size:12px';
+  const p = String(raw||'').trim();
+  if(!p) return `<div style="${boxStyle}"><span><b>UPI QR</b><br>No QR set yet</span></div>`;
+  const src = /^https?:\/\//i.test(p) ? p : p.replace(/^\/+/, '');
+  return `<img src="${esc(src)}" alt="UPI QR preview" style="max-width:180px;max-height:180px;border-radius:8px;display:block;border:1px solid #ddd" onerror="this.outerHTML='&lt;div style=&quot;${boxStyle}&quot;&gt;&lt;span&gt;&lt;b&gt;Could not load&lt;/b&gt;&lt;br&gt;This path/URL does not resolve to an image&lt;/span&gt;&lt;/div&gt;'">`;
+}
+// Same Storage upload pattern as uploadAnnouncementFile()/uploadMediaFile()
+// — uploads into the dedicated 'payment-media' bucket (see
+// supabase_migration_upi_payment_fix.sql for the bucket + policies),
+// then writes the resulting public URL straight into the #setQr field
+// so it gets saved by the normal "Save payment settings" button below.
+// A public Storage URL works on the deployed GitHub Pages site
+// regardless of repo file layout, which is what was actually broken
+// before (an admin-entered filename that didn't match any real file).
+async function uploadUpiQrFile(evt){
+  const file=evt.target.files?.[0]; if(!file) return;
+  const statusEl=document.getElementById('upiQrUploadStatus');
+  const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'-').toLowerCase();
+  const path=`${Date.now()}-${safeName}`;
+  if(statusEl) statusEl.textContent=`Uploading ${file.name}...`;
+  const {error:upErr}=await sb.storage.from('payment-media').upload(path,file,{cacheControl:'31536000',upsert:false});
+  if(upErr){
+    if(statusEl) statusEl.textContent='';
+    toast('Upload failed: '+upErr.message+' — has supabase_migration_upi_payment_fix.sql been run, and does the payment-media bucket exist yet?');
+    evt.target.value=''; return;
+  }
+  const {data:pub}=sb.storage.from('payment-media').getPublicUrl(path);
+  const input=document.getElementById('setQr');
+  if(input) input.value=pub.publicUrl;
+  const previewBox=document.getElementById('upiQrPreviewBox');
+  if(previewBox) previewBox.innerHTML=renderUpiQrPreview(pub.publicUrl);
+  if(statusEl) statusEl.textContent=`Uploaded ${file.name}. Click "Save payment settings" to apply.`;
+  evt.target.value='';
+}
+async function savePayments(){data.store.upiEnabled=document.getElementById('setUpi').checked;data.store.codEnabled=document.getElementById('setCod').checked;data.store.razorpayEnabled=document.getElementById('setRazor').checked;data.store.upiId=document.getElementById('setUpiId').value.trim();data.store.upiName=document.getElementById('setUpiName').value.trim();data.store.upiMc=document.getElementById('setUpiMc').value.trim();data.store.upiQrImage=document.getElementById('setQr').value.trim();data.store.razorpayKeyId=document.getElementById('setRzp').value.trim();const ok=await saveStoreSettingsToSupabase();if(!ok)return;render()}
 async function saveAuth(){data.store.otpEnabled=document.getElementById('setOtp').checked;data.store.otpProvider=document.getElementById('setOtpProvider').value.trim()||'Not configured';const ok=await saveStoreSettingsToSupabase();if(!ok)return;render()}
 async function saveLocationSettings(){data.store.googleMapsApiKey=document.getElementById('setMaps').value.trim();data.store.googleReviewsUrl=document.getElementById('setGoogleReviews').value.trim();const ok=await saveStoreSettingsToSupabase();if(!ok)return;render()}
 async function saveContactSettings(){data.store.whatsapp=document.getElementById('setWhatsApp').value.trim();data.store.instagram=document.getElementById('setInstagram').value.trim();const ok=await saveStoreSettingsToSupabase();if(!ok)return;render()}
