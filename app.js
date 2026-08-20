@@ -2238,15 +2238,15 @@ function showUpiPayment(o){
   // claiming automatic reference retrieval, which the current
   // architecture cannot do without a real payment gateway.
   
-   // const upiLink = CONFIG.store.upiId
-   //  ? `upi://pay?pa=${encodeURIComponent(CONFIG.store.upiId)}&pn=${encodeURIComponent(CONFIG.store.upiName||'Jayvi Foods')}&am=${encodeURIComponent(o.total)}&tn=${encodeURIComponent(o.order_number)}&cu=INR`
-   //  : null;
-const amount = Number(o.total).toFixed(2);
-const orderRef = String(o.order_number || '');
+   const upiLink = CONFIG.store.upiId
+    ? `upi://pay?pa=${encodeURIComponent(CONFIG.store.upiId)}&pn=${encodeURIComponent(CONFIG.store.upiName||'Jayvi Foods')}&am=${encodeURIComponent(o.total)}&tn=${encodeURIComponent(o.order_number)}&cu=INR`
+    : null;
+// const amount = Number(o.total).toFixed(2);
+// const orderRef = String(o.order_number || '');
 
-const upiLink = CONFIG.store.upiId
-  ? `upi://pay?pa=${encodeURIComponent(CONFIG.store.upiId)}&pn=${encodeURIComponent(CONFIG.store.upiName||'Jayvi Foods')}&tr=${encodeURIComponent(orderRef)}&tn=${encodeURIComponent('Payment for ' + orderRef)}&am=${encodeURIComponent(amount)}&cu=INR`
-  : null;
+// const upiLink = CONFIG.store.upiId
+//   ? `upi://pay?pa=${encodeURIComponent(CONFIG.store.upiId)}&pn=${encodeURIComponent(CONFIG.store.upiName||'Jayvi Foods')}&tr=${encodeURIComponent(orderRef)}&tn=${encodeURIComponent('Payment for ' + orderRef)}&am=${encodeURIComponent(amount)}&cu=INR`
+//   : null;
    
   const intentButton = (isMobile() && upiLink)
     ? `<a class="btn gold full" href="${upiLink}">Pay with UPI app →</a><p class="tiny" style="text-align:center;margin:8px 0">or scan the QR below</p>`
